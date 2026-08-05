@@ -1,0 +1,158 @@
+/**
+ * User-Agent Utility Functions
+ * Handles browser detection and target format determination based on User-Agent strings.
+ */
+
+/**
+ * 判断是否为浏览器请求（用于伪装/公开页逻辑）
+ * 排除常见的代理客户端 User-Agent
+ * @param {string} userAgent
+ * @returns {boolean}
+ */
+export function isBrowserAgent(userAgent) {
+    if (!userAgent) return false;
+    // Common browser keywords - must contain Mozilla and not be a common bot
+    const isBrowser = /Mozilla/i.test(userAgent) && /Chrome|Safari|Edge|Opera|Firefox|Via|UCBrowser|Quark|MQQBrowser|Konqueror/i.test(userAgent);
+    
+    // Common proxy client and bot keywords to exclude
+    const isProxyOrBot = /clash|flclash|v2ray|surge|loon|shadowrocket|quantumult|stash|shadowsocks|mihomo|mihomo\.party|meta|nekobox|nekoray|sfi|sfa|sfra|sing-box|surfboard|hiddify|egern|yuetu|月兔|dio|dart|flutter|http-client|okhttp|axios|postman|curl|wget|go-http-client|python|java/i.test(userAgent);
+
+    return isBrowser && !isProxyOrBot;
+}
+
+/**
+ * 根据 User-Agent 和 URL 参数确定目标格式
+ * @param {string} userAgent 
+ * @param {URLSearchParams} searchParams 
+ * @returns {string} targetFormat (e.g., 'clash', 'singbox', 'base64')
+ */
+export function isHiddifyAgent(userAgent) {
+    return /hiddify/i.test(userAgent || '');
+}
+
+export function determineTargetFormat(userAgent, searchParams) {
+    // 1. Check URL parameters first
+    let targetFormat = searchParams.get('target');
+    if (!targetFormat) {
+        const supportedFormats = ['clash', 'singbox', 'surge', 'loon', 'base64', 'v2ray', 'trojan', 'quanx', 'egern', 'nodes'];
+        for (const format of supportedFormats) {
+            if (searchParams.has(format)) {
+                // Normalize v2ray/trojan to base64 as they share the output format
+                targetFormat = (format === 'v2ray' || format === 'trojan') ? 'base64' : format;
+                break;
+            }
+        }
+    }
+
+    if (targetFormat) {
+        const normalizedTarget = targetFormat.toLowerCase();
+        if (normalizedTarget === 'singbox' || normalizedTarget === 'sing-box') {
+            return 'singbox';
+        }
+        if (normalizedTarget === 'surge') {
+            const ver = searchParams.get('ver');
+            const safeVer = ver && /^\d+$/.test(ver) ? parseInt(ver, 10) : 4;
+            return `surge&ver=${safeVer}`;
+        }
+        if (normalizedTarget.startsWith('surge&ver=')) {
+            return normalizedTarget;
+        }
+        return targetFormat;
+    }
+
+    // 2. Check User-Agent
+    const ua = (userAgent || '').toLowerCase();
+
+    // --- Surge Specific Handling ---
+    // Extract version accurately (e.g., "Surge/4.0", "Surge Mac/3.0", "Surge-Mac/5.0")
+    if (ua.includes('surge')) {
+        const surgeMatch = ua.match(/surge(?:\s*-?\s*mac)?\/(\d+)/);
+        if (surgeMatch) {
+            const version = parseInt(surgeMatch[1], 10);
+            // Subconverter primarily supports &ver=2, 3, 4. For versions >= 4, use 4.
+            // iOS Surge特别处理：优先使用最新兼容版本
+            const iosSurgeVer = ua.includes('surge/') && !ua.includes('mac') ? 4 : Math.max(2, version);
+            return `surge&ver=${iosSurgeVer}`;
+        }
+        // 默认iOS Surge使用版本4
+        return ua.includes('surge/') && !ua.includes('mac') ? 'surge&ver=4' : 'surge&ver=4';
+    }
+
+    // Mapping array to ensure priority order
+    const uaMapping = [
+        // Mihomo/Meta Core Clients -> Clash
+        ['flclash', 'clash'],
+        ['flyclash', 'clash'],
+        ['butterfly', 'clash'],
+        ['mihomo', 'clash'],
+        ['clash.meta', 'clash'],
+        ['clash-verge', 'clash'],
+        ['mihomo.party', 'clash'],
+        ['mihomo-party', 'clash'],
+        ['clash-party', 'clash'],
+        ['clash party', 'clash'],
+        ['meta', 'clash'],
+
+        // Other Clients
+        ['stash', 'clash'],
+        ['nekoray', 'clash'],
+        ['nekobox', 'clash'],
+        ['surfboard', 'clash'],
+        ['cfw', 'clash'],
+        ['clashforwindows', 'clash'],
+        ['egern', 'egern'],
+        ['yuetu', 'clash'],
+        ['月兔', 'clash'],
+        ['sing-box', 'singbox'],
+        ['singbox', 'singbox'],
+        ['hiddify', 'clash'],
+        // Shadowrocket / 小火箭 prefers raw base64 subscription content for adaptive links.
+        // Explicit URL params such as ?clash=1 or ?target=surge still override this mapping.
+        ['shadowrocket', 'base64'],
+        ['v2rayn', 'base64'],
+        ['v2rayng', 'base64'],
+        ['loon', 'loon'],
+        ['quantumult x', 'quanx'],
+        ['quantumult%20x', 'quanx'],
+        ['quantumult-x', 'quanx'],
+        ['quantumult', 'quanx'],
+
+        // Fallback for generic clash
+        ['clash', 'clash']
+    ];
+
+    for (const [keyword, format] of uaMapping) {
+        if (ua.includes(keyword)) {
+            return format;
+        }
+    }
+
+    // 3. Default fallback
+    return 'base64';
+}
+
+/**
+ * 判断是否为 Mihomo (Clash Meta) 核心或兼容核心
+ * 用于启用 Meta 专用语法（如 dialer-proxy）
+ * @param {string} userAgent 
+ * @param {URLSearchParams} [searchParams]
+ * @returns {boolean}
+ */
+export function isMetaCore(userAgent, searchParams) {
+    // 支持通过 URL 参数强制开启 meta 模式 (e.g., &meta=true)
+    if (searchParams && (searchParams.get('meta') === '1' || searchParams.get('meta') === 'true')) {
+        return true;
+    }
+    
+    if (!userAgent) return false;
+    const ua = userAgent.toLowerCase();
+    
+    // 包含 meta, mihomo, verge, flclash, stash, party, nekobox 等识别特征
+    // [注意] 我们将 'clash' 放在稍后的位置，并与 core 关键字结合
+    const isMetaKeyword = /mihomo|mihomo\.party|meta|verge|flclash|stash|nekoray|nekobox|party|surfboard/i.test(ua);
+    
+    // 如果 UA 包含 clash 但不属于已知的传统核心，通常现代客户端都支持/使用 Meta 核心特性
+    const isModernClash = ua.includes('clash') && !ua.includes('clash-for-windows') && !ua.includes('clash.for.windows');
+
+    return isMetaKeyword || isModernClash;
+}

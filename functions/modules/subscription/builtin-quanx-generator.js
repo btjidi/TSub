@@ -1,0 +1,367 @@
+/**
+ * 内置 Quantumult X 配置生成器
+ * 输出格式对齐项目中的 Quantumult X parser，确保可解析回节点 URL。
+ */
+
+import { urlToClashProxy, urlsToClashProxies } from '../../utils/url-to-clash.js';
+import { getUniqueName } from './name-utils.js';
+import { POLICY_GROUPS, getBuiltinRules, getRemoteProviderDefinitions, DEFAULT_SELECT_GROUP, DEFAULT_RELAY_GROUP, pruneProxyGroups } from './builtin-rules-provider.js';
+
+const ICON_REPO = 'https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color';
+
+function cleanControlChars(str) {
+    if (typeof str !== 'string') return str;
+    // eslint-disable-next-line no-control-regex
+    return str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
+function sanitizeNodeName(name) {
+    if (!name) return 'Untitled';
+    let safe = cleanControlChars(name);
+    // QuanX lines are comma-separated and uses = for key-value. 
+    // Semicolons and quotes can also be problematic in some versions.
+    safe = safe.replace(/,/g, ' ').replace(/=/g, '-').replace(/;/g, ' ').replace(/["']/g, '');
+    safe = safe.replace(/\s+/g, ' ').trim();
+    return safe || 'Untitled';
+}
+
+function qxQuote(value) {
+    if (value === undefined || value === null) return '';
+    return encodeURIComponent(String(value));
+}
+
+function getIconByNodeName(name) {
+    if (/港|HK|Hong Kong/i.test(name)) return `${ICON_REPO}/Hong_Kong.png`;
+    if (/台|TW|Taiwan/i.test(name)) return `${ICON_REPO}/Taiwan.png`;
+    if (/日|JP|Japan/i.test(name)) return `${ICON_REPO}/Japan.png`;
+    if (/新|SG|Singapore|狮城/i.test(name)) return `${ICON_REPO}/Singapore.png`;
+    if (/美|US|America/i.test(name)) return `${ICON_REPO}/United_States.png`;
+    if (/韩|KR|Korea/i.test(name)) return `${ICON_REPO}/South_Korea.png`;
+    if (/英|UK|Great Britain/i.test(name)) return `${ICON_REPO}/United_Kingdom.png`;
+    if (/德|DE|Germany/i.test(name)) return `${ICON_REPO}/Germany.png`;
+    if (/法|FR|France/i.test(name)) return `${ICON_REPO}/France.png`;
+    if (/俄|RU|Russia/i.test(name)) return `${ICON_REPO}/Russia.png`;
+    return null;
+}
+
+function appendQxTlsParams(extraParts, proxy) {
+    if (proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true) {
+        extraParts.push('tls-verification=false');
+    }
+}
+
+function normalizeQxVmessMethod(method) {
+    const normalized = String(method || '').trim().toLowerCase();
+    if (!normalized || normalized === 'auto') return 'none';
+    return normalized;
+}
+
+function buildQxLine(proxy) {
+    if (!proxy || !proxy.server || !proxy.port) return null;
+
+    const name = sanitizeNodeName(proxy.name);
+    const type = (proxy.type || '').toLowerCase();
+    const server = proxy.server;
+    const port = proxy.port;
+
+    if (type === 'ss' || type === 'shadowsocks') {
+        const method = proxy.cipher || 'aes-128-gcm';
+        const password = proxy.password || '';
+        const extraParts = [];
+
+        // 插件支持
+        const plugin = proxy.plugin || '';
+        const opts = proxy['plugin-opts'] || proxy.pluginOpts || {};
+
+        if (plugin === 'obfs-local' || proxy.obfs) {
+            extraParts.push(`obfs=${proxy.obfs || opts.mode}`);
+            if (proxy['obfs-host'] || opts.host) extraParts.push(`obfs-host=${proxy['obfs-host'] || opts.host}`);
+        } else if (plugin === 'v2ray-plugin' || opts.mode === 'websocket') {
+            extraParts.push((opts.tls || opts.mode === 'websocket-tls') ? 'obfs=wss' : 'obfs=ws');
+            if (opts.path) extraParts.push(`obfs-uri=${opts.path}`);
+            if (opts.host) extraParts.push(`obfs-host=${opts.host}`);
+        }
+
+        if (proxy.udp) extraParts.push('udp-relay=true');
+        if (proxy.tfo) extraParts.push('fast-open=true');
+        return `shadowsocks=${server}:${port}, method=${method}, password=${password}${extraParts.length > 0 ? `, ${extraParts.join(', ')}` : ''}, tag=${name}`;
+    }
+
+    if (type === 'vmess') {
+        const uuid = proxy.uuid || '';
+        const method = normalizeQxVmessMethod(proxy.cipher);
+        const aid = Number.isFinite(Number(proxy.alterId)) ? Number(proxy.alterId) : 0;
+        const extraParts = [];
+        const sni = proxy.sni || proxy.servername;
+        const hasTlsLayer = proxy.tls || sni;
+        if (proxy.network === 'ws' || proxy['ws-opts']) {
+            extraParts.push(hasTlsLayer ? 'obfs=wss' : 'obfs=ws');
+            const wsOpts = proxy['ws-opts'] || proxy.wsOpts;
+            if (wsOpts?.path) extraParts.push(`obfs-uri=${wsOpts.path}`);
+            if (wsOpts?.headers?.Host) extraParts.push(`obfs-host=${wsOpts.headers.Host}`);
+            else if (sni) extraParts.push(`obfs-host=${sni}`);
+        } else {
+            if (hasTlsLayer) extraParts.push('over-tls=true');
+            if (sni) extraParts.push(`tls-host=${sni}`);
+        }
+        if (proxy.tfo) extraParts.push('fast-open=true');
+        appendQxTlsParams(extraParts, proxy);
+        return `vmess=${server}:${port}, method=${method}, password=${uuid}${extraParts.length > 0 ? `, ${extraParts.join(', ')}` : ''}, tag=${name}`;
+    }
+
+    if (type === 'trojan') {
+        const password = proxy.password || '';
+        const extraParts = [];
+        if (proxy.network === 'ws' || proxy['ws-opts']) {
+            extraParts.push('obfs=ws');
+            const wsOpts = proxy['ws-opts'] || proxy.wsOpts;
+            if (wsOpts?.path) extraParts.push(`obfs-uri=${wsOpts.path}`);
+            if (wsOpts?.headers?.Host) extraParts.push(`obfs-host=${wsOpts.headers.Host}`);
+        } else {
+            extraParts.push('over-tls=true');
+        }
+        if (proxy.sni || proxy.servername) extraParts.push(`tls-host=${proxy.sni || proxy.servername}`);
+        if (proxy.obfs) extraParts.push(`obfs=${proxy.obfs}, obfs-host=${proxy['obfs-host'] || ''}`);
+        if (proxy.tfo) extraParts.push('fast-open=true');
+        appendQxTlsParams(extraParts, proxy);
+        return `trojan=${server}:${port}, password=${password}${extraParts.length > 0 ? `, ${extraParts.join(', ')}` : ''}, tag=${name}`;
+    }
+
+    if (type === 'vless') {
+        const uuid = proxy.uuid || '';
+        const extraParts = ['method=none'];
+        const transport = proxy.network || 'tcp';
+        const isReality = proxy.security === 'reality' || !!proxy['reality-opts'];
+        const hasTlsLayer = proxy.tls || isReality;
+        const hostValue = proxy.sni || proxy.servername;
+
+        // 传输层映射 (QX 兼容性适配)
+        if (transport === 'ws' || proxy['ws-opts']) {
+            extraParts.push(hasTlsLayer ? 'obfs=wss' : 'obfs=ws');
+            const wsOpts = proxy['ws-opts'] || proxy.wsOpts;
+            if (wsOpts?.headers?.Host) extraParts.push(`obfs-host=${wsOpts.headers.Host}`);
+            else if (hostValue) extraParts.push(`obfs-host=${hostValue}`);
+            if (wsOpts?.path) extraParts.push(`obfs-uri=${wsOpts.path}`);
+        } else if (transport === 'grpc' || proxy['grpc-opts']) {
+            extraParts.push(hasTlsLayer ? 'obfs=over-tls' : 'obfs=grpc');
+            if (hostValue) extraParts.push(`obfs-host=${hostValue}`);
+            const grpcOpts = proxy['grpc-opts'] || proxy.grpcOpts;
+            if (!hasTlsLayer && grpcOpts?.['grpc-service-name']) extraParts.push(`obfs-uri=${grpcOpts['grpc-service-name']}`);
+        } else if (transport === 'xhttp' || proxy['xhttp-opts']) {
+            // QX 不直接支持 xhttp，尝试映射为 http(s) 以提高兼容性
+            extraParts.push(hasTlsLayer ? 'obfs=over-tls' : 'obfs=http');
+            const xhttpOpts = proxy['xhttp-opts'] || proxy.xhttpOpts;
+            if (xhttpOpts?.host) extraParts.push(`obfs-host=${xhttpOpts.host}`);
+            else if (hostValue) extraParts.push(`obfs-host=${hostValue}`);
+            if (!hasTlsLayer && xhttpOpts?.path) extraParts.push(`obfs-uri=${xhttpOpts.path}`);
+        } else if (hasTlsLayer) {
+            extraParts.push('obfs=over-tls');
+            if (hostValue) extraParts.push(`obfs-host=${hostValue}`);
+        }
+
+        if (isReality) {
+            const realityOpts = proxy['reality-opts'] || {};
+            if (realityOpts['public-key']) extraParts.push(`reality-base64-pubkey=${realityOpts['public-key']}`);
+            if (realityOpts['short-id']) extraParts.push(`reality-hex-shortid=${realityOpts['short-id']}`);
+        }
+
+        if (proxy.flow) extraParts.push(`vless-flow=${proxy.flow}`);
+        appendQxTlsParams(extraParts, proxy);
+        return `vless=${server}:${port}, password=${uuid}${extraParts.length > 0 ? `, ${extraParts.join(', ')}` : ''}, tag=${name}`;
+    }
+
+    if (type === 'http' || type === 'https') {
+        const username = proxy.username || '';
+        const password = proxy.password || '';
+        const extraParts = [];
+        if (type === 'https') extraParts.push('over-tls=true');
+        if (proxy.sni || proxy.servername) extraParts.push(`tls-host=${proxy.sni || proxy.servername}`);
+        appendQxTlsParams(extraParts, proxy);
+        return `http=${server}:${port}, username=${username}, password=${password}${extraParts.length > 0 ? `, ${extraParts.join(', ')}` : ''}, tag=${name}`;
+    }
+
+    if (type === 'hysteria2' || type === 'hy2') {
+        // Quantumult X rejects the Hysteria2 server syntax emitted by TSub; omit it
+        // from full QuanX configs rather than breaking the entire subscription import.
+        return null;
+    }
+
+    if (type === 'tuic') {
+        const parts = [];
+        if (proxy.uuid) parts.push(proxy.uuid || '');
+        if (proxy.password) parts.push(proxy.password || '');
+        if (proxy.sni || proxy.servername) parts.push(`sni=${proxy.sni || proxy.servername}`);
+        const congestionControl = proxy['congestion-control'] || proxy['congestion-controller'];
+        if (congestionControl) parts.push(`congestion-controller=${congestionControl}`);
+        if (proxy['udp-relay-mode']) parts.push(`udp-relay=${proxy['udp-relay-mode']}`);
+        if (proxy.alpn) {
+            const alpn = Array.isArray(proxy.alpn) ? proxy.alpn.join(',') : proxy.alpn;
+            parts.push(`alpn=${alpn}`);
+        }
+        appendQxTlsParams(parts, proxy);
+        return `tuic=${server}:${port}, ${parts.join(', ')}, tag=${name}`;
+    }
+
+    if (type === 'anytls') {
+        const extraParts = [`password=${proxy.password || ''}`];
+        extraParts.push('over-tls=true');
+        
+        if (proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true) {
+            extraParts.push('tls-verification=false');
+        } else {
+            extraParts.push('tls-verification=true');
+        }
+
+        if (proxy.sni || proxy.servername) {
+            extraParts.push(`tls-host=${proxy.sni || proxy.servername}`);
+        }
+
+        if (proxy.security === 'reality' || proxy['reality-opts']) {
+            const realityOpts = proxy['reality-opts'] || {};
+            if (realityOpts['public-key']) extraParts.push(`reality-base64-pubkey=${realityOpts['public-key']}`);
+            if (realityOpts['short-id']) extraParts.push(`reality-hex-shortid=${realityOpts['short-id']}`);
+        }
+
+        extraParts.push(`fast-open=${proxy.tfo ? 'true' : 'false'}`);
+        extraParts.push(`udp-relay=${proxy.udp ? 'true' : 'false'}`);
+
+        return `anytls=${server}:${port}, ${extraParts.join(', ')}, tag=${name}`;
+    }
+
+    return null;
+}
+
+export function generateBuiltinQuanxConfig(nodeList, options = {}) {
+    const {
+        managedConfigUrl = '',
+        interval = 86400,
+        skipCertVerify = false,
+        enableUdp = false,
+        enableTfo = false,
+        ruleLevel = 'std'
+    } = options;
+
+    const cleanedNodeList = cleanControlChars(nodeList);
+    const nodeUrls = cleanedNodeList
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'));
+
+    const proxyLines = [];
+    const proxiesWithMetadata = [];
+    const usedNames = new Map();
+
+    // 转换为 Clash 代理对象
+    const proxies = urlsToClashProxies(nodeUrls, options);
+
+    // 应用 UDP 开关
+    // (已在 urlsToClashProxies 中全局处理)
+    
+    for (const clashProxy of proxies) {
+        const baseName = sanitizeNodeName(clashProxy.name);
+        clashProxy.name = getUniqueName(baseName, usedNames);
+
+        const line = buildQxLine(clashProxy);
+        if (!line) continue;
+
+        proxyLines.push(line);
+        proxiesWithMetadata.push(clashProxy);
+    }
+
+    if (proxyLines.length === 0) {
+        return '#!MANAGED-CONFIG http://example.com interval=86400 strict=false\n\n[general]\nserver_check_url = http://www.gstatic.com/generate_204\nexcluded_routes = 192.168.0.0/16, 172.16.0.0/12, 100.64.0.0/10, 10.0.0.0/8\n\n[dns]\nno-ipv6\nserver = 223.5.5.5\nserver = 119.29.29.29\n\n[server_remote]\n\n[server_local]\n\n[rewrite_remote]\n\n[rewrite_local]\n\n[mitm]\n';
+    }
+
+    const sections = [];
+    if (managedConfigUrl) {
+        sections.push(`#!MANAGED-CONFIG ${managedConfigUrl} interval=${interval} strict=false`);
+    }
+
+    sections.push(`[general]\nserver_check_url = http://www.gstatic.com/generate_204\nexcluded_routes = 192.168.0.0/16, 172.16.0.0/12, 100.64.0.0/10, 10.0.0.0/8`);
+    sections.push(`[dns]\nno-ipv6\nserver = 223.5.5.5\nserver = 119.29.29.29`);
+    sections.push(`[server_remote]`);
+    sections.push(`[server_local]\n${proxyLines.join('\n')}`);
+
+    const levelKey = (ruleLevel || 'std').toUpperCase();
+    const policyFactory = POLICY_GROUPS[levelKey] || POLICY_GROUPS.STD;
+    let abstractGroups = policyFactory(proxiesWithMetadata, options);
+    abstractGroups = pruneProxyGroups(abstractGroups, proxiesWithMetadata);
+
+    const groupIcons = {
+        [DEFAULT_SELECT_GROUP]: `${ICON_REPO}/Proxy.png`,
+        [DEFAULT_RELAY_GROUP]: `${ICON_REPO}/Proxy.png`,
+        '自动选择': `${ICON_REPO}/Speedtest.png`,
+        '🔯 故障转移': `${ICON_REPO}/Relay.png`,
+        '🎬 视频广告': `${ICON_REPO}/Reject.png`,
+        '🎥 流媒体': `${ICON_REPO}/Video.png`,
+        '🍎 Apple': `${ICON_REPO}/Apple.png`,
+        'Ⓜ️ Microsoft': `${ICON_REPO}/Microsoft.png`,
+        '📲 Telegram': `${ICON_REPO}/Telegram.png`,
+        '🎧 Spotify': `${ICON_REPO}/Spotify.png`,
+        '🇭🇰 香港节点': `${ICON_REPO}/Hong_Kong.png`,
+        '🇹🇼 台湾节点': `${ICON_REPO}/Taiwan.png`,
+        '🇯🇵 日本节点': `${ICON_REPO}/Japan.png`,
+        '🇸🇬 狮城节点': `${ICON_REPO}/Singapore.png`,
+        '🇺🇸 美国节点': `${ICON_REPO}/United_States.png`,
+        '🇰🇷 韩国节点': `${ICON_REPO}/South_Korea.png`,
+        '🇬🇧 英国节点': `${ICON_REPO}/United_Kingdom.png`,
+    };
+
+    const groupLines = abstractGroups.map(group => {
+        const normalizePolicyMember = (member) => {
+            const upper = String(member || '').toUpperCase();
+            if (upper === 'DIRECT') return 'direct';
+            if (upper === 'REJECT') return 'reject';
+            if (upper === 'REJECT-DROP') return 'reject';
+            return member;
+        };
+
+        let type = 'static';
+        if (group.type === 'url-test') type = 'url-latency-benchmark';
+        if (group.type === 'fallback') type = 'available';
+        if (group.type === 'relay') type = 'static';
+
+        const proxies = group.proxies.map(normalizePolicyMember).join(', ');
+        const icon = groupIcons[group.name] ? `, img-url=${groupIcons[group.name]}` : '';
+        const extra = type === 'url-latency-benchmark' ? ', check-interval=300, tolerance=50' : '';
+        return `${type}=${group.name}, ${proxies}${extra}${icon}`;
+    });
+
+    sections.push(`[policy]\n${groupLines.join('\n')}`);
+
+    const rawRules = getBuiltinRules(levelKey, 'quanx');
+    const remoteRules = rawRules
+        .filter(r => r.startsWith('filter_remote'))
+        .map(r => r.replace(/^filter_remote,\s*/i, ''));
+    const localRules = rawRules
+        .filter(r => !r.startsWith('filter_remote'))
+        .map(rule => rule
+            .replace(/^HOST-SUFFIX/i, 'host-suffix')
+            .replace(/^HOST-KEYWORD/i, 'host-keyword')
+            .replace(/^HOST,/i, 'host,')
+            .replace(/^IP-CIDR/i, 'ip-cidr')
+            .replace(/^GEOIP/i, 'geoip')
+            .replace(/^FINAL/i, 'final')
+            .replace(/,\s*DIRECT\b/g, ', direct')
+            .replace(/,\s*REJECT\b/g, ', reject'));
+
+    const localRuleLines = [
+        '; 基础分流',
+        'host-suffix, localhost, direct',
+        'host-suffix, local, direct',
+        'ip-cidr, 127.0.0.0/8, direct',
+        'ip-cidr, 10.0.0.0/8, direct',
+        'ip-cidr, 100.64.0.0/10, direct',
+        'ip-cidr, 172.16.0.0/12, direct',
+        'ip-cidr, 192.168.0.0/16, direct',
+        ...localRules
+    ];
+
+    sections.push(`[filter_remote]\n${remoteRules.join('\n')}`);
+    sections.push(`[filter_local]\n${localRuleLines.filter(Boolean).join('\n')}`);
+    sections.push(`[rewrite_remote]`);
+    sections.push(`[rewrite_local]`);
+    sections.push(`[mitm]`);
+
+    return sections.join('\n\n') + '\n';
+}

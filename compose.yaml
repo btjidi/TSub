@@ -1,0 +1,42 @@
+services:
+  socket-init:
+    image: alpine:3.21
+    command: ["sh", "-c", "mkdir -p /run/tsub && chown 10001:10001 /run/tsub && chmod 0770 /run/tsub"]
+    volumes:
+      - /run/tsub:/run/tsub
+    restart: "no"
+  controller:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+      TSUB_LOCAL_EXECUTOR_SOCKET: /run/tsub/controller.sock
+      TSUB_TRUST_PROXY: private
+    volumes:
+      - controller-data:/var/lib/tsub-controller
+      - /run/tsub:/run/tsub
+    networks: [tsub]
+    depends_on:
+      socket-init:
+        condition: service_completed_successfully
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TSUB_UPSTREAM: controller:8787
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./server/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [tsub]
+    depends_on: [controller]
+networks:
+  tsub: {}
+volumes:
+  controller-data: {}
+  caddy-data: {}
+  caddy-config: {}

@@ -1,0 +1,81 @@
+name: Publish reviewed core asset
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: xray, sing-box, naive, cloudflared, lego, or busybox
+        required: true
+        type: choice
+        options: [xray, sing-box, naive, cloudflared, lego, busybox]
+      version:
+        description: Reviewed upstream version
+        required: true
+      architecture:
+        description: Target architecture
+        required: true
+        type: choice
+        options: [amd64, arm64]
+      source_url:
+        description: Exact reviewed upstream asset URL
+        required: true
+      source_sha256:
+        description: SHA-256 published or independently verified for the source archive
+        required: true
+      archive_type:
+        description: Source format
+        required: true
+        type: choice
+        options: [raw, zip, tar-gz]
+      binary_path:
+        description: Path or unique filename inside archive; ignored for raw
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download and verify reviewed source
+        env:
+          SOURCE_URL: ${{ inputs.source_url }}
+          SOURCE_SHA256: ${{ inputs.source_sha256 }}
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o source.asset "$SOURCE_URL"
+          printf '%s  %s\n' "$SOURCE_SHA256" source.asset | sha256sum -c -
+      - name: Extract one executable
+        env:
+          ARCHIVE_TYPE: ${{ inputs.archive_type }}
+          BINARY_PATH: ${{ inputs.binary_path }}
+          COMPONENT: ${{ inputs.component }}
+          VERSION: ${{ inputs.version }}
+          ARCH: ${{ inputs.architecture }}
+        run: |
+          set -euo pipefail
+          mkdir extracted
+          case "$ARCHIVE_TYPE" in
+            raw) cp source.asset extracted/core ;;
+            zip) unzip -q source.asset -d extracted/source; cp "extracted/source/$BINARY_PATH" extracted/core ;;
+            tar-gz) tar -xzf source.asset -C extracted; cp "extracted/$BINARY_PATH" extracted/core ;;
+          esac
+          test -s extracted/core
+          chmod 755 extracted/core
+          asset="$COMPONENT-$VERSION-$ARCH"
+          mv extracted/core "$asset"
+          sha256sum "$asset" >"$asset.sha256"
+      - name: Upload immutable release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPONENT: ${{ inputs.component }}
+          VERSION: ${{ inputs.version }}
+          ARCH: ${{ inputs.architecture }}
+        run: |
+          set -euo pipefail
+          tag=runtime-assets-v2
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "TSub Runtime v2 assets" --notes "Reviewed, pre-extracted runtime assets. See workflow provenance."
+          asset="$COMPONENT-$VERSION-$ARCH"
+          gh release upload "$tag" "$asset" "$asset.sha256" --clobber

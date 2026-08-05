@@ -1,0 +1,97 @@
+name: Controller platforms
+
+on:
+  push:
+    paths: ["server/**", "functions/**", "src/**", "scripts/**", "tests/**", "docs/**", "Dockerfile", "compose.yaml", "package*.json", ".github/workflows/controller-platforms.yml"]
+  pull_request:
+    paths: ["server/**", "functions/**", "src/**", "scripts/**", "tests/**", "docs/**", "Dockerfile", "compose.yaml", "package*.json", ".github/workflows/controller-platforms.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run test:run
+      - run: npm run docs:check
+      - run: npm run build
+      - name: SQLite server smoke
+        run: |
+          set -euo pipefail
+          data_dir=$(mktemp -d)
+          TSUB_DATA_DIR="$data_dir" TSUB_SQLITE_PATH="$data_dir/controller.sqlite" TSUB_STATIC_DIR=dist \
+            ADMIN_USERNAME=admin ADMIN_PASSWORD=test-password-123 COOKIE_SECRET=test-cookie-secret-32-bytes \
+            DEPLOYMENT_SECRET_KEY=test-deployment-secret-32-bytes SETTINGS_SECRET_KEY=test-settings-secret-32-bytes \
+            node server/index.mjs >"$data_dir/server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$data_dir"' EXIT
+          for attempt in $(seq 1 20); do curl -fsS http://127.0.0.1:8787/ >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8787/ >/dev/null
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.4-bookworm
+        env:
+          POSTGRES_USER: tsub
+          POSTGRES_PASSWORD: tsub-test-password
+          POSTGRES_DB: tsub
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tsub -d tsub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: PostgreSQL repository and migration contracts
+        env:
+          TSUB_TEST_POSTGRES_URL: postgresql://tsub:tsub-test-password@127.0.0.1:5432/tsub
+        run: npm run test:run -- tests/integration/postgres-controller.test.js
+
+  container-and-init:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build production controller image
+        run: docker build -t tsub-controller:test .
+      - name: Smoke production controller image
+        run: |
+          set -euo pipefail
+          docker run -d --name tsub-controller-smoke -p 127.0.0.1:18788:8787 \
+            -e HOST=0.0.0.0 -e PORT=8787 \
+            -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD=test-password-123 \
+            -e COOKIE_SECRET=test-cookie-secret-32-bytes \
+            -e DEPLOYMENT_SECRET_KEY=test-deployment-secret-32-bytes \
+            -e SETTINGS_SECRET_KEY=test-settings-secret-32-bytes \
+            tsub-controller:test
+          trap 'docker rm -f tsub-controller-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do curl -fsS http://127.0.0.1:18788/ >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:18788/ >/dev/null
+          test "$(docker inspect tsub-controller-smoke --format '{{.Config.User}}')" = tsub-controller
+      - name: Validate Compose model
+        run: |
+          cp server/controller.env.example .env
+          docker compose config --quiet
+      - name: Validate systemd units
+        run: |
+          docker run --rm -v "$PWD:/src:ro" debian:bookworm-slim sh -ec '
+            apt-get update -qq
+            apt-get install -y -qq systemd nodejs >/dev/null
+            mkdir -p /opt/tsub-controller/server/executor
+            cp /src/server/executor/tsub-local-executor.sh /opt/tsub-controller/server/executor/
+            chmod 700 /opt/tsub-controller/server/executor/tsub-local-executor.sh
+            systemd-analyze verify /src/server/install/*.service
+          '
+      - name: Validate OpenRC and POSIX installers
+        run: docker run --rm -v "$PWD:/src:ro" alpine:3.21 sh -c "apk add --no-cache shellcheck >/dev/null && ash -n /src/scripts/install-controller.sh /src/scripts/init-controller-env.sh /src/tests/server/run-init-controller-env.sh /src/server/install/*.openrc /src/server/executor/tsub-local-executor.sh && shellcheck -S warning /src/scripts/install-controller.sh /src/scripts/init-controller-env.sh /src/tests/server/run-init-controller-env.sh /src/server/install/*.openrc /src/server/executor/tsub-local-executor.sh && sh /src/tests/server/run-init-controller-env.sh"

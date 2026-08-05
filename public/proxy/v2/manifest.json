@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 2,
+  "runtimeVersion": "2.4.16",
+  "runtime": {
+    "path": "/proxy/v2/tsub-proxy.sh",
+    "sha256": "8500e08dc96d9656a868d9078c3d75350f20f8f4ac83ae89cddc551866d650ef",
+    "bytes": 175871
+  },
+  "providers": {
+    "xray": {
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "systems": [
+        "debian",
+        "ubuntu",
+        "alpine",
+        "rhel",
+        "rocky",
+        "almalinux",
+        "fedora"
+      ],
+      "minimumMemoryMb": 56,
+      "estimatedRssMb": 42,
+      "temporaryInstallRssMb": 18,
+      "binaryDiskMb": 38,
+      "mergeGroup": "main",
+      "protocols": [
+        "vless",
+        "trojan",
+        "vmess",
+        "hysteria2",
+        "shadowsocks",
+        "socks5"
+      ],
+      "transports": [
+        "tcp",
+        "ws",
+        "grpc",
+        "xhttp",
+        "hysteria"
+      ]
+    },
+    "sing-box": {
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "systems": [
+        "debian",
+        "ubuntu",
+        "alpine",
+        "rhel",
+        "rocky",
+        "almalinux",
+        "fedora"
+      ],
+      "minimumMemoryMb": 56,
+      "estimatedRssMb": 44,
+      "temporaryInstallRssMb": 20,
+      "binaryDiskMb": 35,
+      "mergeGroup": "main",
+      "protocols": [
+        "vless",
+        "trojan",
+        "vmess",
+        "hysteria2",
+        "tuic",
+        "anytls",
+        "shadowsocks",
+        "socks5"
+      ],
+      "transports": [
+        "tcp",
+        "ws",
+        "grpc",
+        "hysteria",
+        "quic"
+      ]
+    },
+    "naive": {
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "systems": [
+        "debian",
+        "ubuntu",
+        "alpine",
+        "rhel",
+        "rocky",
+        "almalinux",
+        "fedora"
+      ],
+      "minimumMemoryMb": 64,
+      "estimatedRssMb": 38,
+      "temporaryInstallRssMb": 18,
+      "binaryDiskMb": 25,
+      "mergeGroup": "standalone",
+      "protocols": [
+        "naive"
+      ],
+      "transports": [
+        "https"
+      ]
+    },
+    "cloudflared": {
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "systems": [
+        "debian",
+        "ubuntu",
+        "alpine",
+        "rhel",
+        "rocky",
+        "almalinux",
+        "fedora"
+      ],
+      "modes": [
+        "quick",
+        "named"
+      ],
+      "minimumMemoryMb": 97,
+      "estimatedRssMb": 45,
+      "temporaryInstallRssMb": 25,
+      "binaryDiskMb": 35,
+      "mergeGroup": "sidecar"
+    },
+    "wgcf": {
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "systems": [
+        "debian",
+        "ubuntu",
+        "alpine",
+        "rhel",
+        "rocky",
+        "almalinux",
+        "fedora"
+      ],
+      "version": "2.2.22",
+      "minimumMemoryMb": 56,
+      "estimatedRssMb": 0,
+      "temporaryInstallRssMb": 12,
+      "binaryDiskMb": 8,
+      "mergeGroup": "temporary"
+    },
+    "lego": {
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "systems": [
+        "debian",
+        "ubuntu",
+        "alpine",
+        "rhel",
+        "rocky",
+        "almalinux",
+        "fedora"
+      ],
+      "modes": [
+        "http-01",
+        "cloudflare-dns-01"
+      ],
+      "minimumMemoryMb": 56,
+      "estimatedRssMb": 0,
+      "temporaryInstallRssMb": 24,
+      "binaryDiskMb": 20,
+      "mergeGroup": "temporary"
+    },
+    "busybox": {
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "systems": [
+        "debian",
+        "ubuntu",
+        "alpine",
+        "rhel",
+        "rocky",
+        "almalinux",
+        "fedora"
+      ],
+      "applets": [
+        "httpd",
+        "cgi"
+      ],
+      "minimumMemoryMb": 56,
+      "estimatedRssMb": 2,
+      "temporaryInstallRssMb": 4,
+      "binaryDiskMb": 2,
+      "mergeGroup": "sidecar"
+    }
+  },
+  "cores": {
+    "xray": {
+      "version": "26.7.28",
+      "assets": {}
+    },
+    "sing-box": {
+      "version": "1.13.15",
+      "assets": {}
+    },
+    "naive": {
+      "version": "134.0.6998.88-1",
+      "assets": {}
+    },
+    "cloudflared": {
+      "version": "2026.6.0",
+      "assets": {}
+    },
+    "wgcf": {
+      "version": "2.2.22",
+      "assets": {}
+    },
+    "lego": {
+      "version": "4.26.0",
+      "assets": {}
+    },
+    "busybox": {
+      "version": "1.38.0-musl",
+      "assets": {}
+    }
+  }
+}

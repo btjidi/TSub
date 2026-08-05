@@ -1,0 +1,87 @@
+name: Runtime v2
+
+on:
+  push:
+    paths: ["runtime/**", "scripts/**", "tests/runtime/**", "functions/modules/deployment-*.js", ".github/workflows/runtime-v2.yml"]
+  pull_request:
+    paths: ["runtime/**", "scripts/**", "tests/runtime/**", "functions/modules/deployment-*.js", ".github/workflows/runtime-v2.yml"]
+  workflow_dispatch:
+
+jobs:
+  shell-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run runtime:build
+      - run: npm run runtime:check
+      - name: ShellCheck merged POSIX runtime
+        uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca # master 2026-08-01
+        with: { scandir: public/proxy/v2, severity: warning }
+      - name: ShellCheck runtime tests
+        uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca # master 2026-08-01
+        with: { scandir: tests/runtime, severity: warning }
+      - name: dash syntax
+        run: dash -n public/proxy/v2/tsub-proxy.sh
+      - name: BusyBox ash syntax
+        run: docker run --rm -v "$PWD/public/proxy/v2/tsub-proxy.sh:/runtime.sh:ro" alpine:3.21 /bin/ash -n /runtime.sh
+      - name: Alpine OpenRC lifecycle matrix
+        run: |
+          for alpine_version in 3.21 3.22; do
+            docker run --rm -e TSUB_OPENRC_CONTAINER_TEST=true -v "$PWD:/src:ro" "alpine:$alpine_version" \
+              sh -ec 'apk add --no-cache curl gcompat openssl >/dev/null; sh /src/tests/runtime/run-openrc-regression.sh; sh /src/tests/runtime/run-agent-persist-restart.sh; sh /src/tests/runtime/run-agent-self-update.sh; sh /src/tests/runtime/run-quick-tunnel.sh'
+          done
+      - name: Ubuntu 24.04 runtime contract
+        run: |
+          docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 sh -ec '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends dash ca-certificates coreutils curl findutils grep sed gawk hostname iproute2 >/dev/null
+            dash -n /src/public/proxy/v2/tsub-proxy.sh
+            sh /src/tests/runtime/run-detection-dependencies.sh
+            sh /src/tests/runtime/run-agent-heartbeat-log.sh
+          '
+      - name: Rocky Linux 9 runtime contract
+        run: |
+          docker run --rm -v "$PWD:/src:ro" rockylinux:9 sh -ec '
+            dnf_log=/tmp/tsub-dnf.log
+            if ! dnf install -y -q --setopt=install_weak_deps=False ca-certificates coreutils-single curl-minimal findutils grep sed gawk hostname iproute procps-ng tar gzip >"$dnf_log" 2>&1; then
+              dnf_message=$(tail -n 40 "$dnf_log" | tr "\n" " " | sed "s/%/%25/g")
+              printf "::error title=Rocky dependency installation::%s\n" "$dnf_message"
+              cat "$dnf_log"
+              exit 1
+            fi
+            sh -n /src/public/proxy/v2/tsub-proxy.sh
+            run_contract() {
+              contract_log=/tmp/tsub-contract.log
+              if sh -x "$1" >"$contract_log" 2>&1; then cat "$contract_log"; return 0; fi
+              contract_message=$(tail -n 40 "$contract_log" | tr "\n" " " | sed "s/%/%25/g")
+              printf "::error title=Rocky runtime contract::%s\n" "$contract_message"
+              cat "$contract_log"
+              return 1
+            }
+            run_contract /src/tests/runtime/run-detection-dependencies.sh
+            run_contract /src/tests/runtime/run-agent-heartbeat-log.sh
+          '
+      - name: Subscription and traffic counters
+        run: sh tests/runtime/run-subscription-traffic.sh
+      - name: Self-signed certificate pinning
+        run: sh tests/runtime/run-certificate-pin.sh
+      - name: Resource detection and operation locking
+        run: |
+          sh tests/runtime/run-swap-detection.sh
+          sh tests/runtime/run-operation-lock.sh
+      - name: Agent and controller transfer
+        run: |
+          sh tests/runtime/run-agent-heartbeat-log.sh
+          sh tests/runtime/run-edge-probe.sh
+          sh tests/runtime/run-tunnel-memory-recommendation.sh
+          sh tests/runtime/run-agent-transfer.sh
+          sh tests/runtime/run-local-executor-transfer.sh
+      - name: Managed service lifecycle
+        run: sh tests/runtime/run-service-lifecycle.sh
+      - name: Provider archive assets
+        run: sh tests/runtime/run-provider-archive.sh
+      - name: 64MB cgroup smoke test
+        run: sh tests/runtime/run-low-memory.sh

@@ -1,0 +1,419 @@
+/**
+ * TSub Cloudflare Pages Functions - 主入口文件
+ * 负责路由分发和请求协调
+ *
+ * 模块化架构v2:
+ * - utils.js: 工具函数
+ * - auth-middleware.js: 认证中间件
+ * - notifications.js: 通知功能
+ * - subscription-handler.js: 订阅请求处理
+ * - api-handler.js: API处理
+ * - api-router.js: API路由
+ * - handlers/: 功能处理器模块
+ *   - subscription-handler.js: 订阅相关处理
+ *   - node-handler.js: 节点相关处理
+ *   - debug-handler.js: 调试相关处理
+ * - utils/: 工具模块
+ *   - geo-utils.js: 地理识别工具
+ *   - node-parser.js: 节点解析工具
+ */
+
+import { handleTsubRequest } from './modules/subscription-handler.js';
+import { handleApiRequest } from './modules/api-router.js';
+import { createJsonResponse, migrateConfigSettings } from './modules/utils.js';
+import { corsMiddleware, csrfOriginMiddleware, securityHeadersMiddleware } from './middleware/cors.js';
+import { handleDisguiseRequest } from './modules/handlers/disguise-handler.js';
+import { createDisguiseResponse } from './modules/disguise-page.js';
+
+// 静态导入核心依赖以优化冷加载
+import { StorageFactory, SettingsCache, StorageInitializationError, initializeCloudflareStorage } from './storage-adapter.js';
+import { KV_KEY_SETTINGS, DEFAULT_SETTINGS as defaultSettings } from './modules/config.js';
+import { handleCronTrigger } from './modules/notifications.js';
+import { authMiddleware } from './modules/auth-middleware.js';
+import { redactSensitiveObject } from './modules/security-utils.js';
+
+function parseCorsOrigins(env, requestUrl) {
+    const configured = (env?.CORS_ORIGINS || '')
+        .split(',')
+        .map(origin => origin.trim())
+        .filter(Boolean);
+    const origins = configured.length ? configured : [requestUrl.origin];
+    if (['localhost', '127.0.0.1'].includes(requestUrl.hostname)) {
+        origins.push('http://localhost:5173', 'http://127.0.0.1:5173');
+    }
+    return Array.from(new Set(origins));
+}
+
+function applyNoStoreToHtmlResponse(response) {
+    if (!response || !response.headers) {
+        return response;
+    }
+    const contentType = response.headers.get('Content-Type') || '';
+    if (!contentType.includes('text/html')) {
+        return response;
+    }
+    const headers = new Headers(response.headers);
+    headers.delete('Content-Encoding');
+    headers.delete('content-encoding');
+    headers.delete('Content-Length');
+    headers.delete('content-length');
+    headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    headers.set('CDN-Cache-Control', 'no-store, no-cache, must-revalidate');
+    headers.set('Surrogate-Control', 'no-store, no-cache, must-revalidate');
+    headers.set('Pragma', 'no-cache');
+    headers.set('Expires', '0');
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+    });
+}
+
+function applyNoStoreToRuntimeAssetResponse(response, pathname) {
+    if (!response?.headers || !pathname.startsWith('/proxy/v2/')) return response;
+    const headers = new Headers(response.headers);
+    headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    headers.set('CDN-Cache-Control', 'no-store');
+    headers.set('Surrogate-Control', 'no-store');
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+    });
+}
+
+const INTERNAL_SPA_FETCH_HEADER = 'x-tsub-internal-spa-fetch';
+const INTERNAL_ORIGIN_ASSET_FETCH_HEADER = 'x-tsub-origin-asset-fetch';
+const RETIRED_CRON_PATHS = new Set([
+    '/_cron',
+    '/_cron.js',
+    '/_schedule',
+    '/_schedule.js',
+    '/cron-dashboard',
+    '/cron-dashboard.js'
+]);
+
+function normalizeLoginPath(customLoginPath) {
+    if (typeof customLoginPath !== 'string') return '/login';
+    const normalized = customLoginPath.trim().replace(/^\/+/g, '');
+    return normalized ? `/${normalized}` : '/login';
+}
+
+async function fetchHostedAssetViaOrigin(request, assetPath) {
+    const assetUrl = new URL(assetPath, request.url);
+    const headers = new Headers(request.headers);
+    headers.delete(INTERNAL_SPA_FETCH_HEADER);
+    headers.set(INTERNAL_ORIGIN_ASSET_FETCH_HEADER, '1');
+
+    return fetch(new Request(assetUrl.toString(), {
+        method: ['GET', 'HEAD'].includes(request.method) ? request.method : 'GET',
+        headers
+    }), {
+        cf: { cacheTtl: 0, cacheEverything: false }
+    });
+}
+
+async function fetchStaticAsset(request, env, next) {
+    if (typeof next === 'function') {
+        return next();
+    }
+
+    if (typeof env?.ASSETS?.fetch === 'function') {
+        return env.ASSETS.fetch(request);
+    }
+
+    if (request.headers.get(INTERNAL_ORIGIN_ASSET_FETCH_HEADER) === '1') {
+        return new Response('Not Found', { status: 404 });
+    }
+
+    const url = new URL(request.url);
+
+    if (url.pathname === '/') {
+        return fetchHostedAssetViaOrigin(request, '/index.html');
+    }
+
+    if (url.pathname === '/index.html' || /\.\w+$/.test(url.pathname)) {
+        return fetchHostedAssetViaOrigin(request, `${url.pathname}${url.search}`);
+    }
+
+    return new Response('Not Found', { status: 404 });
+}
+
+async function fetchSpaEntry(request, env, next) {
+    const indexUrl = new URL('/', request.url);
+
+    if (typeof env?.ASSETS?.fetch === 'function') {
+        return env.ASSETS.fetch(new Request(indexUrl, request));
+    }
+
+    if (typeof next === 'function') {
+        const headers = new Headers(request.headers);
+        headers.set(INTERNAL_SPA_FETCH_HEADER, '1');
+
+        if (new URL(request.url).pathname === '/') {
+            return applyNoStoreToHtmlResponse(await next());
+        }
+
+        const assetsResponse = await fetchStaticAsset(new Request(indexUrl, {
+            method: request.method,
+            headers: headers,
+            redirect: request.redirect
+        }), env, next);
+        return applyNoStoreToHtmlResponse(assetsResponse);
+    }
+
+    return fetchHostedAssetViaOrigin(request, '/index.html');
+}
+
+/**
+ * 主要的请求处理函数
+ * @param {Object} context - Cloudflare上下文对象
+ * @returns {Promise<Response>} HTTP响应
+ */
+export async function onRequest(context) {
+    const { request, env, next } = context;
+    const url = new URL(request.url);
+
+    try {
+        const handleRequest = async () => {
+            if (RETIRED_CRON_PATHS.has(url.pathname)) {
+                return new Response('Not Found', {
+                    status: 404,
+                    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }
+                });
+            }
+
+            await initializeCloudflareStorage(env);
+            const settings = await SettingsCache.get(env) || {};
+            const config = migrateConfigSettings({ ...defaultSettings, ...settings });
+
+            if (request.headers.get(INTERNAL_SPA_FETCH_HEADER) === '1') {
+                return applyNoStoreToHtmlResponse(await fetchStaticAsset(request, env, next));
+            }
+
+            // 动态识别订阅路由：仅保留 /sub/ 显式前缀，以及用户自定义 mytoken/profileToken 短链
+            const isExplicitSubRoute = url.pathname.startsWith('/sub/');
+            
+            const firstSeg = url.pathname.split('/').filter(Boolean)[0];
+            const isCustomTokenRoute = firstSeg && (firstSeg === config.mytoken || firstSeg === config.profileToken);
+
+            // 路由分发
+            if (url.pathname.startsWith('/api/')) {
+                // API 路由
+                return await handleApiRequest(request, env, context);
+            } else if (isExplicitSubRoute || isCustomTokenRoute) {
+                // TSub 订阅路由
+                return await handleTsubRequest(context);
+            } else if (url.pathname === '/cron') {
+                // 定时任务路由 (需要认证)
+                // 使用设置中的 cronSecret 进行验证
+                const expectedSecret = settings.cronSecret;
+
+                if (!expectedSecret) {
+                    return createJsonResponse({
+                        error: 'Cron Secret 未配置',
+                        hint: '请在设置页面的「自动任务配置」中设置 Cron Secret'
+                    }, 500);
+                }
+
+                const cronAuthHeader = request.headers.get('Authorization');
+                const cronSecretParam = url.searchParams.get('secret');
+                const isAuthorized =
+                    cronAuthHeader === `Bearer ${expectedSecret}` ||
+                    cronSecretParam === expectedSecret;
+
+                if (!isAuthorized) {
+                    return createJsonResponse({ error: 'Unauthorized' }, 401);
+                }
+
+                return await handleCronTrigger(env);
+            } else {
+                const isLocalhost = ['localhost', '127.0.0.1'].includes(url.hostname);
+
+                // 本地 wrangler pages dev 调试兜底：优先返回静态资源，避免函数逻辑影响 SPA 首屏
+                if (isLocalhost) {
+                    let localResponse = await fetchStaticAsset(request, env, next);
+                    const isLikelySpaPath = !/\.\w+$/.test(url.pathname)
+                        && !url.pathname.startsWith('/api/')
+                        && !isExplicitSubRoute
+                        && !isCustomTokenRoute
+                        && url.pathname !== '/cron';
+
+                    if (localResponse.status === 404 && isLikelySpaPath) {
+                        const indexResponse = await fetchSpaEntry(request, env, next);
+                        if (indexResponse.status === 200) {
+                            localResponse = indexResponse;
+                        }
+                    }
+
+                    return applyNoStoreToHtmlResponse(localResponse);
+                }
+                // 静态文件处理
+                const isStaticAsset = url.pathname.startsWith('/proxy/v2/')
+                    || /^\/(assets|@vite|src)\/./.test(url.pathname)
+                    || /\.\w+$/.test(url.pathname);
+
+                if (!isStaticAsset) {
+                    // 已提前读取过 settings
+                }
+
+                const customLoginPath = normalizeLoginPath(settings?.customLoginPath);
+                const defaultLoginPath = '/login';
+                const hasCustomLoginPath = customLoginPath !== defaultLoginPath;
+
+                // SPA 路由白名单：这些请求应该交由前端路由处理，而不是作为订阅请求
+                // [修复] 增加更多可能的SPA路由，防止被误判为订阅请求
+                // [新增] 动态包含自定义登录路径
+                // [Fix #400] 当设置了自定义登录路径时，/login 不再作为 SPA 路由，
+                // 应直接返回 404 / disguise 页面以避免暴露自定义路径。
+                const isSpaRoute = [
+                    '/',
+                    '/dashboard',
+                    '/login',
+                    '/explore',
+                    customLoginPath
+                ].some(route => {
+                    if (route === '/') return url.pathname === '/';
+                    if (route === '/dashboard') {
+                        return url.pathname === '/dashboard' || url.pathname.startsWith('/dashboard/');
+                    }
+                    return url.pathname === route || url.pathname.startsWith(route + '/');
+                });
+
+                // [Fix #400] 设置了自定义路径后，/login 不再是有效 SPA 路由
+                const isLoginPath = url.pathname === '/login';
+                if (hasCustomLoginPath && isLoginPath) {
+                    return createDisguiseResponse(settings?.disguise, request.url)
+                        || new Response('Not Found', { status: 404 });
+                }
+
+                const isProtectedSpaRoute = isSpaRoute
+                    && url.pathname !== '/'
+                    && url.pathname !== '/login'
+                    && url.pathname !== customLoginPath
+                    && !url.pathname.startsWith('/explore');
+
+                // Route protection for SPA pages
+                // If accessing a protected route without auth, redirect to login
+                // [Fix] Exclude /explore from auth check
+                // [Fix] Skip auth check on localhost to avoid port 8787/5173 sync issues during dev
+                // [Fix #400] When custom login path is set, accessing /login should NOT
+                // redirect to the custom path (that would expose the hidden admin URL).
+                // Instead return 404 so the custom path stays concealed.
+
+                if (isProtectedSpaRoute && !isLocalhost) {
+                    const isAuthenticated = await authMiddleware(request, env);
+                    if (!isAuthenticated) {
+                        return createDisguiseResponse(settings?.disguise, request.url);
+                    }
+                }
+
+                // [Smart Disguise] Check if we need to disguise the SPA/Root
+                // Only applies to non-static assets
+                if ((url.pathname === '/' || isSpaRoute) && !isStaticAsset) {
+                    // Pass settings to avoid double fetch
+                    const disguiseResponse = await handleDisguiseRequest(context, settings);
+                    if (disguiseResponse) {
+                        return disguiseResponse;
+                    }
+                }
+
+
+                if (!isStaticAsset && !isSpaRoute && url.pathname !== '/') {
+                    // 如果是浏览器请求且看起来像是一个页面访问，优先尝试返回 SPA
+                    // fix: 解决经典模式下可能的路由冲突
+                    const acceptHeader = request.headers.get('Accept') || '';
+                    if (acceptHeader.includes('text/html')) {
+                        // 既然它不是静态资源，也不是已知的SPA路由，但请求的是HTML
+                        // 我们可以选择:
+                        // 1. 仍然尝试作为订阅处理 (如果用户在浏览器直接访问 shortlink)
+                        // 2. 返回 next() 让前端处理 404
+
+                        // 这里保持现有逻辑，但添加注释备忘。
+                        // 既然目前通过 ui.js 强制跳转回 / 解决了经典模式的问题，
+                        // 这里我们可以保留对短链接的支持。
+                        // return next(); 
+                    }
+                    return await handleTsubRequest(context);
+                }
+
+                // Continue to static assets or root
+                let response = await fetchStaticAsset(request, env, next);
+
+                // [Fix] SPA Fallback: If asset not found (404) and it's an SPA route OR it's an HTML request, serve index.html
+                const acceptHeader = request.headers.get('Accept') || '';
+                const fetchMode = request.headers.get('Sec-Fetch-Mode') || '';
+                const fetchDest = request.headers.get('Sec-Fetch-Dest') || '';
+                const isNavigationRequest = fetchMode === 'navigate' || fetchDest === 'document';
+                const isHtmlRequest = isNavigationRequest && acceptHeader.includes('text/html');
+
+                if (response.status === 404 && (isSpaRoute || isHtmlRequest)) {
+                    const indexResponse = await fetchSpaEntry(request, env, next);
+
+                    if (indexResponse.status === 200) {
+                        response = indexResponse;
+                    } else if (isLocalhost) {
+                        return new Response(`Redirecting to frontend dev server...`, {
+                            status: 302,
+                            headers: {
+                                'Location': `http://localhost:5173${url.pathname}${url.search}`,
+                                'Content-Type': 'text/plain'
+                            }
+                        });
+                    }
+                }
+
+                return applyNoStoreToRuntimeAssetResponse(applyNoStoreToHtmlResponse(response), url.pathname);
+            }
+        };
+
+        const corsOptions = {
+            origins: parseCorsOrigins(env, url),
+            allowCredentials: true
+        };
+        return await corsMiddleware(
+            request,
+            () => csrfOriginMiddleware(
+                request,
+                () => securityHeadersMiddleware(request, handleRequest),
+                corsOptions
+            ),
+            corsOptions
+        );
+    } catch (error) {
+        // 全局错误处理
+        const requestId = crypto.randomUUID();
+        console.error('[Main Handler Error]', { requestId, error: redactSensitiveObject({ message: error?.message, stack: error?.stack }) });
+        if (error instanceof StorageInitializationError) {
+            return createJsonResponse({
+                success: false,
+                error: 'storage_initialization_failed',
+                code: error.code || 'STORAGE_INITIALIZATION_FAILED',
+                requestId
+            }, 503, { 'Retry-After': '5', 'Cache-Control': 'no-store' });
+        }
+        return createJsonResponse({ error: 'Internal Server Error', code: 'INTERNAL_ERROR', requestId }, 500);
+    }
+}
+
+/**
+ * 调试信息导出 (仅开发环境)
+ */
+export const debugInfo = {
+    version: '2.0.0-modular-v2',
+    modules: [
+        'utils',
+        'auth-middleware',
+        'notifications',
+        'subscription',
+        'subscription-handler',
+        'api-handler',
+        'api-router',
+        'handlers/subscription-handler',
+        'handlers/node-handler',
+        'handlers/debug-handler',
+        'utils/geo-utils',
+        'utils/node-parser'
+    ],
+    architecture: 'modular-refactor-v2-domain-split'
+};

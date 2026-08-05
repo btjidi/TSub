@@ -1,0 +1,22 @@
+[Unit]
+Description=TSub Controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tsub-controller
+Group=tsub-controller
+EnvironmentFile=/etc/tsub-controller/controller.env
+WorkingDirectory=/opt/tsub-controller
+ExecStart=/usr/bin/node server/index.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/tsub-controller /run/tsub
+
+[Install]
+WantedBy=multi-user.target

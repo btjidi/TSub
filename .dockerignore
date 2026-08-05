@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+node_modules
+dist
+coverage
+.wrangler
+test-results
+playwright-report
+*.log
+

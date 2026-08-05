@@ -1,0 +1,23 @@
+[Unit]
+Description=TSub Local Executor
+After=network-online.target docker.service tsub-controller.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/opt/tsub-controller/server/executor/tsub-local-executor.sh
+Restart=on-failure
+RestartSec=5
+Environment=TSUB_EXECUTOR_CONFIG=/run/tsub/executor.conf
+ConfigurationDirectory=tsub
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=-/etc/tsub -/var/lib/tsub -/var/lib/tsub-controller/executor -/run/tsub -/etc/systemd/system -/etc/init.d -/etc/passwd -/etc/group -/etc/shadow -/etc/gshadow -/usr/local/bin -/etc/periodic -/etc/sv -/etc/service -/etc/services.d -/etc/rc.local
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER CAP_KILL CAP_SETGID CAP_SETUID CAP_SETFCAP
+
+[Install]
+WantedBy=multi-user.target

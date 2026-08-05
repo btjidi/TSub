@@ -1,0 +1,20 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Exact public release digests, test fixtures, protocol identifiers, and documentation placeholders"
+regexes = [
+  '''64d46afb80adea1bf97a0d467e83f4a9ac1ebd0995891e84bca3f1a1d1affb1d''',
+  '''4b8af237444801bf17b3dc10a1c5c24581fbe3d433eba3d78c6c3a0da1df56fc''',
+  '''dGVzdC10b2tlbg==''',
+  '''dGhlIHNhbXBsZSBub25jZQ==''',
+  '''cGVyc2lzdGVkLXRva2Vu''',
+  '''abcdefghijklmnopqrstuvwxyzABCDEFGH123456789''',
+  '''gB_9B5CKNIs_l_jxuhOLtzyr1selS2543cgNwqK0tmE''',
+  '''dGVzdC10ZXN0LXRlc3Q=''',
+  '''2022-blake3-aes-128-gcm''',
+  '''YOUR_TOKEN''',
+  '''b0b422857bb46aba65da8234c84f38c6''',
+  '''privatekey123''',
+  '''EG1dv6Hw9PCHv40QThZjFZmkHThfsUk9'''
+]

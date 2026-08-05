@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+  <link rel="alternate icon" type="image/png" href="/logo.png" />
+  <link rel="apple-touch-icon" href="/logo.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TSub</title>
+  <meta property="og:title" content="TSub" />
+  <meta property="og:description" content="订阅管理与服务器节点部署主控" />
+  <meta property="og:site_name" content="TSub" />
+  <meta name="description" content="订阅管理、脚本生成和节点自动回传主控" />
+  <meta name="theme-color" content="#f7f8f8" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#08090a" />
+  <!-- Font connections are warmed here; the stylesheet loads after first paint. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="msapplication-tap-highlight" content="no" />
+
+  <style>
+    html, body, #app { min-height: 100%; margin: 0; }
+    .tsub-boot-loading {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: 32px;
+      background: #f3f4f6;
+      color: #6b7280;
+      font: 500 14px/1.25 system-ui, -apple-system, "Segoe UI", sans-serif;
+      opacity: 1;
+      transition: opacity .18s ease;
+    }
+    .tsub-boot-loading-leave { opacity: 0; pointer-events: none; }
+    .tsub-boot-spinner { position: relative; width: 64px; height: 64px; margin-bottom: 20px; }
+    .tsub-boot-spinner::before,
+    .tsub-boot-spinner::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      box-sizing: border-box;
+      border: 4px solid #dbeafe;
+      border-radius: 9999px;
+    }
+    .tsub-boot-spinner::after {
+      border-color: transparent;
+      border-top-color: #6366f1;
+      animation: tsub-boot-spin .8s linear infinite;
+    }
+    @keyframes tsub-boot-spin { to { transform: rotate(360deg); } }
+    @media (max-width: 1023px) {
+      body:has(#app .app-nav-bar) .tsub-boot-loading {
+        top: 57px;
+        bottom: calc(4rem + max(env(safe-area-inset-bottom, 0px), 12px));
+        min-height: 0;
+      }
+    }
+    @media (min-width: 1024px) {
+      body:has(#app .app-nav-bar) .tsub-boot-loading {
+        top: 76px;
+        min-height: 0;
+      }
+    }
+    @media (prefers-color-scheme: dark) {
+      .tsub-boot-loading { background: #030712; color: #9ca3af; }
+      .tsub-boot-spinner::before { border-color: #312e81; }
+      .tsub-boot-spinner::after { border-color: transparent; border-top-color: #818cf8; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .tsub-boot-spinner::after { animation-duration: 1.6s; }
+    }
+  </style>
+
+</head>
+
+<body>
+  <div id="tsub-boot-loader" class="tsub-boot-loading" role="status" aria-live="polite">
+    <div class="tsub-boot-spinner" aria-hidden="true"></div>
+    <span>加载中...</span>
+  </div>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>

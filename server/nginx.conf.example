@@ -1,0 +1,12 @@
+server {
+    listen 443 ssl http2;
+    server_name tsub.example.com;
+    ssl_certificate /etc/letsencrypt/live/tsub.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/tsub.example.com/privkey.pem;
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+    }
+}

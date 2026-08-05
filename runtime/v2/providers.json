@@ -1,0 +1,69 @@
+{
+  "xray": {
+    "architectures": ["amd64", "arm64"],
+    "systems": ["debian", "ubuntu", "alpine", "rhel", "rocky", "almalinux", "fedora"],
+    "minimumMemoryMb": 56,
+    "estimatedRssMb": 42,
+    "temporaryInstallRssMb": 18,
+    "binaryDiskMb": 38,
+    "mergeGroup": "main"
+  },
+  "sing-box": {
+    "architectures": ["amd64", "arm64"],
+    "systems": ["debian", "ubuntu", "alpine", "rhel", "rocky", "almalinux", "fedora"],
+    "minimumMemoryMb": 56,
+    "estimatedRssMb": 44,
+    "temporaryInstallRssMb": 20,
+    "binaryDiskMb": 35,
+    "mergeGroup": "main"
+  },
+  "naive": {
+    "architectures": ["amd64", "arm64"],
+    "systems": ["debian", "ubuntu", "alpine", "rhel", "rocky", "almalinux", "fedora"],
+    "minimumMemoryMb": 64,
+    "estimatedRssMb": 38,
+    "temporaryInstallRssMb": 18,
+    "binaryDiskMb": 25,
+    "mergeGroup": "standalone"
+  },
+  "cloudflared": {
+    "architectures": ["amd64", "arm64"],
+    "systems": ["debian", "ubuntu", "alpine", "rhel", "rocky", "almalinux", "fedora"],
+    "modes": ["quick", "named"],
+    "minimumMemoryMb": 97,
+    "estimatedRssMb": 45,
+    "temporaryInstallRssMb": 25,
+    "binaryDiskMb": 35,
+    "mergeGroup": "sidecar"
+  },
+  "wgcf": {
+    "architectures": ["amd64", "arm64"],
+    "systems": ["debian", "ubuntu", "alpine", "rhel", "rocky", "almalinux", "fedora"],
+    "version": "2.2.22",
+    "minimumMemoryMb": 56,
+    "estimatedRssMb": 0,
+    "temporaryInstallRssMb": 12,
+    "binaryDiskMb": 8,
+    "mergeGroup": "temporary"
+  },
+  "lego": {
+    "architectures": ["amd64", "arm64"],
+    "systems": ["debian", "ubuntu", "alpine", "rhel", "rocky", "almalinux", "fedora"],
+    "modes": ["http-01", "cloudflare-dns-01"],
+    "minimumMemoryMb": 56,
+    "estimatedRssMb": 0,
+    "temporaryInstallRssMb": 24,
+    "binaryDiskMb": 20,
+    "mergeGroup": "temporary"
+  },
+  "busybox": {
+    "architectures": ["amd64", "arm64"],
+    "systems": ["debian", "ubuntu", "alpine", "rhel", "rocky", "almalinux", "fedora"],
+    "applets": ["httpd", "cgi"],
+    "minimumMemoryMb": 56,
+    "estimatedRssMb": 2,
+    "temporaryInstallRssMb": 4,
+    "binaryDiskMb": 2,
+    "mergeGroup": "sidecar"
+  }
+}

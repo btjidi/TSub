@@ -1,0 +1,10 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh disable=SC2034
+name="TSub Local Executor"
+command="/opt/tsub-controller/server/executor/tsub-local-executor.sh"
+command_background=true
+pidfile="/run/tsub-executor.pid"
+output_log="/var/log/tsub-executor.log"
+error_log="/var/log/tsub-executor.log"
+export TSUB_EXECUTOR_CONFIG="/run/tsub/executor.conf"
+depend() { need net; after tsub-controller; }
