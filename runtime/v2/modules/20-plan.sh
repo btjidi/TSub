@@ -77,9 +77,12 @@ plan_runtime() {
     done
     IFS=$old_ifs
   fi
-  if [ "$(kv_get firewall_enabled)" = true ] && [ "$TSUB_HAS_NET_ADMIN" != true ]; then
-    TSUB_DEGRADED_REASON="缺少 CAP_NET_ADMIN，已跳过防火墙"
-    log WARN "缺少 CAP_NET_ADMIN，防火墙管理将降级跳过"
+  if [ "$(kv_get firewall_enabled)" = true ] && [ "$TSUB_TIER" = tiny ]; then
+    add_degraded_reason "tiny 档已跳过端口放行规则"
+    log WARN "tiny 档自动跳过端口放行规则"
+  elif [ "$(kv_get firewall_enabled)" = true ] && [ "$TSUB_HAS_NET_ADMIN" != true ]; then
+    add_degraded_reason "缺少 CAP_NET_ADMIN，已跳过端口放行规则"
+    log WARN "缺少 CAP_NET_ADMIN，已跳过端口放行规则"
   fi
   if [ -n "$(kv_get udp_hop_rules)" ]; then
     [ "$TSUB_HAS_NET_ADMIN" = true ] || die "Hysteria2 端口跳跃需要 CAP_NET_ADMIN"

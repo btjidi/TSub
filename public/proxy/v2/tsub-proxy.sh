@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='2.4.17'
+TSUB_RUNTIME_VERSION='2.4.18'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -743,9 +743,12 @@ plan_runtime() {
     done
     IFS=$old_ifs
   fi
-  if [ "$(kv_get firewall_enabled)" = true ] && [ "$TSUB_HAS_NET_ADMIN" != true ]; then
-    TSUB_DEGRADED_REASON="缺少 CAP_NET_ADMIN，已跳过防火墙"
-    log WARN "缺少 CAP_NET_ADMIN，防火墙管理将降级跳过"
+  if [ "$(kv_get firewall_enabled)" = true ] && [ "$TSUB_TIER" = tiny ]; then
+    add_degraded_reason "tiny 档已跳过端口放行规则"
+    log WARN "tiny 档自动跳过端口放行规则"
+  elif [ "$(kv_get firewall_enabled)" = true ] && [ "$TSUB_HAS_NET_ADMIN" != true ]; then
+    add_degraded_reason "缺少 CAP_NET_ADMIN，已跳过端口放行规则"
+    log WARN "缺少 CAP_NET_ADMIN，已跳过端口放行规则"
   fi
   if [ -n "$(kv_get udp_hop_rules)" ]; then
     [ "$TSUB_HAS_NET_ADMIN" = true ] || die "Hysteria2 端口跳跃需要 CAP_NET_ADMIN"
@@ -1522,8 +1525,9 @@ edge_probe() {
 firewall_ports_apply() {
   ports=$1
   [ "$(kv_get firewall_enabled)" = true ] || return 0
-  [ "$TSUB_HAS_NET_ADMIN" = true ] || { TSUB_DEGRADED_REASON="缺少 CAP_NET_ADMIN，已跳过防火墙"; return 0; }
-  [ "$(id -u)" -eq 0 ] || { TSUB_DEGRADED_REASON="无特权模式，已跳过防火墙"; return 0; }
+  [ "$TSUB_TIER" != tiny ] || { add_degraded_reason "tiny 档已跳过端口放行规则"; return 0; }
+  [ "$TSUB_HAS_NET_ADMIN" = true ] || { add_degraded_reason "缺少 CAP_NET_ADMIN，已跳过端口放行规则"; return 0; }
+  [ "$(id -u)" -eq 0 ] || { add_degraded_reason "无特权模式，已跳过端口放行规则"; return 0; }
   if have nft; then
     nft delete table inet tsub >/dev/null 2>&1 || true
     nft add table inet tsub
@@ -1547,7 +1551,7 @@ firewall_ports_apply() {
     IFS=$old_ifs
     printf '%s\n' iptables >"$TSUB_STATE/firewall.backend"
   else
-    TSUB_DEGRADED_REASON="未找到 nftables/iptables，已跳过防火墙"
+    add_degraded_reason "未找到 nftables/iptables，已跳过端口放行规则"
     return 0
   fi
   printf '%s\n' "$ports" >"$TSUB_STATE/firewall.ports"

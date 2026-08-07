@@ -129,6 +129,11 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.get('[data-testid="inbound-node-name"]').attributes('placeholder')).toContain('部署名称-vless-随机端口');
     await wrapper.findAll('button').find(button => button.text().includes('更多设置')).trigger('click');
     expect(wrapper.get('[data-testid="node-name-mode"]').element.value).toBe('deployment-protocol-port');
+    const firewallMode = wrapper.get('[data-testid="global-firewall-mode"]');
+    expect(firewallMode.element.value).toBe('true');
+    expect(firewallMode.findAll('option').map(option => option.text())).toEqual(['自动管理（推荐）', '不管理']);
+    await firewallMode.setValue('false');
+    expect(firewallMode.element.value).toBe('false');
     expect(wrapper.html()).not.toContain('mt-32');
   });
 

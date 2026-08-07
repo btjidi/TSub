@@ -9,10 +9,21 @@ describe('generated TSub Proxy v2', () => {
     const source = await readFile('public/proxy/v2/tsub-proxy.sh');
     expect(source.byteLength).toBeLessThanOrEqual(512 * 1024);
     expect(createHash('sha256').update(source).digest('hex')).toBe(RUNTIME_MANIFEST.sha256);
-    expect(RUNTIME_MANIFEST.version).toBe('2.4.17');
+    expect(RUNTIME_MANIFEST.version).toBe('2.4.18');
     expect(RUNTIME_VERSION).toBe(RUNTIME_MANIFEST.version);
     expect(source.toString()).toContain(`TSUB_RUNTIME_VERSION='${RUNTIME_VERSION}'`);
     expect(source.toString()).toContain('main "$@"');
+  });
+
+  it('skips optional port allow rules when unavailable but keeps HY2 hop NAT mandatory', async () => {
+    const plan = await readFile('runtime/v2/modules/20-plan.sh', 'utf8');
+    const firewall = await readFile('runtime/v2/modules/35-firewall.sh', 'utf8');
+    expect(firewall).toContain('[ "$TSUB_TIER" != tiny ] || { add_degraded_reason "tiny 档已跳过端口放行规则"; return 0; }');
+    expect(firewall).toContain('[ "$TSUB_HAS_NET_ADMIN" = true ] || { add_degraded_reason "缺少 CAP_NET_ADMIN，已跳过端口放行规则"; return 0; }');
+    expect(firewall).toContain('add_degraded_reason "未找到 nftables/iptables，已跳过端口放行规则"');
+    expect(plan).toContain('[ "$TSUB_HAS_NET_ADMIN" = true ] || die "Hysteria2 端口跳跃需要 CAP_NET_ADMIN"');
+    expect(plan).toContain('have nft || have iptables || die "Hysteria2 端口跳跃需要 nftables 或 iptables"');
+    expect(firewall).toContain('firewall_hops_apply()');
   });
 
   it('serializes mutating runtime actions and releases stale operation locks', async () => {

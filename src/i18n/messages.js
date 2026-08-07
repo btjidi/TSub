@@ -371,7 +371,7 @@ export const messages = {
         sharedPassword: '统一密码', sharedPasswordEnabled: '启用', username: '用户名', randomPortMin: '随机端口下限', randomPortMax: '随机端口上限',
         namePrefix: '节点命名前缀', nodeNameMode: '自动节点命名', nodeGroup: '节点组', profile: '关联 Profile', sharedTransport: '统一传输', sharedTls: '统一 TLS',
         sharedOutbound: '统一出站', sharedServerName: '统一服务器名称', acmeEmail: 'ACME 邮箱', certificatePath: '证书路径', keyPath: '私钥路径',
-        resourceTier: '资源档位', coreChannel: '核心通道', coreVersion: '核心版本', agentPollInterval: 'Agent 连接频率', firewall: '配置端口放行规则', warpPrivateKey: 'WARP 私钥',
+        resourceTier: '资源档位', coreChannel: '核心通道', coreVersion: '核心版本', agentPollInterval: 'Agent 连接频率', firewall: '端口规则管理', warpPrivateKey: 'WARP 私钥',
         warpPeerKey: 'WARP Peer 公钥', tunnelHostname: '隧道域名', cloudflareApiToken: 'Cloudflare API Token', tunnelToken: '隧道 Token'
       },
       placeholders: {
@@ -408,7 +408,7 @@ export const messages = {
         sharedTls: '仅应用于支持该 TLS 模式和当前传输组合的协议；固定 TLS 或无 TLS 协议保持原值。',
         sharedOutbound: '作为所有入站的默认出站；单个入站可覆盖为直连或指定的 WARP 地址族。',
         sharedServerName: '作为 TLS、Reality 和 HTTP 类传输的默认服务器名称；单个入站可覆盖。',
-        firewall: '允许 Runtime 添加部署所需端口的放行规则；不会接管整机默认防火墙策略，也不会覆盖其他规则链中的拒绝策略。',
+        firewall: '自动模式仅在资源和权限满足时添加部署端口放行规则；tiny、缺少 CAP_NET_ADMIN、非 root 或无 nftables/iptables 时自动跳过。不会接管整机默认策略。',
         edgeMode: '选择关闭、CF 橙云域名、临时隧道（Quick Tunnel）或固定隧道（Cloudflare Tunnel）。',
         edgeAccountId: '当前 Cloudflare 帐户的 32 位标识，不是令牌。可在帐户概览的 API 区域复制。',
         edgeZoneId: '入口域名所属 Cloudflare 区域的 32 位标识，不是令牌。请在目标域名概览的 API 区域复制。',
@@ -432,7 +432,7 @@ export const messages = {
       },
       options: {
         selfSigned: '自动自签（默认）', existingCertificate: '已有证书', autoCore: '自动（优先 Xray）', notLinked: '不关联',
-        protocolDefault: '协议默认', noTls: '无 TLS', stable: '稳定清单', latest: '最新版本', pinned: '指定版本', autoDetect: '自动探测', direct: '直连', warpAuto: 'WARP 自动', quickTunnel: '临时隧道', namedTunnel: '固定隧道',
+        protocolDefault: '协议默认', noTls: '无 TLS', stable: '稳定清单', latest: '最新版本', pinned: '指定版本', autoDetect: '自动探测', direct: '直连', warpAuto: 'WARP 自动', quickTunnel: '临时隧道', namedTunnel: '固定隧道', firewallAuto: '自动管理（推荐）', firewallOff: '不管理',
         nodeNameDeployment: '部署名称-协议-端口（默认）', nodeNamePrefix: '节点前缀-协议-端口', nodeNameRandom: '协议-随机后缀', addressAuto: '自动（优先 IPv4）', seconds: '{seconds} 秒'
       },
       actions: { plan: '更新配置', reinstall: '重新安装', apply: '复用配置', status: '获取状态', list: '同步节点', update: '更新核心', restart: '重启', repair: '修复', doctor: '诊断', rollback: '回滚', uninstall: '卸载', 'edge-probe': 'CDN 真实握手检测' },
@@ -457,7 +457,7 @@ export const messages = {
       },
       risk: {
         title: '确认生成部署命令',
-        system: '脚本会下载并运行代理核心、安装或更新系统服务、占用所选端口，并在具备权限时添加端口放行规则，但不会接管整机防火墙策略。TLS 协议默认生成自签证书，导出的节点将固定实际证书 SHA-256 指纹。低内存容器会执行资源预算检查，失败时回滚。',
+        system: '脚本会下载并运行代理核心、安装或更新系统服务并占用所选端口。端口规则为自动管理时，仅在资源和权限满足时添加放行规则，否则自动跳过；不会接管整机防火墙策略。TLS 协议默认生成自签证书，导出的节点将固定实际证书 SHA-256 指纹。低内存容器会执行资源预算检查，失败时回滚。',
         subscription: '服务器本地订阅使用 HTTP，不提供 TLS；主控镜像使用 HTTPS。留空订阅 Token 时，启用统一 UUID 会复用该 UUID，关闭统一 UUID则生成独立订阅 UUID。开启流量统计时会安装独立端口计数规则。',
         confirm: '确认并生成'
       },
@@ -1922,7 +1922,7 @@ export const messages = {
         sharedPassword: 'Shared Password', sharedPasswordEnabled: 'Enabled', username: 'Username', randomPortMin: 'Random Port Minimum', randomPortMax: 'Random Port Maximum',
         namePrefix: 'Node Name Prefix', nodeNameMode: 'Automatic Node Naming', nodeGroup: 'Node Group', profile: 'Linked Profile', sharedTransport: 'Shared Transport', sharedTls: 'Shared TLS',
         sharedOutbound: 'Shared Outbound', sharedServerName: 'Shared Server Name', acmeEmail: 'ACME Email', certificatePath: 'Certificate Path', keyPath: 'Private Key Path',
-        resourceTier: 'Resource Tier', coreChannel: 'Core Channel', coreVersion: 'Core Version', agentPollInterval: 'Agent Connection Interval', firewall: 'Add Port Allow Rules', warpPrivateKey: 'WARP Private Key',
+        resourceTier: 'Resource Tier', coreChannel: 'Core Channel', coreVersion: 'Core Version', agentPollInterval: 'Agent Connection Interval', firewall: 'Port Rule Management', warpPrivateKey: 'WARP Private Key',
         warpPeerKey: 'WARP Peer Public Key', tunnelHostname: 'Tunnel Hostname', cloudflareApiToken: 'Cloudflare API Token', tunnelToken: 'Tunnel Token'
       },
       placeholders: {
@@ -1959,7 +1959,7 @@ export const messages = {
         sharedTls: 'Applies only to protocols that support the selected TLS and transport combination. Protocols with fixed TLS behavior keep their native value.',
         sharedOutbound: 'Provides the default egress for all inbounds. Each inbound can override it with direct or a WARP address family.',
         sharedServerName: 'Provides the default server name for TLS, Reality, and HTTP-based transports. Each inbound can override it.',
-        firewall: 'Lets the Runtime add allow rules for deployment ports. It does not take over the host firewall policy or override deny rules in other chains.',
+        firewall: 'Automatic mode adds deployment port allow rules only when resources and privileges permit. It skips tiny, missing CAP_NET_ADMIN, non-root, or missing nftables/iptables environments and never takes over the host firewall policy.',
         edgeMode: 'Choose disabled, an existing proxied hostname, a temporary Quick Tunnel, or a TSub-managed named Tunnel.',
         edgeAccountId: 'The 32-character identifier of the Cloudflare account. It is not a token. Copy it from the API section of the account overview.',
         edgeZoneId: 'The 32-character identifier of the Cloudflare zone containing the entry hostname. It is not a token. Copy it from the target zone overview API section.',
@@ -1983,7 +1983,7 @@ export const messages = {
       },
       options: {
         selfSigned: 'Automatic self-signed (default)', existingCertificate: 'Existing certificate', autoCore: 'Auto (prefer Xray)', notLinked: 'Not linked',
-        protocolDefault: 'Protocol default', noTls: 'No TLS', stable: 'Stable manifest', latest: 'Latest', pinned: 'Pinned version', autoDetect: 'Auto detect', direct: 'Direct', warpAuto: 'WARP Auto', quickTunnel: 'Quick Tunnel', namedTunnel: 'Named Tunnel',
+        protocolDefault: 'Protocol default', noTls: 'No TLS', stable: 'Stable manifest', latest: 'Latest', pinned: 'Pinned version', autoDetect: 'Auto detect', direct: 'Direct', warpAuto: 'WARP Auto', quickTunnel: 'Quick Tunnel', namedTunnel: 'Named Tunnel', firewallAuto: 'Automatic (recommended)', firewallOff: 'Do not manage',
         nodeNameDeployment: 'Deployment-Protocol-Port (default)', nodeNamePrefix: 'Prefix-Protocol-Port', nodeNameRandom: 'Protocol-Random Suffix', addressAuto: 'Auto (prefer IPv4)', seconds: '{seconds} seconds'
       },
       actions: { plan: 'Update Configuration', reinstall: 'Reinstall', apply: 'Reuse Configuration', status: 'Status', list: 'Sync Nodes', update: 'Update Core', restart: 'Restart', repair: 'Repair', doctor: 'Doctor', rollback: 'Rollback', uninstall: 'Uninstall', 'edge-probe': 'CDN Real Handshake Test' },
@@ -2008,7 +2008,7 @@ export const messages = {
       },
       risk: {
         title: 'Generate Deployment Command?',
-        system: 'The script downloads and runs a proxy core, installs or updates system services, binds the selected ports, and adds port allow rules when permitted without taking over the host firewall policy. TLS protocols use self-signed certificates by default, and exported nodes pin the actual certificate SHA-256 fingerprint. Low-memory containers are checked against the resource budget and rolled back on failure.',
+        system: 'The script downloads and runs a proxy core, installs or updates system services, and binds the selected ports. Automatic port rule management adds allow rules only when resources and privileges permit and otherwise skips them; it never takes over the host firewall policy. TLS protocols use self-signed certificates by default, and exported nodes pin the actual certificate SHA-256 fingerprint. Low-memory containers are checked against the resource budget and rolled back on failure.',
         subscription: 'The local server subscription uses HTTP without TLS; the controller mirror uses HTTPS. An empty token reuses the shared UUID when enabled, or generates an independent subscription UUID when shared UUID is disabled. Enabling traffic counters installs isolated port counter rules.',
         confirm: 'Confirm and Generate'
       },

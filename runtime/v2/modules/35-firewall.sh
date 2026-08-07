@@ -1,8 +1,9 @@
 firewall_ports_apply() {
   ports=$1
   [ "$(kv_get firewall_enabled)" = true ] || return 0
-  [ "$TSUB_HAS_NET_ADMIN" = true ] || { TSUB_DEGRADED_REASON="缺少 CAP_NET_ADMIN，已跳过防火墙"; return 0; }
-  [ "$(id -u)" -eq 0 ] || { TSUB_DEGRADED_REASON="无特权模式，已跳过防火墙"; return 0; }
+  [ "$TSUB_TIER" != tiny ] || { add_degraded_reason "tiny 档已跳过端口放行规则"; return 0; }
+  [ "$TSUB_HAS_NET_ADMIN" = true ] || { add_degraded_reason "缺少 CAP_NET_ADMIN，已跳过端口放行规则"; return 0; }
+  [ "$(id -u)" -eq 0 ] || { add_degraded_reason "无特权模式，已跳过端口放行规则"; return 0; }
   if have nft; then
     nft delete table inet tsub >/dev/null 2>&1 || true
     nft add table inet tsub
@@ -26,7 +27,7 @@ firewall_ports_apply() {
     IFS=$old_ifs
     printf '%s\n' iptables >"$TSUB_STATE/firewall.backend"
   else
-    TSUB_DEGRADED_REASON="未找到 nftables/iptables，已跳过防火墙"
+    add_degraded_reason "未找到 nftables/iptables，已跳过端口放行规则"
     return 0
   fi
   printf '%s\n' "$ports" >"$TSUB_STATE/firewall.ports"
