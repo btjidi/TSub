@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2034
 set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 . "$ROOT/runtime/v2/modules/00-common.sh"
