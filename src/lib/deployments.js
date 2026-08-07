@@ -4,7 +4,13 @@ export const listDeployments = () => api.get('/api/deployments');
 export const getDeploymentTemplate = id => api.get(`/api/deployments/${encodeURIComponent(id)}/template`);
 export const createDeployment = payload => api.post('/api/deployments', payload);
 export const updateDeployment = (id, payload) => api.patch(`/api/deployments/${encodeURIComponent(id)}`, payload);
-export const deleteDeployment = (id, preserveCloudflareResources = false) => api.del(`/api/deployments/${encodeURIComponent(id)}${preserveCloudflareResources ? '?preserveCloudflareResources=true' : ''}`);
+export const deleteDeployment = (id, options = {}) => {
+  const params = new URLSearchParams();
+  if (options.preserveCloudflareResources === true) params.set('preserveCloudflareResources', 'true');
+  if (options.deleteSubscriptionSource === true) params.set('deleteSubscriptionSource', 'true');
+  const query = params.toString();
+  return api.del(`/api/deployments/${encodeURIComponent(id)}${query ? `?${query}` : ''}`);
+};
 export const deleteDeploymentSource = id => api.del(`/api/deployments/${encodeURIComponent(id)}/source`);
 export const restoreDeploymentSource = id => api.post(`/api/deployments/${encodeURIComponent(id)}/source`);
 export const createDeploymentCommand = (id, action, payload = {}) => api.post(`/api/deployments/${encodeURIComponent(id)}/operations`, { action, ...payload });

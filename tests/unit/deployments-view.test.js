@@ -16,7 +16,7 @@ vi.mock('../../src/lib/deployments.js', () => ({
 }));
 
 import DeploymentsView from '../../src/views/DeploymentsView.vue';
-import { checkDeploymentEdgePermissions, createDeployment, createDeploymentCommand, createRemoteDeploymentCommand, getDeploymentTemplate, listDeploymentOperations, listDeployments, probeDeploymentEdge, restoreDeploymentSource, saveDeploymentDefaults } from '../../src/lib/deployments.js';
+import { checkDeploymentEdgePermissions, createDeployment, createDeploymentCommand, createRemoteDeploymentCommand, deleteDeployment, getDeploymentTemplate, listDeploymentOperations, listDeployments, probeDeploymentEdge, restoreDeploymentSource, saveDeploymentDefaults } from '../../src/lib/deployments.js';
 import { useDataStore } from '../../src/stores/useDataStore.js';
 import { createI18n } from '../../src/i18n/index.js';
 
@@ -987,6 +987,62 @@ describe('TSub Proxy simplified deployment generator', () => {
     await vi.advanceTimersByTimeAsync(5000);
     await flushPromises();
     expect(wrapper.text()).toContain('已离线');
+  });
+
+  it('silently refreshes heartbeat state every 30 seconds while deployment records are visible', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ json: vi.fn().mockResolvedValue({ success: true, data: { mode: 'full', features: { remoteCommands: true, heartbeats: true } } }) });
+    const deployment = { id: 'deploy-heartbeat', name: 'Heartbeat', schemaVersion: 2, status: 'succeeded', configSummary: {} };
+    listDeployments.mockResolvedValue({ success: true, data: [deployment] });
+    wrapper = mountView();
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
+    await flushPromises();
+    const callsAfterOpen = listDeployments.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(25000);
+    expect(listDeployments).toHaveBeenCalledTimes(callsAfterOpen);
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushPromises();
+    expect(listDeployments).toHaveBeenCalledTimes(callsAfterOpen + 1);
+  });
+
+  it('asks whether to delete the active-push subscription with the deployment record', async () => {
+    const deployment = {
+      id: 'deploy-delete', name: 'Delete Me', schemaVersion: 2, status: 'succeeded',
+      configSummary: { subscriptionServer: { pushEnabled: true }, edge: { hasManagedResources: false } }
+    };
+    listDeployments.mockResolvedValue({ success: true, data: [deployment] });
+    deleteDeployment.mockResolvedValue({ success: true, data: { deleted: true } });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true).mockReturnValueOnce(true);
+    wrapper = mountView();
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === '删除记录').trigger('click');
+    await flushPromises();
+
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(confirm.mock.calls[1][0]).toContain('同时删除');
+    expect(deleteDeployment).toHaveBeenCalledWith('deploy-delete', { preserveCloudflareResources: false, deleteSubscriptionSource: true });
+  });
+
+  it('keeps the active-push subscription when the optional deletion prompt is declined', async () => {
+    const deployment = {
+      id: 'deploy-keep-source', name: 'Keep Source', schemaVersion: 2, status: 'succeeded',
+      configSummary: { subscriptionServer: { pushEnabled: true }, edge: { hasManagedResources: false } }
+    };
+    listDeployments.mockResolvedValue({ success: true, data: [deployment] });
+    deleteDeployment.mockResolvedValue({ success: true, data: { deleted: true } });
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true).mockReturnValueOnce(false);
+    wrapper = mountView();
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === '删除记录').trigger('click');
+    await flushPromises();
+
+    expect(deleteDeployment).toHaveBeenCalledWith('deploy-keep-source', { preserveCloudflareResources: false, deleteSubscriptionSource: false });
   });
 
   it('refreshes to reinstall immediately after generating an uninstall command', async () => {

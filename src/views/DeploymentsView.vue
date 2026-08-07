@@ -85,8 +85,10 @@ const output = reactive({ curl: '', wget: '', diagnosticCurl: '', diagnosticWget
 const operationOutput = reactive({ curl: '', wget: '', diagnosticCurl: '', diagnosticWget: '', expiresAt: '', client: 'wget', diagnostic: false, deploymentName: '', action: '' });
 const confirmedOperationActions = new Set(['update', 'restart', 'repair', 'rollback', 'uninstall']);
 const deploymentPollIntervalMs = 5000;
+const heartbeatRefreshIntervalMs = 30000;
 let deploymentPollTimer = 0;
 let deploymentRefreshRequest = 0;
+let lastHeartbeatRefreshAt = 0;
 
 const builtinProtocolDefaults = {
   vless: { transport: 'tcp', outbound: 'direct', tlsMode: 'reality', serverName: 'www.cloudflare.com', path: '/', serviceName: 'tsub' },
@@ -1186,7 +1188,13 @@ async function refreshDeployments({ silent = false } = {}) {
   finally { if (!silent && requestId === deploymentRefreshRequest) loading.value = false; }
 }
 function pollDeploymentStatus() {
-  if (document.hidden || loading.value || !deployments.value.some(item => !item.demo && ['pending', 'running'].includes(item.status))) return;
+  if (document.hidden || loading.value) return;
+  const hasActiveOperation = deployments.value.some(item => !item.demo && ['pending', 'running'].includes(item.status));
+  const heartbeatRefreshDue = activeTab.value === 'deployments'
+    && capabilities.value.features?.heartbeats
+    && Date.now() - lastHeartbeatRefreshAt >= heartbeatRefreshIntervalMs;
+  if (!hasActiveOperation && !heartbeatRefreshDue) return;
+  if (heartbeatRefreshDue) lastHeartbeatRefreshAt = Date.now();
   refreshDeployments({ silent: true });
 }
 async function loadOperations(id = selectedDeploymentId.value) {
@@ -1306,9 +1314,11 @@ async function connectLocalExecutor(deployment) {
 }
 async function removeDeployment(deployment) {
   if (!window.confirm(t('deployments.confirm.deleteRecord', { name: deployment.name }))) return;
+  const deleteSubscriptionSource = deployment.configSummary?.subscriptionServer?.pushEnabled === true
+    && window.confirm(t('deployments.confirm.deleteSubscriptionSource'));
   const preserveResources = deployment.configSummary?.edge?.hasManagedResources === true;
   if (preserveResources && !window.confirm(t('deployments.confirm.preserveCloudflareResources'))) return;
-  try { await deleteDeployment(deployment.id, preserveResources); selectedDeploymentId.value = ''; await refreshDeployments(); toast.showToast(t('deployments.notices.recordDeleted'), 'success'); }
+  try { await deleteDeployment(deployment.id, { preserveCloudflareResources: preserveResources, deleteSubscriptionSource }); selectedDeploymentId.value = ''; await refreshDeployments(); toast.showToast(t('deployments.notices.recordDeleted'), 'success'); }
   catch { toast.showToast(t('deployments.errors.deleteRecord'), 'error'); }
 }
 async function cleanupCloudflareResources(deployment) {
@@ -1380,7 +1390,7 @@ function operationResources(operation) {
   if (probe) return `TLS ${probe.checks?.tls ? '✓' : '×'} · SNI ${probe.checks?.hostSni ? '✓' : '×'} · WS 101 ${probe.checks?.websocket101 ? '✓' : '×'} · ${probe.latencyMs || 0}ms`;
   return `${resources.tier || '-'} ${resources.rssMb || 0}/${resources.memoryMb || 0}MB`;
 }
-function switchTab(tab) { deploymentInfoPopoverKey.value = ''; activeTab.value = tab; if (tab === 'deployments') refreshDeployments(); if (tab === 'operations') loadOperations(); }
+function switchTab(tab) { deploymentInfoPopoverKey.value = ''; activeTab.value = tab; if (tab === 'deployments') { lastHeartbeatRefreshAt = Date.now(); refreshDeployments(); } if (tab === 'operations') loadOperations(); }
 function openPushHistory(deployment) {
   pushHistoryRecord.value = deployment;
   showPushHistoryModal.value = true;

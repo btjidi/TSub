@@ -707,6 +707,35 @@ describe('TSub V2 deployment handler', () => {
     expect(env.TSUB_KV.dump('tsub_subscriptions_v1')[0]).toMatchObject({ enabled: false, lastError: 'Deployment uninstalled' });
   });
 
+  it('optionally deletes the active-push subscription with its deployment record', async () => {
+    const pushConfig = () => config({
+      subscription: { hostname: 'node.example.com', namePrefix: 'HK', server: { enabled: true, port: 51250, pushEnabled: true } }
+    });
+    const keepEnv = createEnv();
+    const kept = await createAndBootstrap(keepEnv, pushConfig());
+    const keptId = kept.body.data.deployment.id;
+    await handleDeployEvents(new Request('https://tsub.example/api/deploy/events', {
+      method: 'POST', headers: { Authorization: `Bearer ${kept.callbackToken}` },
+      body: 'status=succeeded\nstage=apply\nsubscriptionReady=true\nsubscriptionNodeCount=1\ncacheNode=vless://uuid@node.example.com:443#HK'
+    }), keepEnv);
+    const keepResponse = await handleDeploymentsRequest(jsonRequest(`/deployments/${keptId}`, 'DELETE'), keepEnv, `/deployments/${keptId}`);
+    expect((await keepResponse.json()).data).toMatchObject({ deleted: true, subscriptionDeleted: false });
+    expect(keepEnv.TSUB_KV.dump('tsub_subscriptions_v1')).toEqual([expect.objectContaining({ id: `tsub_airport_${keptId}`, enabled: false })]);
+
+    const deleteEnv = createEnv();
+    const removed = await createAndBootstrap(deleteEnv, pushConfig());
+    const removedId = removed.body.data.deployment.id;
+    await handleDeployEvents(new Request('https://tsub.example/api/deploy/events', {
+      method: 'POST', headers: { Authorization: `Bearer ${removed.callbackToken}` },
+      body: 'status=succeeded\nstage=apply\nsubscriptionReady=true\nsubscriptionNodeCount=1\ncacheNode=vless://uuid@node.example.com:443#HK'
+    }), deleteEnv);
+    const deleteResponse = await handleDeploymentsRequest(
+      jsonRequest(`/deployments/${removedId}?deleteSubscriptionSource=true`, 'DELETE'), deleteEnv, `/deployments/${removedId}`
+    );
+    expect((await deleteResponse.json()).data).toMatchObject({ deleted: true, subscriptionDeleted: true });
+    expect(deleteEnv.TSUB_KV.dump('tsub_subscriptions_v1')).toEqual([]);
+  });
+
   it('allows reinstalling a running initial install and revokes its callback', async () => {
     const env = createEnv();
     const install = await createAndBootstrap(env);

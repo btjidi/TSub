@@ -1015,12 +1015,20 @@ export async function handleDeployBootstrap(request, env) {
   auth.deployment.resolvedHostname = config.subscription.hostname;
   auth.deployment.resolvedAddresses = config.subscription.resolvedAddresses || {};
   auth.deployment.pushServerAddress = config.subscription.server.pushServerAddress || '';
+  let agentToken = auth.tokenRecord.agentToken || '';
+  if (!agentToken && ['apply', 'update', 'reinstall', 'repair'].includes(auth.operation.action)) {
+    const capabilities = await getPlatformCapabilities(env);
+    if (capabilities.features.remoteAgent) {
+      const agent = await ensureDeploymentAgent(auth.storage, auth.deployment, { rotateIfOffline: true });
+      agentToken = agent.token || '';
+    }
+  }
   await Promise.all([
     writeOperation(auth.storage, auth.operation), writeDeployment(auth.storage, auth.deployment),
     auth.storage.delete(`${BOOTSTRAP_TOKEN_PREFIX}${auth.tokenHash}`)
   ]);
   if (finalizeManagedResources) await finalizeManagedResources().catch(() => {});
-  const script = buildBootstrapScript(auth.operation, config, auth.tokenRecord.callbackToken, request.url, env, auth.tokenRecord.agentToken || '', auth.deployment.configRevision || 1);
+  const script = buildBootstrapScript(auth.operation, config, auth.tokenRecord.callbackToken, request.url, env, agentToken, auth.deployment.configRevision || 1);
   return new Response(script, { headers: { 'Content-Type': 'text/x-shellscript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
 }
 
@@ -1728,16 +1736,21 @@ export async function handleDeploymentsRequest(request, env, path) {
     return createJsonResponse({ success: true, data: publicDeployment(deployment) });
   }
   if (!child && request.method === 'DELETE') {
+    const requestUrl = new URL(request.url);
+    const deleteSubscriptionSource = requestUrl.searchParams.get('deleteSubscriptionSource') === 'true';
     try {
       const config = await decryptDeploymentConfig(deployment.encryptedConfig, env);
-      const preserveResources = new URL(request.url).searchParams.get('preserveCloudflareResources') === 'true';
+      const preserveResources = requestUrl.searchParams.get('preserveCloudflareResources') === 'true';
       if (isManagedCloudflareResource(config) && !preserveResources) {
         return createJsonResponse({ success: false, error: 'cloudflare_resources_attached', message: '请先清理 Cloudflare 资源，或明确选择保留资源后再删除部署记录' }, 409);
       }
     } catch { return createErrorResponse('Service unavailable', 503); }
     await disableDeploymentNodes(storage, deployment.id);
+    const subscriptionDeleted = deleteSubscriptionSource
+      ? await deleteDeploymentSubscriptionSource(storage, deployment.id)
+      : false;
     await createDeploymentRepository(storage).deleteDeployment(deployment.id);
-    return createJsonResponse({ success: true, data: { deleted: true, id: deployment.id } });
+    return createJsonResponse({ success: true, data: { deleted: true, subscriptionDeleted, id: deployment.id } });
   }
   if (child === 'cloudflare-resources' && request.method === 'DELETE') {
     let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.small); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }

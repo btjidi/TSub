@@ -127,6 +127,31 @@ describe('deployment agent control plane', { timeout: 15_000 }, () => {
     expect((await pollAgent(request(), env, storage, { pollIntervalSeconds: 999 })).nextPollSeconds).toBe(30);
   });
 
+  it('rotates an offline remote agent for bootstrap recovery but preserves online and local agents', async () => {
+    const first = await ensureDeploymentAgent(storage, { id: 'deploy-agent' });
+    const request = token => new Request('https://example.com/api/deploy/agent/poll', {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }
+    });
+    await pollAgent(request(first.token), env, storage, { pollIntervalSeconds: 30 });
+
+    const online = await ensureDeploymentAgent(storage, { id: 'deploy-agent' }, { rotateIfOffline: true });
+    expect(online).toMatchObject({ token: '', configured: true });
+    expect((await pollAgent(request(first.token), env, storage, {})).deploymentId).toBe('deploy-agent');
+
+    await database.prepare('UPDATE deployment_heartbeats SET last_seen_at = ? WHERE deployment_id = ?')
+      .bind(new Date(Date.now() - 3 * 60_000).toISOString(), 'deploy-agent').run();
+    const replacement = await ensureDeploymentAgent(storage, { id: 'deploy-agent' }, { rotateIfOffline: true });
+    expect(replacement.token).toHaveLength(43);
+    expect((await pollAgent(request(first.token), env, storage, {})).error?.code).toBe('unauthorized');
+    expect((await pollAgent(request(replacement.token), env, storage, {})).deploymentId).toBe('deploy-agent');
+
+    await database.prepare('UPDATE deployment_heartbeats SET last_seen_at = ? WHERE deployment_id = ?')
+      .bind(new Date(Date.now() - 3 * 60_000).toISOString(), 'deploy-agent').run();
+    const local = await ensureDeploymentAgent(storage, { id: 'deploy-agent', controlTransport: 'local-executor' }, { rotateIfOffline: true });
+    expect(local).toMatchObject({ token: '', configured: true });
+    expect((await pollAgent(request(replacement.token), env, storage, {})).deploymentId).toBe('deploy-agent');
+  });
+
   it('persists changed heartbeat metadata immediately inside the write throttle window', async () => {
     const provisioned = await ensureDeploymentAgent(storage, { id: 'deploy-agent' });
     const request = () => new Request('https://example.com/api/deploy/agent/poll', {

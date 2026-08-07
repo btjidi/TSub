@@ -93,10 +93,18 @@ async function assertAgentReady(storage, deploymentId) {
   }
 }
 
-export async function ensureDeploymentAgent(storage, deployment) {
+export async function ensureDeploymentAgent(storage, deployment, options = {}) {
   if (!storage.db) return { token: '', configured: false };
   const current = await storage.db.prepare('SELECT generation FROM deployment_agents WHERE deployment_id = ? AND revoked_at IS NULL').bind(deployment.id).first();
-  if (current && Number(current.generation || 0) >= 1) return { token: '', configured: true, generation: Number(current.generation) };
+  if (current && Number(current.generation || 0) >= 1) {
+    if (options.rotateIfOffline === true && deployment.controlTransport !== 'local-executor') {
+      const heartbeat = await storage.db.prepare('SELECT data, last_seen_at FROM deployment_heartbeats WHERE deployment_id = ?').bind(deployment.id).first();
+      const heartbeatData = parseData(heartbeat?.data);
+      const online = heartbeat?.last_seen_at && Date.parse(heartbeat.last_seen_at) >= Date.now() - onlineWindowMs(heartbeatData);
+      if (!online) return rotateDeploymentAgent(storage, deployment.id);
+    }
+    return { token: '', configured: true, generation: Number(current.generation) };
+  }
   const token = randomToken(); const tokenHash = await sha256(token);
   await storage.db.prepare(`INSERT INTO deployment_agents (deployment_id, token_hash, generation, revoked_at, created_at, updated_at)
     VALUES (?, ?, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
