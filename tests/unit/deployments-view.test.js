@@ -804,11 +804,21 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(document.body.textContent).toContain('选择更新方式');
     expect(document.body.textContent).toContain('重新配置');
     expect(document.body.textContent).toContain('载入配置');
-    expect(Array.from(document.querySelector('[data-testid="load-config-dialog"]').querySelectorAll('button')).map(button => button.textContent)).toEqual(['取消', '重新配置', '载入配置']);
+    expect(Array.from(document.querySelector('[data-testid="load-config-dialog"]').querySelectorAll('button')).map(button => button.textContent)).toEqual(['取消', '直接生成命令', '重新配置', '载入配置']);
     Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '取消').click();
     await flushPromises();
     expect(wrapper.text()).toContain('Singapore Edge');
     expect(getDeploymentTemplate).not.toHaveBeenCalled();
+
+    await wrapper.findAll('button').find(button => button.text() === '更新配置').trigger('click');
+    document.querySelector('[data-testid="direct-deployment-command"]').click();
+    await flushPromises();
+    expect(createDeploymentCommand).toHaveBeenCalledWith('deploy-template', 'update');
+    expect(wrapper.find('[data-testid="deployment-basic-settings"]').exists()).toBe(false);
+    expect(document.querySelector('[data-testid="deployment-operation-command-dialog"] textarea').value).toBe('update wget');
+    expect(document.querySelector('[data-testid="load-config-dialog"]')).toBeNull();
+    document.querySelector('[data-testid="deployment-operation-command-dialog"] button').click();
+    await flushPromises();
 
     await wrapper.findAll('button').find(button => button.text() === '更新配置').trigger('click');
     Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '重新配置').click();
@@ -915,11 +925,14 @@ describe('TSub Proxy simplified deployment generator', () => {
     const reinstallButton = wrapper.get('[data-testid="deployment-reinstall-config"]');
     expect(reinstallButton.text()).toBe('重新安装');
     expect(reinstallButton.attributes('disabled')).toBeUndefined();
-    await wrapper.get('[data-testid="deployment-direct-command"]').trigger('click');
+    await reinstallButton.trigger('click');
+    await flushPromises();
+    document.querySelector('[data-testid="direct-deployment-command"]').click();
     await flushPromises();
     expect(createDeploymentCommand).toHaveBeenCalledWith('deploy-offline', 'reinstall');
     expect(wrapper.find('[data-testid="deployment-basic-settings"]').exists()).toBe(false);
     expect(document.querySelector('[data-testid="deployment-operation-command-dialog"] textarea').value).toBe('reinstall wget');
+    expect(document.querySelector('[data-testid="load-config-dialog"]')).toBeNull();
     document.querySelector('[data-testid="deployment-operation-command-dialog"] button').click();
     await flushPromises();
     await reinstallButton.trigger('click');

@@ -331,7 +331,7 @@ export const messages = {
       saveSystemDefault: '保存为系统默认', generateDeploymentCommand: '生成部署命令',
       oneTimeCommand: '一次性部署命令', commandPlaceholder: '仅可领取一次，请复制到目标服务器的 Shell 中执行', showTroubleshootingCommand: '显示排障命令', hideTroubleshootingCommand: '隐藏排障命令', bootstrapExpires: 'Bootstrap 令牌过期：{time}',
       operationCommand: { title: '{name} · {action}命令', hint: '复制命令并在目标服务器的 Shell 中执行。' },
-      emptyDeployments: '暂无部署记录', emptyOperations: '暂无操作记录', deleteRecord: '删除记录', restoreSource: '恢复订阅', directCommand: '直接生成命令',
+      emptyDeployments: '暂无部署记录', emptyOperations: '暂无操作记录', deleteRecord: '删除记录', restoreSource: '恢复订阅',
       selectDeployment: '选择部署', pleaseSelect: '请选择', nodeCount: '{count} 个节点', deployedAt: '部署成功：{time}', configUpdatedAt: '配置更新：{time}', systemVersion: '系统版本：{version}', runtimeVersion: 'Runtime 版本：{version}', selfSignedSummary: '自签证书/指纹固定',
       record: {
         deployedDate: '部署时间 {date}', updatedDate: '更新时间 {date}', timeDetails: '部署与更新时间', deployed: '部署时间', updated: '更新时间',
@@ -461,7 +461,7 @@ export const messages = {
         subscription: '服务器本地订阅使用 HTTP，不提供 TLS；主控镜像使用 HTTPS。留空订阅 Token 时，启用统一 UUID 会复用该 UUID，关闭统一 UUID则生成独立订阅 UUID。开启流量统计时会安装独立端口计数规则。',
         confirm: '确认并生成'
       },
-      loadConfig: { title: '选择更新方式', description: '请选择“{name}”的更新方式。', loadDescription: '载入配置：读取原部署的服务器控制命令、全局配置和入站协议，并替换当前表单。', reconfigureDescription: '重新配置：保留当前表单内容，仅使用所选记录的部署名称和配置版本。', reconfigure: '重新配置', confirm: '载入配置' }
+      loadConfig: { title: '选择更新方式', description: '请选择“{name}”的更新方式。', directDescription: '直接生成命令：使用主控中保存的原配置生成命令，并留在部署记录页。', loadDescription: '载入配置：读取原部署的服务器控制命令、全局配置和入站协议，并替换当前表单。', reconfigureDescription: '重新配置：保留当前表单内容，仅使用所选记录的部署名称和配置版本。', directCommand: '直接生成命令', reconfigure: '重新配置', confirm: '载入配置' }
     },
     pushHistory: {
       title: '主动推送记录', open: '推送记录', total: '累计推送次数', frequency: '推送频率', everyMinutes: '每 {minutes} 分钟', currentStatus: '当前状态',
@@ -1882,7 +1882,7 @@ export const messages = {
       saveSystemDefault: 'Save as System Default', generateDeploymentCommand: 'Generate Deployment Command',
       oneTimeCommand: 'One-time Deployment Command', commandPlaceholder: 'May be claimed once only. Copy and run it in the target server shell', showTroubleshootingCommand: 'Show troubleshooting command', hideTroubleshootingCommand: 'Hide troubleshooting command', bootstrapExpires: 'Bootstrap token expires: {time}',
       operationCommand: { title: '{name} · {action} Command', hint: 'Copy and run this command in the target server shell.' },
-      emptyDeployments: 'No deployment records', emptyOperations: 'No operation records', deleteRecord: 'Delete Record', restoreSource: 'Restore Subscription', directCommand: 'Generate Command',
+      emptyDeployments: 'No deployment records', emptyOperations: 'No operation records', deleteRecord: 'Delete Record', restoreSource: 'Restore Subscription',
       selectDeployment: 'Select Deployment', pleaseSelect: 'Select one', nodeCount: '{count} nodes', deployedAt: 'Deployed: {time}', configUpdatedAt: 'Configuration updated: {time}', systemVersion: 'System version: {version}', runtimeVersion: 'Runtime version: {version}', selfSignedSummary: 'Self-signed certificate / SHA-256 pinning',
       record: {
         deployedDate: 'Deployed {date}', updatedDate: 'Updated {date}', timeDetails: 'Deployment and update times', deployed: 'Deployed', updated: 'Updated',
@@ -2012,7 +2012,7 @@ export const messages = {
         subscription: 'The local server subscription uses HTTP without TLS; the controller mirror uses HTTPS. An empty token reuses the shared UUID when enabled, or generates an independent subscription UUID when shared UUID is disabled. Enabling traffic counters installs isolated port counter rules.',
         confirm: 'Confirm and Generate'
       },
-      loadConfig: { title: 'Choose Update Method', description: 'Choose how to update "{name}".', loadDescription: 'Load Configuration: read the server control command, global configuration, and inbounds from the existing deployment, replacing the current form.', reconfigureDescription: 'Reconfigure: keep the current form and use only the selected record\'s deployment name and configuration revision.', reconfigure: 'Reconfigure', confirm: 'Load Configuration' }
+      loadConfig: { title: 'Choose Update Method', description: 'Choose how to update "{name}".', directDescription: 'Generate Command Directly: use the configuration saved by the controller and stay on the deployment records page.', loadDescription: 'Load Configuration: read the server control command, global configuration, and inbounds from the existing deployment, replacing the current form.', reconfigureDescription: 'Reconfigure: keep the current form and use only the selected record\'s deployment name and configuration revision.', directCommand: 'Generate Command Directly', reconfigure: 'Reconfigure', confirm: 'Load Configuration' }
     },
     pushHistory: {
       title: 'Active Push History', open: 'Push History', total: 'Accepted Pushes', frequency: 'Push Frequency', everyMinutes: 'Every {minutes} minutes', currentStatus: 'Current Status',

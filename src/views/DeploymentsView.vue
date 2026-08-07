@@ -1229,6 +1229,13 @@ async function generateDirectConfigCommand(deployment) {
     toast.showToast(error?.data?.message || t('deployments.errors.generateCommand'), 'error');
   } finally { loading.value = false; }
 }
+async function generateDirectPendingCommand() {
+  const deployment = pendingTemplateRecord.value;
+  showLoadConfigDialog.value = false;
+  pendingTemplateRecord.value = null;
+  pendingTemplateRemote.value = false;
+  if (deployment) await generateDirectConfigCommand(deployment);
+}
 function cancelOperationCommand() { pendingOperation.value = null; }
 async function confirmOperationCommand() {
   const operation = pendingOperation.value;
@@ -1699,7 +1706,6 @@ onBeforeUnmount(() => {
             <button v-if="deployment.configSummary?.subscriptionServer?.pushEnabled" data-testid="deployment-push-history" type="button" class="min-h-9 border border-primary-200 bg-primary-50 px-3 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300" @click="openPushHistory(deployment)">{{ t('pushHistory.open') }}</button>
             <button v-if="!deployment.demo && deployment.subscriptionSourceDisabled" data-testid="restore-deployment-source" type="button" class="min-h-9 border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" :disabled="loading" @click="restoreSubscriptionSource(deployment)">{{ t('deployments.restoreSource') }}</button>
             <button v-if="!deployment.demo" :data-testid="deployment.reinstallable ? 'deployment-reinstall-config' : 'deployment-update-config'" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || loading" @click="requestUpdateConfig(deployment)">{{ t(deployment.reinstallable ? 'deployments.actions.reinstall' : 'deployments.actions.plan') }}</button>
-            <button v-if="!deployment.demo && (deployment.reinstallable || deployment.deployedAt)" data-testid="deployment-direct-command" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || loading" @click="generateDirectConfigCommand(deployment)">{{ t('deployments.directCommand') }}</button>
             <button v-if="!deployment.demo" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || deployment.status === 'offline' || loading" @click="reuseDeploymentConfig(deployment)">{{ t('deployments.actions.apply') }}</button>
             <button v-if="!deployment.demo && capabilities.features?.localExecutor && deployment.controlTransport !== 'local-executor'" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="loading" @click="connectLocalExecutor(deployment)">{{ t('deployments.remote.connectLocal') }}</button>
             <details v-if="!deployment.demo" data-remote-menu class="relative" :open="remoteMenuId === deployment.id">
@@ -1756,8 +1762,8 @@ onBeforeUnmount(() => {
         <div data-testid="load-config-dialog" class="deployment-risk-panel w-full max-w-lg rounded-xl border border-gray-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-gray-900">
           <h2 id="load-config-title" class="text-lg font-semibold">{{ t('deployments.loadConfig.title') }}</h2>
           <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">{{ t('deployments.loadConfig.description', { name: pendingTemplateRecord?.name || '' }) }}</p>
-          <div class="mt-3 space-y-2 text-xs leading-5 text-gray-500 dark:text-gray-400"><p>{{ t('deployments.loadConfig.loadDescription') }}</p><p>{{ t('deployments.loadConfig.reconfigureDescription') }}</p></div>
-          <div class="mt-5 flex flex-wrap justify-end gap-2"><button type="button" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm" :disabled="loading" @click="cancelLoadConfig">{{ t('actions.cancel') }}</button><button type="button" data-testid="reconfigure-deployment" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm font-semibold" :disabled="loading" @click="reconfigureDeployment">{{ t('deployments.loadConfig.reconfigure') }}</button><button type="button" class="deploy-btn-primary min-h-10 rounded-lg bg-primary-600 px-4 text-sm font-semibold text-white shadow-sm" :disabled="loading" @click="confirmLoadConfig">{{ t('deployments.loadConfig.confirm') }}</button></div>
+          <div class="mt-3 space-y-2 text-xs leading-5 text-gray-500 dark:text-gray-400"><p>{{ t('deployments.loadConfig.directDescription') }}</p><p>{{ t('deployments.loadConfig.loadDescription') }}</p><p>{{ t('deployments.loadConfig.reconfigureDescription') }}</p></div>
+          <div class="mt-5 flex flex-wrap justify-end gap-2"><button type="button" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm" :disabled="loading" @click="cancelLoadConfig">{{ t('actions.cancel') }}</button><button type="button" data-testid="direct-deployment-command" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm font-semibold" :disabled="loading" @click="generateDirectPendingCommand">{{ t('deployments.loadConfig.directCommand') }}</button><button type="button" data-testid="reconfigure-deployment" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm font-semibold" :disabled="loading" @click="reconfigureDeployment">{{ t('deployments.loadConfig.reconfigure') }}</button><button type="button" class="deploy-btn-primary min-h-10 rounded-lg bg-primary-600 px-4 text-sm font-semibold text-white shadow-sm" :disabled="loading" @click="confirmLoadConfig">{{ t('deployments.loadConfig.confirm') }}</button></div>
         </div>
       </div>
     </Teleport>
