@@ -54,7 +54,10 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.get('[data-testid="deployment-control-command"]').classes()).toContain('deployment-surface');
     const controlCard = wrapper.get('[data-testid="deployment-control-command"]');
     expect(controlCard.find('[data-testid="deployment-runtime-settings"]').exists()).toBe(true);
-    expect(controlCard.find('[data-testid="vps-subscription-settings"]').exists()).toBe(true);
+    expect(controlCard.find('[data-testid="vps-subscription-settings"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="vps-subscription-settings"]').classes()).toContain('order-5');
+    expect(wrapper.get('[data-testid="deployment-runtime-toggle"]').attributes('aria-expanded')).toBe('false');
+    expect(wrapper.get('[data-testid="deployment-runtime-settings"]').isVisible()).toBe(false);
     expect(wrapper.get('[data-testid="deployment-global-settings"]').find('[data-testid="agent-poll-interval"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="control-command-input"]').element.value).toBe('tsub');
     const commandPanel = wrapper.get('[data-testid="deployment-command-panel"]');
@@ -65,7 +68,10 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.text()).toContain('核心');
     expect(wrapper.get('[data-testid="global-runtime-core"]').element.value).toBe('auto');
     expect(wrapper.get('[data-testid="global-runtime-core"]').find('option[value="auto"]').text()).toBe('自动（优先 Xray）');
-    expect(wrapper.get('[data-testid="deployment-runtime-settings"]').text()).toContain('资源与 Agent');
+    expect(wrapper.get('[data-testid="deployment-control-command"]').text()).toContain('资源与 Agent');
+    await wrapper.get('[data-testid="deployment-runtime-toggle"]').trigger('click');
+    expect(wrapper.get('[data-testid="deployment-runtime-toggle"]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.get('[data-testid="deployment-runtime-settings"]').isVisible()).toBe(true);
     expect(wrapper.get('[data-testid="agent-poll-interval"]').element.value).toBe('30');
     expect(wrapper.get('[data-testid="agent-poll-interval"]').findAll('option').map(option => option.element.value)).toEqual(['15', '30', '60', '120', '180', '300']);
     const resourceHelp = wrapper.get('[data-testid="deployment-resource-tier-help"]');
@@ -84,13 +90,13 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.find('[data-testid="apply-deployment-defaults"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="save-deployment-defaults"]').text()).toBe('保存为系统默认');
     expect(wrapper.get('[data-testid="reset-deployment-defaults"]').text()).toBe('重置');
-    expect(wrapper.text()).not.toContain('统一密码');
+    expect(wrapper.text()).toContain('统一密码');
     expect(wrapper.text()).not.toContain('UUID 覆盖');
 
     const globalUuid = wrapper.find('input[placeholder="留空自动生成并共享"]');
     expect(globalUuid.attributes('type')).toBe('text');
 
-    const advanced = wrapper.findAll('button').find(button => button.text().includes('更多') && !button.text().includes('设置'));
+    const advanced = wrapper.get('[data-testid="inbound-more-0"]');
     await advanced.trigger('click');
     const inboundUuid = wrapper.find('input[placeholder="留空使用统一 UUID；统一 UUID 为空时自动生成"]');
     expect(inboundUuid.attributes('type')).toBe('text');
@@ -125,6 +131,11 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(inboundGrid).toContain('minmax(176px,1.25fr)');
     expect(inboundGrid).toContain('minmax(128px,0.9fr)');
     expect(inboundGrid).toContain('minmax(140px,1fr)');
+    const inboundCard = wrapper.get('[data-testid="deployment-inbounds-header"]');
+    expect(inboundCard.classes()).toEqual(expect.arrayContaining(['deployment-surface', 'order-4', 'overflow-hidden']));
+    expect(inboundCard.findAll('[data-testid="deployment-inbound-item"]')).toHaveLength(1);
+    expect(inboundCard.get('[data-testid="deployment-inbound-item"]').classes()).not.toContain('deployment-surface');
+    expect(inboundCard.get('[data-testid="inbound-mobile-actions"]').classes()).toContain('sm:hidden');
     expect(advanced.classes()).toEqual(expect.arrayContaining(['min-w-[4.75rem]', 'shrink-0', 'whitespace-nowrap']));
     expect(wrapper.get('[data-testid="inbound-node-name"]').attributes('placeholder')).toContain('部署名称-vless-随机端口');
     await wrapper.findAll('button').find(button => button.text().includes('更多设置')).trigger('click');
@@ -177,6 +188,17 @@ describe('TSub Proxy simplified deployment generator', () => {
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await flushPromises();
     expect(wrapper.get('[data-testid="inbound-outbound-help-0"]').attributes('aria-expanded')).toBe('false');
+  });
+
+  it('expands the runtime group when a hidden runtime field fails validation', async () => {
+    wrapper = mountView();
+    await flushPromises();
+    await wrapper.find('input[placeholder="HK Edge"]').setValue('Invalid Runtime');
+    await wrapper.get('[data-testid="control-command-input"]').setValue('INVALID COMMAND');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="deployment-runtime-toggle"]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.get('[data-testid="deployment-runtime-settings"]').isVisible()).toBe(true);
   });
 
   it('adds help only to curated complex generator fields', async () => {
@@ -752,7 +774,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.text()).toContain('Proxy Deployments');
     expect(wrapper.text()).toContain('Generate Install Command');
     expect(wrapper.text()).toContain('One-time Deployment Command');
-    expect(wrapper.text()).toContain('Server Node Configuration');
+    expect(wrapper.text()).toContain('Resources and Agent');
     expect(wrapper.text()).toContain('Protocol Global Configuration');
     expect(wrapper.text()).not.toMatch(/[\u4e00-\u9fff]/);
 

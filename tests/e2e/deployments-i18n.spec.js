@@ -44,6 +44,7 @@ for (const viewport of [
   { name: 'desktop', width: 1440, height: 1000 },
   { name: 'desktop-narrow', width: 1280, height: 900 },
   { name: 'compact-desktop', width: 1024, height: 900 },
+  { name: 'tablet', width: 768, height: 1024 },
   { name: 'mobile', width: 390, height: 844 }
 ]) {
   test(`${viewport.name}: deployment controls remain usable and bilingual`, async ({ page }) => {
@@ -64,12 +65,14 @@ for (const viewport of [
     await expect(page.getByTestId('deployment-global-settings')).toHaveCSS('border-radius', '12px');
     await expect(page.getByTestId('deployment-control-command')).toHaveCSS('border-radius', '12px');
     await expect(page.getByTestId('control-command-input')).toHaveValue('tsub');
-    await expect(page.getByText('服务器节点配置', { exact: true })).toBeVisible();
+    await expect(page.getByText('资源与 Agent', { exact: true })).toBeVisible();
     await expect(page.getByText('协议全局配置', { exact: true })).toBeVisible();
     await expect(page.getByText('CDN、Argo 与 WARP', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '一次性部署命令' })).toBeVisible();
     await expect(page.getByTestId('deployment-submit')).toHaveText('生成安装命令');
 
+    await page.getByTestId('deployment-runtime-toggle').click();
+    await expect(page.getByTestId('deployment-runtime-settings')).toBeVisible();
     const agentHelp = page.getByTestId('agent-poll-interval-help');
     await agentHelp.scrollIntoViewIfNeeded();
     await agentHelp.click();
@@ -108,7 +111,7 @@ for (const viewport of [
     } else {
       await expect(commandPanel).toHaveCSS('position', 'static');
     }
-    const neutralButton = page.getByRole('button', { name: /更多设置/ });
+    const neutralButton = page.getByTestId('deployment-global-settings').getByRole('button', { name: /更多设置/ });
     const neutralBefore = await neutralButton.evaluate(element => getComputedStyle(element).backgroundColor);
     if (viewport.width >= 1024) {
       await neutralButton.hover();
@@ -136,8 +139,10 @@ for (const viewport of [
     const globalBox = await page.getByTestId('deployment-global-settings').boundingBox();
     const edgeBox = await page.getByTestId('edge-warp-settings').boundingBox();
     const inboundHeaderBox = await page.getByTestId('deployment-inbounds-header').boundingBox();
-    expect(edgeBox.y - (globalBox.y + globalBox.height)).toBeLessThanOrEqual(24);
-    expect(inboundHeaderBox.y - (edgeBox.y + edgeBox.height)).toBeLessThanOrEqual(24);
+    const subscriptionBox = await page.getByTestId('vps-subscription-settings').boundingBox();
+    expect(inboundHeaderBox.y - (globalBox.y + globalBox.height)).toBeLessThanOrEqual(24);
+    expect(subscriptionBox.y - (inboundHeaderBox.y + inboundHeaderBox.height)).toBeLessThanOrEqual(24);
+    expect(edgeBox.y - (subscriptionBox.y + subscriptionBox.height)).toBeLessThanOrEqual(24);
     if (viewport.width >= 1024) {
       const protocolBox = await page.getByTestId('inbound-protocol').boundingBox();
       const portBox = await page.getByTestId('inbound-port').boundingBox();
@@ -149,6 +154,14 @@ for (const viewport of [
       const moreButton = page.getByTestId('inbound-more-0');
       await expect(moreButton).toHaveCSS('white-space', 'nowrap');
       expect((await moreButton.boundingBox()).height).toBeLessThanOrEqual(42);
+    } else if (viewport.width < 640) {
+      await expect(page.getByTestId('inbound-mobile-actions')).toBeVisible();
+      const protocolBox = await page.getByTestId('inbound-protocol').boundingBox();
+      const portBox = await page.getByTestId('inbound-port').boundingBox();
+      expect(Math.abs(protocolBox.y - portBox.y)).toBeLessThanOrEqual(2);
+      const trafficToggleBox = await page.getByTestId('vps-traffic-enabled').boundingBox();
+      const pushToggleBox = await page.getByTestId('vps-push-enabled').boundingBox();
+      expect(pushToggleBox.y).toBeGreaterThan(trafficToggleBox.y + trafficToggleBox.height);
     }
     await expect(page.getByTestId('vps-push-enabled')).toBeChecked();
     await expect(page.getByTestId('vps-push-interval')).toHaveValue('15');
@@ -234,6 +247,7 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
       history.pushState({}, '', '/dashboard/deployments');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
+    await page.getByTestId('deployment-runtime-toggle').click();
     await page.getByTestId('control-command-input').fill('edge-menu');
     await page.getByTestId('global-runtime-core').selectOption('sing-box');
     await page.getByTestId('inbound-protocol').selectOption('trojan');
@@ -278,10 +292,10 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
     await expect(page.locator('[role="tooltip"]:visible')).toContainText('2026/8/1');
     await timeInfo.click();
     const systemInfo = page.getByTestId('deployment-system-info-deploy-e2e');
-    await systemInfo.click();
+    await systemInfo.click({ force: true });
     await expect(timeInfo).toHaveAttribute('aria-expanded', 'false');
     await expect(page.locator('[role="tooltip"]:visible')).toContainText('缺少 CAP_NET_ADMIN');
-    await page.keyboard.press('Escape');
+    await page.getByTestId('deployment-page-header').click({ position: { x: 5, y: 5 } });
     await expect(systemInfo).toHaveAttribute('aria-expanded', 'false');
 
     const heartbeatInfo = page.getByTestId('deployment-heartbeat-info-deploy-e2e');
@@ -327,6 +341,7 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
     await expect(page.getByRole('button', { name: '操作记录' })).toHaveClass(/border-primary-200/);
 
     await page.getByRole('button', { name: '生成器' }).click();
+    await page.getByTestId('deployment-runtime-toggle').click();
     await page.getByTestId('control-command-input').fill('edge-menu');
     await page.getByTestId('global-runtime-core').selectOption('sing-box');
     await page.getByTestId('inbound-protocol').selectOption('trojan');
