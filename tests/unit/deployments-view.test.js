@@ -915,6 +915,13 @@ describe('TSub Proxy simplified deployment generator', () => {
     const reinstallButton = wrapper.get('[data-testid="deployment-reinstall-config"]');
     expect(reinstallButton.text()).toBe('重新安装');
     expect(reinstallButton.attributes('disabled')).toBeUndefined();
+    await wrapper.get('[data-testid="deployment-direct-command"]').trigger('click');
+    await flushPromises();
+    expect(createDeploymentCommand).toHaveBeenCalledWith('deploy-offline', 'reinstall');
+    expect(wrapper.find('[data-testid="deployment-basic-settings"]').exists()).toBe(false);
+    expect(document.querySelector('[data-testid="deployment-operation-command-dialog"] textarea').value).toBe('reinstall wget');
+    document.querySelector('[data-testid="deployment-operation-command-dialog"] button').click();
+    await flushPromises();
     await reinstallButton.trigger('click');
     await flushPromises();
     Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '载入配置').click();
@@ -947,6 +954,25 @@ describe('TSub Proxy simplified deployment generator', () => {
 
     expect(wrapper.findAll('[data-testid="deployment-reinstall-config"]')).toHaveLength(2);
     expect(wrapper.findAll('[data-testid="deployment-update-config"]')).toHaveLength(1);
+  });
+
+  it('silently refreshes pending and running deployment records until their callback finishes', async () => {
+    vi.useFakeTimers();
+    const running = { id: 'deploy-poll', name: 'Polling Install', schemaVersion: 2, status: 'running', reinstallable: true, configSummary: {} };
+    const offline = { ...running, status: 'offline', pendingReason: 'reinstall', lastError: 'low memory', reinstallable: true };
+    listDeployments
+      .mockResolvedValueOnce({ success: true, data: [running] })
+      .mockResolvedValueOnce({ success: true, data: [running] })
+      .mockResolvedValue({ success: true, data: [offline] });
+    wrapper = mountView();
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('执行中');
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushPromises();
+    expect(wrapper.text()).toContain('已离线');
   });
 
   it('refreshes to reinstall immediately after generating an uninstall command', async () => {

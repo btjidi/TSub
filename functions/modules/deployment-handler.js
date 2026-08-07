@@ -1784,7 +1784,6 @@ export async function handleDeploymentsRequest(request, env, path) {
   if (child === 'operations' && request.method === 'POST') {
     let body; try { body = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
     const action = String(body.action || '');
-    if (action === 'reinstall' && !body.config) return createErrorResponse('Reinstall configuration is required', 400);
     if (['update', 'reinstall'].includes(action) && body.config) {
       try {
         const { nextDeployment } = await prepareDeploymentUpdate(storage, deployment, body, env, '', action);
@@ -1794,6 +1793,13 @@ export async function handleDeploymentsRequest(request, env, path) {
       } catch (error) {
         return createErrorResponse(error.message, error.status || (/DEPLOYMENT_SECRET_KEY|资产|版本环境变量|PINNED_CORE_MANIFEST|Pinned 清单/.test(error.message) ? 503 : 400));
       }
+    } else if (action === 'reinstall') {
+      if (!isDeploymentReinstallable(deployment)) return createErrorResponse('Deployment cannot be reinstalled in its current state', 409);
+      await supersedeDeploymentOperations(storage, deployment.id);
+      deployment.status = 'pending';
+      deployment.pendingReason = 'reinstall';
+      deployment.updatedAt = nowIso();
+      await writeDeployment(storage, deployment);
     }
     return createOperation(request, storage, deployment, action, env);
   }

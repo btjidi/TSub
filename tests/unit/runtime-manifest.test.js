@@ -9,7 +9,7 @@ describe('generated TSub Proxy v2', () => {
     const source = await readFile('public/proxy/v2/tsub-proxy.sh');
     expect(source.byteLength).toBeLessThanOrEqual(512 * 1024);
     expect(createHash('sha256').update(source).digest('hex')).toBe(RUNTIME_MANIFEST.sha256);
-    expect(RUNTIME_MANIFEST.version).toBe('2.4.18');
+    expect(RUNTIME_MANIFEST.version).toBe('2.4.19');
     expect(RUNTIME_VERSION).toBe(RUNTIME_MANIFEST.version);
     expect(source.toString()).toContain(`TSUB_RUNTIME_VERSION='${RUNTIME_VERSION}'`);
     expect(source.toString()).toContain('main "$@"');
@@ -135,6 +135,17 @@ describe('generated TSub Proxy v2', () => {
     expect(transaction).toContain('[ "${TSUB_CORE_DOWNLOADED:-false}" != true ] || require_install_headroom');
     expect(transaction.indexOf('TSUB_CORE_DOWNLOADED')).toBeLessThan(transaction.indexOf('validate_config "$apply_candidate"'));
     expect(transaction).toContain('[ "${action:-}" = repair ]');
+  });
+
+  it('requires an explicit interactive confirmation before forcing a low-memory install', async () => {
+    const plan = await readFile('runtime/v2/modules/20-plan.sh', 'utf8');
+    const main = await readFile('runtime/v2/modules/90-main.sh', 'utf8');
+    expect(plan).toContain('confirm_low_memory_install()');
+    expect(plan).toContain("confirmation_input=${TSUB_CONFIRM_INPUT:-/dev/tty}");
+    expect(plan).toContain("y|Y)");
+    expect(plan).toContain('add_degraded_reason "用户已确认低内存强制安装"');
+    expect(plan).toContain('当前为非交互执行，无法确认强制安装');
+    expect(main).toContain('TSUB_FORCE_LOW_MEMORY_INSTALL=false');
   });
 
   it('restarts a manually updated agent but never restarts the running agent process itself', async () => {

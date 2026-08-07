@@ -857,9 +857,8 @@ describe('TSub V2 deployment handler', () => {
     }), env);
     expect(env.TSUB_KV.dump('tsub_deployments_v2')[0]).toMatchObject({ status: 'offline', pendingReason: 'reinstall', lastError: 'probe failed' });
 
-    const retryTemplate = (await (await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/template`, 'GET'), env, `/deployments/${id}/template`)).json()).data;
     const retry = await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/operations`, 'POST', {
-      action: 'reinstall', configRevision: retryTemplate.configRevision, config: retryTemplate.config
+      action: 'reinstall'
     }), env, `/deployments/${id}/operations`);
     const retryBody = await retry.json();
     const retryBootstrap = await handleDeployBootstrap(new Request('https://tsub.example/api/deploy/bootstrap', {
@@ -872,7 +871,7 @@ describe('TSub V2 deployment handler', () => {
     }), env);
 
     const restored = env.TSUB_KV.dump('tsub_deployments_v2')[0];
-    expect(restored).toMatchObject({ id, status: 'succeeded', subscriptionSourceDisabled: false, configRevision: 3, deployedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) });
+    expect(restored).toMatchObject({ id, status: 'succeeded', subscriptionSourceDisabled: false, configRevision: 2, deployedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) });
     expect(restored).not.toHaveProperty('pendingReason');
     expect(env.TSUB_KV.dump('tsub_subscriptions_v1')[0]).toMatchObject({ enabled: true, nodeCount: 1 });
   });

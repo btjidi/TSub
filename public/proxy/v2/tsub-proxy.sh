@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='2.4.18'
+TSUB_RUNTIME_VERSION='2.4.19'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -674,6 +674,28 @@ provider_budget() {
   esac
 }
 
+confirm_low_memory_install() {
+  install_warning=$1
+  [ "${TSUB_FORCE_LOW_MEMORY_INSTALL:-false}" != true ] || return 0
+  confirmation_input=${TSUB_CONFIRM_INPUT:-/dev/tty}
+  confirmation_output=${TSUB_CONFIRM_OUTPUT:-/dev/tty}
+  if [ ! -r "$confirmation_input" ] || [ ! -w "$confirmation_output" ]; then
+    die "$install_warning；当前为非交互执行，无法确认强制安装"
+  fi
+  printf '%s\n' "$install_warning" >"$confirmation_output"
+  printf '%s' '继续可能触发 OOM 并导致安装回滚。输入 Y 强制安装，其他输入取消：' >>"$confirmation_output"
+  install_confirmation=''
+  IFS= read -r install_confirmation <"$confirmation_input" || true
+  case "$install_confirmation" in
+    y|Y)
+      TSUB_FORCE_LOW_MEMORY_INSTALL=true
+      add_degraded_reason "用户已确认低内存强制安装"
+      log WARN "用户已确认低内存强制安装；继续执行"
+      ;;
+    *) die "$install_warning；用户未确认强制安装" ;;
+  esac
+}
+
 require_install_headroom() {
   install_reserve=12
   if [ "$TSUB_MEMORY_MB" -le 96 ]; then
@@ -684,9 +706,11 @@ require_install_headroom() {
   install_required=$((install_rss + install_reserve))
   if [ "$TSUB_MEMORY_AVAILABLE_MB" -lt "$install_required" ]; then
     if [ "$TSUB_MEMORY_MB" -le 64 ] && [ "$(kv_get "${core}_${TSUB_ARCH}_format")" = tar.gz ]; then
-      die "64MB 节点不能安全解包 $core；请改用经过 SHA-256 校验的预解包 binary 资产"
+      install_warning="64MB 节点不能安全解包 $core；建议改用经过 SHA-256 校验的预解包 binary 资产"
+    else
+      install_warning="当前可用内存 ${TSUB_MEMORY_AVAILABLE_MB}MB 不足以安全安装；需要至少 ${install_required}MB 可用内存"
     fi
-    die "当前可用内存 ${TSUB_MEMORY_AVAILABLE_MB}MB 不足以安全安装；需要至少 ${install_required}MB 可用内存"
+    confirm_low_memory_install "$install_warning"
   fi
 }
 
@@ -3626,7 +3650,7 @@ main() {
   TSUB_CONFIG=${TSUB_CONFIG:-/tmp/tsub-bootstrap.conf}
   [ -r "$TSUB_CONFIG" ] || { printf '%s\n' 'TSub 配置文件不可读' >&2; exit 2; }
   action=${1:-apply}
-  TSUB_CALLBACK_URL=''; TSUB_CALLBACK_TOKEN=''; TSUB_DEGRADED_REASON=''; TSUB_STAGE=bootstrap
+  TSUB_CALLBACK_URL=''; TSUB_CALLBACK_TOKEN=''; TSUB_DEGRADED_REASON=''; TSUB_FORCE_LOW_MEMORY_INSTALL=false; TSUB_STAGE=bootstrap
   if [ "$action" = menu ]; then detect_system_identity >/dev/null; else detect_system_identity; fi
   mark_runtime_oom_candidate
   if [ "$(id -u)" -eq 0 ]; then

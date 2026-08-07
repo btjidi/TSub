@@ -38,7 +38,9 @@ TSUB_MEMORY_MB=64
 TSUB_MEMORY_AVAILABLE_MB=59
 core=sing-box
 install_rss=20
-if (require_install_headroom) >"$TMP/archive.out" 2>&1; then
+printf 'n\n' >"$TMP/archive.confirm"
+: >"$TMP/archive.prompt"
+if (TSUB_CONFIRM_INPUT="$TMP/archive.confirm" TSUB_CONFIRM_OUTPUT="$TMP/archive.prompt" require_install_headroom) >"$TMP/archive.out" 2>&1; then
   echo '64MB archive install unexpectedly passed the safety check' >&2
   exit 1
 fi
@@ -50,6 +52,30 @@ EOF
 TSUB_CONFIG="$TMP/binary.conf"
 TSUB_MEMORY_AVAILABLE_MB=36
 require_install_headroom
+
+printf 'Y\n' >"$TMP/confirm.y"
+: >"$TMP/confirm.out"
+TSUB_MEMORY_AVAILABLE_MB=16
+TSUB_DEGRADED_REASON=''
+TSUB_FORCE_LOW_MEMORY_INSTALL=false
+TSUB_CONFIRM_INPUT="$TMP/confirm.y"
+TSUB_CONFIRM_OUTPUT="$TMP/confirm.out"
+require_install_headroom
+[ "$TSUB_FORCE_LOW_MEMORY_INSTALL" = true ]
+[ "$TSUB_DEGRADED_REASON" = '用户已确认低内存强制安装' ]
+grep -q '输入 Y 强制安装' "$TMP/confirm.out"
+: >"$TMP/confirm.out"
+require_install_headroom
+[ ! -s "$TMP/confirm.out" ]
+
+printf 'n\n' >"$TMP/confirm.n"
+if (TSUB_FORCE_LOW_MEMORY_INSTALL=false TSUB_CONFIRM_INPUT="$TMP/confirm.n" TSUB_CONFIRM_OUTPUT="$TMP/confirm.out" require_install_headroom) >"$TMP/rejected.out" 2>&1; then
+  echo 'rejected low-memory install unexpectedly passed' >&2
+  exit 1
+fi
+grep -q '用户未确认强制安装' "$TMP/rejected.out"
+unset TSUB_CONFIRM_INPUT TSUB_CONFIRM_OUTPUT
+TSUB_FORCE_LOW_MEMORY_INSTALL=false
 
 TSUB_STATE="$TMP/state"
 TSUB_BIN="$TMP/bin"

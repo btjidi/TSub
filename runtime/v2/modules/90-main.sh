@@ -2,7 +2,7 @@ main() {
   TSUB_CONFIG=${TSUB_CONFIG:-/tmp/tsub-bootstrap.conf}
   [ -r "$TSUB_CONFIG" ] || { printf '%s\n' 'TSub 配置文件不可读' >&2; exit 2; }
   action=${1:-apply}
-  TSUB_CALLBACK_URL=''; TSUB_CALLBACK_TOKEN=''; TSUB_DEGRADED_REASON=''; TSUB_STAGE=bootstrap
+  TSUB_CALLBACK_URL=''; TSUB_CALLBACK_TOKEN=''; TSUB_DEGRADED_REASON=''; TSUB_FORCE_LOW_MEMORY_INSTALL=false; TSUB_STAGE=bootstrap
   if [ "$action" = menu ]; then detect_system_identity >/dev/null; else detect_system_identity; fi
   mark_runtime_oom_candidate
   if [ "$(id -u)" -eq 0 ]; then

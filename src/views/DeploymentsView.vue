@@ -83,6 +83,9 @@ const deploymentInfoPopoverKey = ref('');
 const output = reactive({ curl: '', wget: '', diagnosticCurl: '', diagnosticWget: '', expiresAt: '', client: 'wget', diagnostic: false });
 const operationOutput = reactive({ curl: '', wget: '', diagnosticCurl: '', diagnosticWget: '', expiresAt: '', client: 'wget', diagnostic: false, deploymentName: '', action: '' });
 const confirmedOperationActions = new Set(['update', 'restart', 'repair', 'rollback', 'uninstall']);
+const deploymentPollIntervalMs = 5000;
+let deploymentPollTimer = 0;
+let deploymentRefreshRequest = 0;
 
 const builtinProtocolDefaults = {
   vless: { transport: 'tcp', outbound: 'direct', tlsMode: 'reality', serverName: 'www.cloudflare.com', path: '/', serviceName: 'tsub' },
@@ -1158,13 +1161,22 @@ async function generateInstallCommand() {
   finally { loading.value = false; }
 }
 
-async function refreshDeployments() {
-  loading.value = true;
+async function refreshDeployments({ silent = false } = {}) {
+  const requestId = ++deploymentRefreshRequest;
+  if (!silent) loading.value = true;
   try {
-    const result = await listDeployments(); deployments.value = result.data || [];
+    const result = await listDeployments();
+    if (requestId !== deploymentRefreshRequest) return;
+    deployments.value = result.data || [];
     if (!selectedDeploymentId.value && deployments.value[0]) selectedDeploymentId.value = deployments.value[0].id;
-  } catch { toast.showToast(t('deployments.errors.loadDeployments'), 'error'); }
-  finally { loading.value = false; }
+  } catch {
+    if (!silent && requestId === deploymentRefreshRequest) toast.showToast(t('deployments.errors.loadDeployments'), 'error');
+  }
+  finally { if (!silent && requestId === deploymentRefreshRequest) loading.value = false; }
+}
+function pollDeploymentStatus() {
+  if (document.hidden || loading.value || !deployments.value.some(item => !item.demo && ['pending', 'running'].includes(item.status))) return;
+  refreshDeployments({ silent: true });
 }
 async function loadOperations(id = selectedDeploymentId.value) {
   if (!id || selectedDeployment.value?.migrationRequired) { operations.value = []; return; }
@@ -1200,6 +1212,22 @@ async function executeActionCommand(deployment, action) {
   }
   catch { toast.showToast(t('deployments.errors.generateCommand'), 'error'); }
   finally { loading.value = false; }
+}
+async function generateDirectConfigCommand(deployment) {
+  loading.value = true;
+  try {
+    const action = deployment.reinstallable ? 'reinstall' : 'update';
+    const result = await createDeploymentCommand(deployment.id, action);
+    assignCommand(operationOutput, result);
+    operationOutput.deploymentName = deployment.name;
+    operationOutput.action = deployment.reinstallable ? 'reinstall' : 'plan';
+    selectedDeploymentId.value = deployment.id;
+    showOperationCommandModal.value = true;
+    await refreshDeployments({ silent: true });
+    toast.showToast(t('deployments.notices.operationCommandGenerated'), 'success');
+  } catch (error) {
+    toast.showToast(error?.data?.message || t('deployments.errors.generateCommand'), 'error');
+  } finally { loading.value = false; }
 }
 function cancelOperationCommand() { pendingOperation.value = null; }
 async function confirmOperationCommand() {
@@ -1347,9 +1375,11 @@ onMounted(async () => {
     if (data && !Array.isArray(data) && data.features && typeof data.features === 'object') capabilities.value = data;
   }).catch(() => {});
   await Promise.all([refreshDeployments(), loadDefaults(), dataStore.fetchData(), capabilityRequest]);
+  deploymentPollTimer = window.setInterval(pollDeploymentStatus, deploymentPollIntervalMs);
 });
 onBeforeUnmount(() => {
   clearTimeout(edgeDetectionTimer);
+  clearInterval(deploymentPollTimer);
   edgeDetectionRequest += 1;
   document.removeEventListener('click', closeActionMenusOnOutside);
   window.removeEventListener('keydown', closeOperationModalOnEscape);
@@ -1669,6 +1699,7 @@ onBeforeUnmount(() => {
             <button v-if="deployment.configSummary?.subscriptionServer?.pushEnabled" data-testid="deployment-push-history" type="button" class="min-h-9 border border-primary-200 bg-primary-50 px-3 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300" @click="openPushHistory(deployment)">{{ t('pushHistory.open') }}</button>
             <button v-if="!deployment.demo && deployment.subscriptionSourceDisabled" data-testid="restore-deployment-source" type="button" class="min-h-9 border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" :disabled="loading" @click="restoreSubscriptionSource(deployment)">{{ t('deployments.restoreSource') }}</button>
             <button v-if="!deployment.demo" :data-testid="deployment.reinstallable ? 'deployment-reinstall-config' : 'deployment-update-config'" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || loading" @click="requestUpdateConfig(deployment)">{{ t(deployment.reinstallable ? 'deployments.actions.reinstall' : 'deployments.actions.plan') }}</button>
+            <button v-if="!deployment.demo && (deployment.reinstallable || deployment.deployedAt)" data-testid="deployment-direct-command" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || loading" @click="generateDirectConfigCommand(deployment)">{{ t('deployments.directCommand') }}</button>
             <button v-if="!deployment.demo" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || deployment.status === 'offline' || loading" @click="reuseDeploymentConfig(deployment)">{{ t('deployments.actions.apply') }}</button>
             <button v-if="!deployment.demo && capabilities.features?.localExecutor && deployment.controlTransport !== 'local-executor'" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="loading" @click="connectLocalExecutor(deployment)">{{ t('deployments.remote.connectLocal') }}</button>
             <details v-if="!deployment.demo" data-remote-menu class="relative" :open="remoteMenuId === deployment.id">
