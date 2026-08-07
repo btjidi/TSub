@@ -140,9 +140,9 @@ for (const viewport of [
     const edgeBox = await page.getByTestId('edge-warp-settings').boundingBox();
     const inboundHeaderBox = await page.getByTestId('deployment-inbounds-header').boundingBox();
     const subscriptionBox = await page.getByTestId('vps-subscription-settings').boundingBox();
-    expect(inboundHeaderBox.y - (globalBox.y + globalBox.height)).toBeLessThanOrEqual(24);
+    expect(edgeBox.y - (globalBox.y + globalBox.height)).toBeLessThanOrEqual(24);
+    expect(inboundHeaderBox.y - (edgeBox.y + edgeBox.height)).toBeLessThanOrEqual(24);
     expect(subscriptionBox.y - (inboundHeaderBox.y + inboundHeaderBox.height)).toBeLessThanOrEqual(24);
-    expect(edgeBox.y - (subscriptionBox.y + subscriptionBox.height)).toBeLessThanOrEqual(24);
     if (viewport.width >= 1024) {
       const protocolBox = await page.getByTestId('inbound-protocol').boundingBox();
       const portBox = await page.getByTestId('inbound-port').boundingBox();
@@ -154,11 +154,35 @@ for (const viewport of [
       const moreButton = page.getByTestId('inbound-more-0');
       await expect(moreButton).toHaveCSS('white-space', 'nowrap');
       expect((await moreButton.boundingBox()).height).toBeLessThanOrEqual(42);
-    } else if (viewport.width < 640) {
+    } else if (viewport.width >= 640) {
+      const protocolBox = await page.getByTestId('inbound-protocol').boundingBox();
+      const portBox = await page.getByTestId('inbound-port').boundingBox();
+      const nodeNameBox = await page.getByTestId('inbound-node-name').boundingBox();
+      const moreButtonBox = await page.getByTestId('inbound-more-0').boundingBox();
+      const deleteButtonBox = await page.getByTestId('inbound-delete-0').boundingBox();
+      expect(Math.max(protocolBox.y, portBox.y, nodeNameBox.y, moreButtonBox.y, deleteButtonBox.y) - Math.min(protocolBox.y, portBox.y, nodeNameBox.y, moreButtonBox.y, deleteButtonBox.y)).toBeLessThanOrEqual(2);
+      expect(deleteButtonBox.width).toBeGreaterThanOrEqual(39);
+      expect(deleteButtonBox.width).toBeLessThanOrEqual(41);
+      expect(moreButtonBox.width).toBeLessThan(76);
+      const subscriptionPortBox = await page.getByTestId('vps-subscription-port-field').boundingBox();
+      const subscriptionTokenBox = await page.getByTestId('vps-subscription-token-field').boundingBox();
+      expect(Math.abs(subscriptionPortBox.y - subscriptionTokenBox.y)).toBeLessThanOrEqual(2);
+    } else {
       await expect(page.getByTestId('inbound-mobile-actions')).toBeVisible();
       const protocolBox = await page.getByTestId('inbound-protocol').boundingBox();
       const portBox = await page.getByTestId('inbound-port').boundingBox();
       expect(Math.abs(protocolBox.y - portBox.y)).toBeLessThanOrEqual(2);
+      const moreButton = page.getByTestId('inbound-more-mobile-0');
+      const moreButtonBox = await moreButton.boundingBox();
+      const deleteButtonBox = await page.getByTestId('inbound-delete-mobile-0').boundingBox();
+      expect(moreButtonBox.width).toBeLessThanOrEqual(68);
+      expect(deleteButtonBox.width).toBeGreaterThanOrEqual(39);
+      expect(deleteButtonBox.width).toBeLessThanOrEqual(41);
+      await expect(moreButton).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByTestId('inbound-more-icon-mobile-0')).not.toHaveClass(/rotate-180/);
+      await moreButton.click();
+      await expect(moreButton).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByTestId('inbound-more-icon-mobile-0')).toHaveClass(/rotate-180/);
       const trafficToggleBox = await page.getByTestId('vps-traffic-enabled').boundingBox();
       const pushToggleBox = await page.getByTestId('vps-push-enabled').boundingBox();
       expect(pushToggleBox.y).toBeGreaterThan(trafficToggleBox.y + trafficToggleBox.height);
@@ -167,7 +191,6 @@ for (const viewport of [
     await expect(page.getByTestId('vps-push-interval')).toHaveValue('15');
     await page.getByTestId('vps-push-interval').selectOption('5');
     await expect(page.getByText(/每 5 分钟主动推送/)).toBeVisible();
-
     await page.getByTestId('edge-mode').selectOption('manual');
     await expect(page.getByTestId('edge-hostname')).toBeVisible();
     await page.getByTestId('edge-hostname').fill('edge.example.com');
