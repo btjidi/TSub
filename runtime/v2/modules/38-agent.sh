@@ -41,9 +41,9 @@ agent_maybe_update_runtime() {
   if [ -x "$agent_update_target" ] && [ "$(sha256_file "$agent_update_target")" = "$agent_update_sha" ]; then return 0; fi
   agent_update_download="$TSUB_TMP/runtime-update.sh"
   download_file "$agent_update_origin$agent_update_path?v=$agent_update_sha" "$agent_update_download" || return 0
-  [ "$(sha256_file "$agent_update_download")" = "$agent_update_sha" ] || { log ERROR 'Runtime 自动更新校验失败'; return 0; }
+  [ "$(sha256_file "$agent_update_download")" = "$agent_update_sha" ] || { i18n_log ERROR 'Runtime 自动更新校验失败' 'Runtime automatic update verification failed'; return 0; }
   atomic_install "$agent_update_download" "$agent_update_target" 700
-  log INFO "Runtime 已更新到 $agent_update_version，正在重新加载 Agent"
+  i18n_log INFO "Runtime 已更新到 $agent_update_version，正在重新加载 Agent" "Runtime updated to $agent_update_version; reloading the agent"
   rm -rf "$TSUB_TMP"
   trap - 0 1 2 15
   exec /bin/sh "$agent_update_target" agent
@@ -258,10 +258,10 @@ agent_poll_once() {
 }
 
 run_agent_loop() {
-  agent_enabled || die '服务器 Agent 未配置'
-  have curl || die '服务器 Agent 需要 curl'
+  agent_enabled || i18n_die '服务器 Agent 未配置' 'The server agent is not configured'
+  have curl || i18n_die '服务器 Agent 需要 curl' 'The server agent requires curl'
   agent_token_file="$TSUB_TMP/agent.token"
-  b64_decode_file agent_token_b64 "$agent_token_file" || die '服务器 Agent Token 无效'
+  b64_decode_file agent_token_b64 "$agent_token_file" || i18n_die '服务器 Agent Token 无效' 'Invalid server agent token'
   TSUB_AGENT_TOKEN=$(cat "$agent_token_file")
   TSUB_AGENT_URL=$(kv_get agent_controller_url)
   agent_loop_running=true
@@ -309,7 +309,7 @@ EOF
     atomic_install "$agent_service" /etc/systemd/system/tsub-agent.service 644
     systemctl daemon-reload
     systemctl enable tsub-agent.service >/dev/null 2>&1 || true
-    systemctl restart tsub-agent.service >/dev/null 2>&1 || add_degraded_reason '服务器 Agent 启动失败'
+    systemctl restart tsub-agent.service >/dev/null 2>&1 || i18n_degraded '服务器 Agent 启动失败' 'The server agent failed to start'
   elif [ "$TSUB_INIT" = openrc ] && [ "$(id -u)" -eq 0 ] && have rc-service; then
     agent_service="$TSUB_TMP/tsub-agent"
     cat >"$agent_service" <<EOF
@@ -327,14 +327,14 @@ depend() { need net; }
 EOF
     atomic_install "$agent_service" /etc/init.d/tsub-agent 700
     rc-update add tsub-agent default >/dev/null 2>&1 || true
-    rc-service tsub-agent restart >/dev/null 2>&1 || add_degraded_reason '服务器 Agent 启动失败'
+    rc-service tsub-agent restart >/dev/null 2>&1 || i18n_degraded '服务器 Agent 启动失败' 'The server agent failed to start'
   elif have crontab; then
     agent_cron="$TSUB_TMP/agent.cron"
     crontab -l 2>/dev/null | grep -v 'tsub-proxy.sh agent' >"$agent_cron" || true
     printf '*/5 * * * * TSUB_CONFIG=%s timeout 290 %s agent >>%s 2>&1\n' "$agent_config" "$agent_runtime" "$TSUB_LOG" >>"$agent_cron"
     crontab "$agent_cron"
   else
-    add_degraded_reason '没有可用的服务器 Agent 调度入口'
+    i18n_degraded '没有可用的服务器 Agent 调度入口' 'No server agent scheduler is available'
   fi
 }
 

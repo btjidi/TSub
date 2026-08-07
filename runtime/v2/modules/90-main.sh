@@ -39,21 +39,21 @@ main() {
     if have crontab; then TSUB_INIT='crontab'; else TSUB_INIT='none'; fi
   fi
   case "$action" in
-    plan) plan_runtime; emit_event succeeded "plan completed" ;;
+    plan) plan_runtime; emit_event succeeded "$(i18n_text '计划检查完成' 'Plan completed')" ;;
     apply|update|repair) plan_runtime; apply_runtime; record_runtime_change_time; print_runtime_summary "$action" ;;
-    status) plan_runtime; load_installed_core; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "status collected" ;;
-    doctor) plan_runtime; load_installed_core; validate_config "$TSUB_ETC/config.json"; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "doctor completed" ;;
-    list) export_nodes; push_snapshot || die "节点同步推送失败"; emit_event succeeded "nodes exported" ;;
+    status) plan_runtime; load_installed_core; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '状态采集完成' 'Status collected')" ;;
+    doctor) plan_runtime; load_installed_core; validate_config "$TSUB_ETC/config.json"; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '诊断完成' 'Doctor completed')" ;;
+    list) export_nodes; push_snapshot || i18n_die "节点同步推送失败" "Node synchronization push failed"; emit_event succeeded "$(i18n_text '节点导出完成' 'Nodes exported')" ;;
     traffic) traffic_ensure_rules; traffic_checkpoint ;;
     push) push_snapshot ;;
     agent) run_agent_loop ;;
     agent-install) install_agent_service "$TSUB_BIN/tsub-proxy.sh" "$TSUB_ETC/runtime.conf" ;;
     edge-probe) edge_probe ;;
     menu) control_menu ;;
-    restart) plan_runtime; load_installed_core; ensure_tunnel_binary; prepare_service_identity; traffic_checkpoint; service_stop; service_start; health_check; traffic_ensure_rules; traffic_checkpoint; emit_event succeeded "restart completed" ;;
+    restart) plan_runtime; load_installed_core; ensure_tunnel_binary; prepare_service_identity; traffic_checkpoint; service_stop; service_start; health_check; traffic_ensure_rules; traffic_checkpoint; emit_event succeeded "$(i18n_text '重启完成' 'Restart completed')" ;;
     rollback) load_installed_core; rollback_runtime; record_runtime_change_time ;;
     uninstall) uninstall_runtime ;;
-    *) die "未知操作: $action" ;;
+    *) i18n_die "未知操作: $action" "Unknown operation: $action" ;;
   esac
   sanitize_runtime_log
   trim_runtime_log

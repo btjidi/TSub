@@ -65,7 +65,7 @@ detect_system_identity() {
   case "$TSUB_ARCH" in
     x86_64|amd64) TSUB_ARCH=amd64 ;;
     aarch64|arm64) TSUB_ARCH=arm64 ;;
-    *) die "不支持的 CPU 架构: $TSUB_ARCH" ;;
+    *) i18n_die "不支持的 CPU 架构: $TSUB_ARCH" "Unsupported CPU architecture: $TSUB_ARCH" ;;
   esac
 
   TSUB_OS_RELEASE_FILE=${TSUB_OS_RELEASE_FILE:-/etc/os-release}
@@ -88,17 +88,17 @@ detect_system_identity() {
       TSUB_OS_VERIFIED=false
       ;;
   esac
-  printf '系统类型：%s（ID=%s，版本=%s）\n' "$TSUB_OS_PRETTY" "$TSUB_OS" "$TSUB_OS_VERSION"
-  printf 'CPU 架构：%s\n' "$TSUB_ARCH"
-  [ "$TSUB_OS_VERIFIED" = true ] || printf '系统兼容性：未验证，将按 %s 系兼容能力处理\n' "$TSUB_OS_FAMILY"
+  i18n_print "系统类型：$TSUB_OS_PRETTY（ID=$TSUB_OS，版本=$TSUB_OS_VERSION）" "System: $TSUB_OS_PRETTY (ID=$TSUB_OS, version=$TSUB_OS_VERSION)"
+  i18n_print "CPU 架构：$TSUB_ARCH" "CPU architecture: $TSUB_ARCH"
+  [ "$TSUB_OS_VERIFIED" = true ] || i18n_print "系统兼容性：未验证，将按 $TSUB_OS_FAMILY 系兼容能力处理" "System compatibility is unverified; using $TSUB_OS_FAMILY-compatible behavior"
   if [ "$TSUB_OS_FAMILY" = rhel ]; then
     TSUB_SELINUX_MODE=unavailable
     if have getenforce; then TSUB_SELINUX_MODE=$(getenforce 2>/dev/null || printf unknown); fi
-    printf 'SELinux：%s；Enforcing 模式下服务启动失败时请检查审计日志\n' "$TSUB_SELINUX_MODE"
+    i18n_print "SELinux：$TSUB_SELINUX_MODE；Enforcing 模式下服务启动失败时请检查审计日志" "SELinux: $TSUB_SELINUX_MODE; check the audit log if service startup fails in Enforcing mode"
   fi
   detect_bootstrap_environment
-  printf '运行环境：%s；init：%s\n' "$TSUB_CONTAINER" "$TSUB_INIT"
-  printf '初步资源档位：%s；内存限制：%sMB\n' "$TSUB_BOOTSTRAP_TIER" "$TSUB_BOOTSTRAP_MEMORY_MB"
+  i18n_print "运行环境：$TSUB_CONTAINER；init：$TSUB_INIT" "Environment: $TSUB_CONTAINER; init: $TSUB_INIT"
+  i18n_print "初步资源档位：$TSUB_BOOTSTRAP_TIER；内存限制：${TSUB_BOOTSTRAP_MEMORY_MB}MB" "Initial resource tier: $TSUB_BOOTSTRAP_TIER; memory limit: ${TSUB_BOOTSTRAP_MEMORY_MB}MB"
 }
 
 detect_platform_capabilities() {
@@ -221,17 +221,17 @@ detect_resources() {
   case "$requested" in
     tiny) TSUB_TIER=tiny ;;
     small)
-      if [ "$TSUB_DETECTED_TIER" = tiny ]; then [ "$(kv_get runtime_confirm_higher_tier)" = true ] || die "提高资源档位需要二次确认"; fi
+      if [ "$TSUB_DETECTED_TIER" = tiny ]; then [ "$(kv_get runtime_confirm_higher_tier)" = true ] || i18n_die "提高资源档位需要二次确认" "Increasing the resource tier requires confirmation"; fi
       TSUB_TIER=small
       ;;
     standard)
-      if [ "$TSUB_DETECTED_TIER" != standard ]; then [ "$(kv_get runtime_confirm_higher_tier)" = true ] || die "提高资源档位需要二次确认"; fi
+      if [ "$TSUB_DETECTED_TIER" != standard ]; then [ "$(kv_get runtime_confirm_higher_tier)" = true ] || i18n_die "提高资源档位需要二次确认" "Increasing the resource tier requires confirmation"; fi
       TSUB_TIER=standard
       ;;
     '') : ;;
-    *) die "未知资源档位: $requested" ;;
+    *) i18n_die "未知资源档位: $requested" "Unknown resource tier: $requested" ;;
   esac
   TSUB_DISK_KB=$(df -Pk "$TSUB_STATE" 2>/dev/null | awk 'NR==2 {print $4}' || printf 0)
   TSUB_PID_LIMIT=$(cat /sys/fs/cgroup/pids.max 2>/dev/null || printf unknown)
-  printf '资源复核：%s；内存限制：%sMB；当前可用：%sMB；Swap：%s/%sMB\n' "$TSUB_TIER" "$TSUB_MEMORY_MB" "$TSUB_MEMORY_AVAILABLE_MB" "$TSUB_SWAP_USED_MB" "$TSUB_SWAP_TOTAL_MB"
+  i18n_print "资源复核：$TSUB_TIER；内存限制：${TSUB_MEMORY_MB}MB；当前可用：${TSUB_MEMORY_AVAILABLE_MB}MB；Swap：${TSUB_SWAP_USED_MB}/${TSUB_SWAP_TOTAL_MB}MB" "Resource check: $TSUB_TIER; memory limit: ${TSUB_MEMORY_MB}MB; available: ${TSUB_MEMORY_AVAILABLE_MB}MB; Swap: ${TSUB_SWAP_USED_MB}/${TSUB_SWAP_TOTAL_MB}MB"
 }

@@ -204,9 +204,11 @@ function publicDeployment(deployment) {
 }
 
 function isDeploymentReinstallable(deployment) {
-  if (!deployment || deployment.schemaVersion !== 2) return false;
-  if (deployment.status === 'offline' || ['reinstall', 'uninstall'].includes(deployment.pendingReason)) return true;
-  return !deployment.deployedAt && ['failed', 'running'].includes(deployment.status);
+  return Boolean(deployment && deployment.schemaVersion === 2 && !deployment.demo);
+}
+
+function normalizeOutputLanguage(value) {
+  return String(value || '').toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN';
 }
 
 function cloneJson(value) { return JSON.parse(JSON.stringify(value)); }
@@ -366,10 +368,7 @@ async function prepareDeploymentUpdate(storage, deployment, body, env, pendingOp
 async function supersedeDeploymentOperations(storage, deploymentId) {
   const timestamp = nowIso();
   const operations = await createDeploymentRepository(storage).listOperations(deploymentId);
-  const superseded = operations.filter(operation =>
-    ['apply', 'reinstall', 'uninstall'].includes(operation.action)
-    && !FINAL_STATUSES.has(operation.status)
-  );
+  const superseded = operations.filter(operation => ACTIONS.has(operation.action) && !FINAL_STATUSES.has(operation.status));
   for (const operation of superseded) {
     const event = { at: timestamp, status: 'failed', stage: 'superseded', message: 'Operation superseded by reinstall', resources: {} };
     operation.status = 'failed';
@@ -383,13 +382,24 @@ async function supersedeDeploymentOperations(storage, deploymentId) {
       ...(operation.callbackTokenHash ? [storage.delete(`${CALLBACK_TOKEN_PREFIX}${operation.callbackTokenHash}`)] : [])
     ]);
   }
+  if (storage.db) {
+    await storage.db.prepare(`UPDATE deployment_commands SET status = 'canceled', lease_id = NULL,
+      lease_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE deployment_id = ? AND status IN ('pending','claimed','running')`).bind(deploymentId).run();
+  }
 }
 
-function operationConfirmation(action, deploymentName) {
+function operationConfirmation(action, deploymentName, outputLanguage = 'zh-CN') {
   if (!CONFIRMED_ACTIONS.has(action)) return '';
-  const actionLabel = { apply: '安装节点', reinstall: '重新安装', update: '更新配置', repair: '修复部署', restart: '重启服务', rollback: '回滚部署', uninstall: '卸载部署' }[action];
-  const prompt = `即将在服务器执行“${actionLabel}”：${deploymentName}。输入 Y 确认：`;
-  return `printf %s ${shellQuote(prompt)}; TSUB_CONFIRM=''; IFS= read -r TSUB_CONFIRM || true; case "$TSUB_CONFIRM" in y|Y) ;; *) printf '%s\\n' '操作已取消。'; exit 0 ;; esac; `;
+  const language = normalizeOutputLanguage(outputLanguage);
+  const actionLabel = language === 'en-US'
+    ? { apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', repair: 'Repair Deployment', restart: 'Restart Service', rollback: 'Rollback Deployment', uninstall: 'Uninstall Deployment' }[action]
+    : { apply: '安装节点', reinstall: '重新安装', update: '更新配置', repair: '修复部署', restart: '重启服务', rollback: '回滚部署', uninstall: '卸载部署' }[action];
+  const prompt = language === 'en-US'
+    ? `About to run "${actionLabel}" for ${deploymentName}. Enter Y to confirm: `
+    : `即将在服务器执行“${actionLabel}”：${deploymentName}。输入 Y 确认：`;
+  const canceled = language === 'en-US' ? 'Operation canceled.' : '操作已取消。';
+  return `printf %s ${shellQuote(prompt)}; TSUB_CONFIRM=''; IFS= read -r TSUB_CONFIRM || true; case "$TSUB_CONFIRM" in y|Y) ;; *) printf '%s\\n' ${shellQuote(canceled)}; exit 0 ;; esac; `;
 }
 
 function publicOperation(operation) {
@@ -679,8 +689,9 @@ function coreAssetLines(core, runtime, env) {
   return { version: descriptor.version, lines };
 }
 
-export function compileBootstrapConfig(config, callbackToken, callbackUrl, deploymentId, env, agentToken = '', agentMode = agentToken ? 'remote' : 'none', controllerBase = callbackUrl, configRevision = 0) {
+export function compileBootstrapConfig(config, callbackToken, callbackUrl, deploymentId, env, agentToken = '', agentMode = agentToken ? 'remote' : 'none', controllerBase = callbackUrl, configRevision = 0, outputLanguage = 'zh-CN') {
   const core = config.runtime.core;
+  const normalizedOutputLanguage = normalizeOutputLanguage(outputLanguage);
   const compiledCoreConfig = compileCoreConfig(config);
   const coreConfig = typeof compiledCoreConfig === 'string' ? compiledCoreConfig : JSON.stringify(compiledCoreConfig);
   const nodes = compileNodeUrls(config).join('\n');
@@ -718,7 +729,7 @@ export function compileBootstrapConfig(config, callbackToken, callbackUrl, deplo
     if (scheme === 'vmess') {
       try { nodeName = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(url.slice('vmess://'.length)), character => character.charCodeAt(0)))).ps || nodeName; } catch { /* keep fallback */ }
     }
-    return `${nodeName}（${protocol}）\n${url}`;
+    return normalizedOutputLanguage === 'en-US' ? `${nodeName} (${protocol})\n${url}` : `${nodeName}（${protocol}）\n${url}`;
   }).join('\n\n');
   const detected = config.subscription.resolvedAddresses || {};
   const pushMode = config.subscription.server.pushAddressMode || 'auto';
@@ -728,7 +739,7 @@ export function compileBootstrapConfig(config, callbackToken, callbackUrl, deplo
     ? new URL(`/api/deploy/subscriptions/${deploymentId}/${config.subscription.server.token}`, controllerBase).toString()
     : '';
   return [
-    'schema_version=2', `config_revision=${Number.isSafeInteger(Number(configRevision)) ? Number(configRevision) : 0}`, `runtime_tier=${tier}`, `runtime_tier_mode=${config.runtime.tier}`, `runtime_confirm_higher_tier=${config.runtime.confirmHigherTier}`, `runtime_core=${core}`, `runtime_channel=${config.runtime.channel}`,
+    'schema_version=2', `config_revision=${Number.isSafeInteger(Number(configRevision)) ? Number(configRevision) : 0}`, `runtime_output_language=${normalizedOutputLanguage}`, `runtime_tier=${tier}`, `runtime_tier_mode=${config.runtime.tier}`, `runtime_confirm_higher_tier=${config.runtime.confirmHigherTier}`, `runtime_core=${core}`, `runtime_channel=${config.runtime.channel}`,
     `control_command=${config.runtime.controlCommand || 'tsub'}`,
     `${core}_version=${mainAsset.version}`,
     `inbound_count=${config.inbounds.length}`, `tunnel_count=${config.tunnels.length}`,
@@ -773,7 +784,17 @@ export function buildBootstrapScript(operation, config, callbackToken, origin, e
   const runtimeUrl = new URL(RUNTIME_MANIFEST.path, origin);
   runtimeUrl.searchParams.set('v', RUNTIME_MANIFEST.sha256);
   const callbackUrl = new URL('/api/deploy/events', origin).toString();
-  const compiled = compileBootstrapConfig(config, callbackToken, callbackUrl, operation.deploymentId, env, agentToken, agentToken ? 'remote' : 'none', callbackUrl, configRevision);
+  const outputLanguage = normalizeOutputLanguage(operation.outputLanguage);
+  const compiled = compileBootstrapConfig(config, callbackToken, callbackUrl, operation.deploymentId, env, agentToken, agentToken ? 'remote' : 'none', callbackUrl, configRevision, outputLanguage);
+  const bootstrapText = outputLanguage === 'en-US' ? {
+    preflight: 'TSub Proxy system preflight: %s (ID=%s, version=%s)\\n', architecture: 'TSub Proxy CPU architecture: %s\\n',
+    downloading: 'Downloading the TSub Runtime, please wait...', downloadFailed: 'TSub Proxy download failed',
+    verifying: 'Verifying the TSub Runtime...', checksumFailed: 'TSub Proxy SHA-256 verification failed'
+  } : {
+    preflight: 'TSub Proxy 系统预检：%s（ID=%s，版本=%s）\\n', architecture: 'TSub Proxy CPU 架构：%s\\n',
+    downloading: '正在下载 TSub Runtime，请稍候...', downloadFailed: 'TSub Proxy 下载失败',
+    verifying: '正在校验 TSub Runtime...', checksumFailed: 'TSub Proxy SHA-256 校验失败'
+  };
   return `#!/bin/sh
 set -eu
 umask 077
@@ -788,16 +809,18 @@ if [ -r /etc/os-release ]; then
   done </etc/os-release
 fi
 [ "$BOOTSTRAP_PRETTY" != unknown ] || BOOTSTRAP_PRETTY=$BOOTSTRAP_OS
-printf 'TSub Proxy 系统预检：%s（ID=%s，版本=%s）\\n' "$BOOTSTRAP_PRETTY" "$BOOTSTRAP_OS" "$BOOTSTRAP_VERSION"
-printf 'TSub Proxy CPU 架构：%s\\n' "$(uname -m 2>/dev/null || printf unknown)"
+printf ${shellQuote(bootstrapText.preflight)} "$BOOTSTRAP_PRETTY" "$BOOTSTRAP_OS" "$BOOTSTRAP_VERSION"
+printf ${shellQuote(bootstrapText.architecture)} "$(uname -m 2>/dev/null || printf unknown)"
 TMP_DIR=$(mktemp -d "\${TMPDIR:-/tmp}/tsub-bootstrap.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
 RUNTIME="$TMP_DIR/tsub-proxy.sh"
 CONFIG="$TMP_DIR/bootstrap.conf"
 download() { if command -v curl >/dev/null 2>&1; then curl -fL --retry 2 -o "$RUNTIME" ${shellQuote(runtimeUrl.toString())}; elif command -v wget >/dev/null 2>&1; then wget -O "$RUNTIME" ${shellQuote(runtimeUrl.toString())}; else return 127; fi; }
 hash_file() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'; elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'; elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | awk '{print $NF}'; else return 127; fi; }
-download || { echo 'TSub Proxy 下载失败' >&2; exit 1; }
-[ "$(hash_file "$RUNTIME")" = ${shellQuote(RUNTIME_MANIFEST.sha256)} ] || { echo 'TSub Proxy SHA-256 校验失败' >&2; exit 1; }
+printf '%s\\n' ${shellQuote(bootstrapText.downloading)}
+download || { echo ${shellQuote(bootstrapText.downloadFailed)} >&2; exit 1; }
+printf '%s\\n' ${shellQuote(bootstrapText.verifying)}
+[ "$(hash_file "$RUNTIME")" = ${shellQuote(RUNTIME_MANIFEST.sha256)} ] || { echo ${shellQuote(bootstrapText.checksumFailed)} >&2; exit 1; }
 cat >"$CONFIG" <<'TSUB_CONFIG_EOF'
 ${compiled}
 TSUB_CONFIG_EOF
@@ -881,24 +904,38 @@ function buildDeployPrepareScript(request, operation, deployment) {
   const origin = new URL(request.url).origin;
   const bootstrapUrl = new URL('/api/deploy/bootstrap', origin).toString();
   const probeUrl = new URL(`/api/deploy/address/${operation.id}`, origin).toString();
-  const actionLabel = {
-    apply: '安装节点', reinstall: '重新安装', update: '更新配置', repair: '修复部署', restart: '重启服务',
-    rollback: '回滚部署', uninstall: '卸载部署', plan: '预检部署', status: '查看状态',
-    list: '显示节点', doctor: '诊断部署'
-  }[operation.action] || operation.action;
+  const outputLanguage = normalizeOutputLanguage(operation.outputLanguage);
+  const prepareText = outputLanguage === 'en-US' ? {
+    actionLabels: {
+      apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', repair: 'Repair Deployment', restart: 'Restart Service',
+      rollback: 'Rollback Deployment', uninstall: 'Uninstall Deployment', plan: 'Check Deployment', status: 'View Status',
+      list: 'Show Nodes', doctor: 'Diagnose Deployment'
+    },
+    prompt: actionLabel => `About to run "${actionLabel}" for ${deployment.name}. Enter Y to confirm: `,
+    canceled: 'Operation canceled.', missingToken: 'Missing one-time deployment token.', missingDownloader: 'curl or wget must be installed.'
+  } : {
+    actionLabels: {
+      apply: '安装节点', reinstall: '重新安装', update: '更新配置', repair: '修复部署', restart: '重启服务',
+      rollback: '回滚部署', uninstall: '卸载部署', plan: '预检部署', status: '查看状态',
+      list: '显示节点', doctor: '诊断部署'
+    },
+    prompt: actionLabel => `即将在服务器执行“${actionLabel}”：${deployment.name}。输入 Y 确认：`,
+    canceled: '操作已取消。', missingToken: '缺少一次性部署 Token。', missingDownloader: '需要预先安装 curl 或 wget。'
+  };
+  const actionLabel = prepareText.actionLabels[operation.action] || operation.action;
   const confirmation = CONFIRMED_ACTIONS.has(operation.action) ? `
-printf '%s' ${shellQuote(`即将在服务器执行“${actionLabel}”：${deployment.name}。输入 Y 确认：`)}
+printf '%s' ${shellQuote(prepareText.prompt(actionLabel))}
 TSUB_CONFIRM=''
 if [ -r /dev/tty ]; then IFS= read -r TSUB_CONFIRM </dev/tty || true; fi
 case "$TSUB_CONFIRM" in
   y|Y) ;;
-  *) printf '%s\\n' '操作已取消。'; exit 0 ;;
+  *) printf '%s\\n' ${shellQuote(prepareText.canceled)}; exit 0 ;;
 esac
 ` : '';
   return `#!/bin/sh
 set -u
 umask 077
-: "\${TSUB_TOKEN:?缺少一次性部署 Token。}"
+: "\${TSUB_TOKEN:?${prepareText.missingToken}}"
 ${confirmation}TSUB_BOOTSTRAP=$(mktemp) || exit 1
 chmod 600 "$TSUB_BOOTSTRAP"
 trap 'rm -f "$TSUB_BOOTSTRAP"' EXIT HUP INT TERM
@@ -919,7 +956,7 @@ elif command -v wget >/dev/null 2>&1; then
     TSUB_ATTEMPT=$((TSUB_ATTEMPT + 1)); [ "$TSUB_ATTEMPT" -lt 12 ] || exit 1; sleep 5
   done
 else
-  printf '%s\\n' '需要预先安装 curl 或 wget。' >&2
+  printf '%s\\n' ${shellQuote(prepareText.missingDownloader)} >&2
   exit 1
 fi
 /bin/sh "$TSUB_BOOTSTRAP"
@@ -1500,7 +1537,7 @@ export async function handleDeployAgentCommandConfig(request, env, commandId) {
     const config = resolveBootstrapConfig(storedConfig, '', deployment.resolvedAddresses || {});
     const controllerBase = env.TSUB_PUBLIC_URL || request.url;
     const localExecutor = deployment.controlTransport === 'local-executor';
-    const compiled = compileBootstrapConfig(config, '', '', deployment.id, env, localExecutor ? '' : parseBearer(request), localExecutor ? 'local' : 'remote', controllerBase, deployment.configRevision || 1);
+    const compiled = compileBootstrapConfig(config, '', '', deployment.id, env, localExecutor ? '' : parseBearer(request), localExecutor ? 'local' : 'remote', controllerBase, deployment.configRevision || 1, operation.outputLanguage);
     await storage.db.prepare(`UPDATE deployment_commands SET status = 'running', updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND status = 'claimed'`).bind(commandId).run();
     return new Response(compiled, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -1524,7 +1561,7 @@ export async function handleDeployAgentCommandEvents(request, env, commandId) {
   return result.error ? agentError(result.error) : createJsonResponse({ success: true, data: result }, 200, { 'Cache-Control': 'no-store' });
 }
 
-async function createOperation(request, storage, deployment, action, env) {
+async function createOperation(request, storage, deployment, action, env, options = {}) {
   if (!ACTIONS.has(action)) return createErrorResponse('Unsupported deployment action', 400);
   const bootstrapToken = randomToken(); const callbackToken = randomToken();
   const bootstrapTokenHash = await sha256(bootstrapToken); const callbackTokenHash = await sha256(callbackToken);
@@ -1532,6 +1569,7 @@ async function createOperation(request, storage, deployment, action, env) {
   const operation = {
     id: randomId('op'), deploymentId: deployment.id, action, status: 'pending', bootstrapTokenHash, callbackTokenHash,
     configRevision: Number.isSafeInteger(deployment.configRevision) ? deployment.configRevision : 1,
+    outputLanguage: normalizeOutputLanguage(options.outputLanguage),
     events: [], createdAt, updatedAt: createdAt, expiresAt: new Date(Date.now() + TOKEN_TTL_MS).toISOString()
   };
   const capabilities = await getPlatformCapabilities(env);
@@ -1550,7 +1588,7 @@ async function createOperation(request, storage, deployment, action, env) {
   const runUrl = new URL('/api/deploy/run.sh', request.url).toString();
   const probeUrl = new URL(`/api/deploy/address/${operation.id}`, request.url).toString();
   const header = shellQuote(`Authorization: Bearer ${bootstrapToken}`);
-  const retryPrefix = `(${operationConfirmation(action, deployment.name)}TSUB_BOOTSTRAP=$(mktemp) || exit 1; chmod 600 "$TSUB_BOOTSTRAP"; trap 'rm -f "$TSUB_BOOTSTRAP"' EXIT HUP INT TERM; TSUB_ATTEMPT=0; until `;
+  const retryPrefix = `(${operationConfirmation(action, deployment.name, operation.outputLanguage)}TSUB_BOOTSTRAP=$(mktemp) || exit 1; chmod 600 "$TSUB_BOOTSTRAP"; trap 'rm -f "$TSUB_BOOTSTRAP"' EXIT HUP INT TERM; TSUB_ATTEMPT=0; until `;
   const retrySuffix = `; do TSUB_ATTEMPT=$((TSUB_ATTEMPT + 1)); [ "$TSUB_ATTEMPT" -lt 12 ] || exit 1; sleep 5; done; /bin/sh "$TSUB_BOOTSTRAP")`;
   const probePrefix = `curl -4 -fsS -X POST -H ${header} ${shellQuote(probeUrl)} >/dev/null 2>&1 || true; curl -6 -fsS -X POST -H ${header} ${shellQuote(probeUrl)} >/dev/null 2>&1 || true; `;
   const diagnosticCommand = `${retryPrefix}${probePrefix}curl -fsSL -H ${header} -o "$TSUB_BOOTSTRAP" ${shellQuote(bootstrapUrl)}${retrySuffix}`;
@@ -1630,7 +1668,7 @@ export async function handleDeploymentsRequest(request, env, path) {
     };
     await writeDeployment(storage, deployment);
     if (body.createCommand === false) return createJsonResponse({ success: true, data: { deployment: publicDeployment(deployment) } }, 201);
-    const response = await createOperation(request, storage, deployment, 'apply', env); const result = await response.json();
+    const response = await createOperation(request, storage, deployment, 'apply', env, { outputLanguage: body.outputLanguage }); const result = await response.json();
     return createJsonResponse({ success: true, data: { deployment: publicDeployment(deployment), ...result.data } }, 201);
   }
   const demoDeployment = id ? (demoData?.deployments || []).find(item => item.id === id) : null;
@@ -1801,7 +1839,7 @@ export async function handleDeploymentsRequest(request, env, path) {
       deployment.updatedAt = nowIso();
       await writeDeployment(storage, deployment);
     }
-    return createOperation(request, storage, deployment, action, env);
+    return createOperation(request, storage, deployment, action, env, { outputLanguage: body.outputLanguage });
   }
   if (child === 'transfer-claim' && request.method === 'POST') {
     try {
@@ -1865,7 +1903,7 @@ export async function handleDeploymentsRequest(request, env, path) {
       if (['transfer-controller', 'edge-probe'].includes(action)) return createErrorResponse('Use the dedicated endpoint for this action', 400);
       if (!REMOTE_ACTIONS.has(action)) return createErrorResponse('Unsupported remote action', 400);
       const timestamp = nowIso();
-      const operation = { id: randomId('op'), deploymentId: deployment.id, action, status: 'pending', delivery: 'agent', events: [], createdAt: timestamp, updatedAt: timestamp, expiresAt: new Date(Date.now() + TOKEN_TTL_MS).toISOString() };
+      const operation = { id: randomId('op'), deploymentId: deployment.id, action, status: 'pending', delivery: 'agent', outputLanguage: normalizeOutputLanguage(body.outputLanguage), events: [], createdAt: timestamp, updatedAt: timestamp, expiresAt: new Date(Date.now() + TOKEN_TTL_MS).toISOString() };
       try {
         if (action === 'update' && body.config) {
           const { currentRevision, nextDeployment } = await prepareDeploymentUpdate(storage, deployment, body, env, operation.id);
@@ -1893,7 +1931,7 @@ export async function handleDeploymentsRequest(request, env, path) {
         return createJsonResponse({ success: true, data: { operation: publicOperation(operation), command } }, 202);
       } catch (error) { return createJsonResponse({ success: false, error: error.code || 'remote_command_failed', message: error.message }, error.status || 400); }
     }
-    return createOperation(request, storage, deployment, String(body.action || ''), env);
+    return createOperation(request, storage, deployment, String(body.action || ''), env, { outputLanguage: body.outputLanguage });
   }
   if (child === 'operations' && request.method === 'GET') {
     const operations = (await readCollection(storage, OPERATIONS_KEY)).filter(item => item.deploymentId === deployment.id).map(publicOperation);

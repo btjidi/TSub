@@ -6,16 +6,16 @@ ensure_tunnel_binary() {
   fi
   version=$(kv_get cloudflared_version); version=${version:-stable}
   expected=$(component_binary_sha cloudflared)
-  [ -n "$expected" ] || die "cloudflared/$TSUB_ARCH 缺少 SHA-256"
+  [ -n "$expected" ] || i18n_die "cloudflared/$TSUB_ARCH 缺少 SHA-256" "cloudflared/$TSUB_ARCH is missing a SHA-256"
   TSUB_TUNNEL_BIN="$TSUB_BIN/cloudflared-$version-$TSUB_ARCH-$expected"
   if [ -x "$TSUB_TUNNEL_BIN" ] && [ "$(sha256_file "$TSUB_TUNNEL_BIN")" != "$expected" ]; then rm -f "$TSUB_TUNNEL_BIN"; fi
   [ -x "$TSUB_TUNNEL_BIN" ] || verify_download cloudflared "$TSUB_TUNNEL_BIN"
   index=1
   while [ "$index" -le "$count" ]; do
     if [ "$(kv_get "tunnel_${index}_type")" = named ]; then
-      b64_decode_file "tunnel_${index}_token_b64" "$TSUB_STATE/tunnel-$index.token" || die "Tunnel Token 解码失败"
+      b64_decode_file "tunnel_${index}_token_b64" "$TSUB_STATE/tunnel-$index.token" || i18n_die "Tunnel Token 解码失败" "Failed to decode the tunnel token"
     elif [ "$(kv_get "tunnel_${index}_type")" = quick ]; then
-      b64_decode_file push_token_b64 "$TSUB_STATE/quick-tunnel.token" || die "Quick Tunnel 回传凭证解码失败"
+      b64_decode_file push_token_b64 "$TSUB_STATE/quick-tunnel.token" || i18n_die "Quick Tunnel 回传凭证解码失败" "Failed to decode the Quick Tunnel callback credential"
     fi
     index=$((index + 1))
   done

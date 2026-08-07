@@ -21,7 +21,7 @@ push_snapshot() {
   [ "$push_previous_generation" = "$push_generation" ] || push_sequence=0
   push_sequence=$((push_sequence + 1))
   push_token_file="$TSUB_TMP/push.token"
-  b64_decode_file push_token_b64 "$push_token_file" || { log WARN "主动推送凭证不可用"; return 1; }
+  b64_decode_file push_token_b64 "$push_token_file" || { i18n_log WARN "主动推送凭证不可用" "Push credential is unavailable"; return 1; }
   push_token=$(cat "$push_token_file")
   push_upload=$(traffic_number "$(traffic_state_get upload_total)")
   push_download=$(traffic_number "$(traffic_state_get download_total)")
@@ -91,14 +91,14 @@ push_snapshot() {
     atomic_install "$push_state_tmp" "$TSUB_STATE/push.state" 600
     return 0
   fi
-  log WARN "主动推送失败，已重试 $push_attempt 次"
+  i18n_log WARN "主动推送失败，已重试 $push_attempt 次" "Push failed after $push_attempt attempts"
   return 1
 }
 
 push_uninstall_event() {
   push_enabled || return 0
   push_token_file="$TSUB_TMP/push-uninstall.token"
-  b64_decode_file push_token_b64 "$push_token_file" || { log WARN "卸载状态上报凭证不可用"; return 1; }
+  b64_decode_file push_token_b64 "$push_token_file" || { i18n_log WARN "卸载状态上报凭证不可用" "Uninstall status reporting credential is unavailable"; return 1; }
   push_token=$(cat "$push_token_file")
   push_file="$TSUB_TMP/push-uninstall.event"
   printf 'pushGeneration=%s\nevent=uninstall\n' "$(kv_get push_generation)" >"$push_file"
@@ -123,7 +123,7 @@ push_uninstall_event() {
     [ "$push_sent" = false ] || return 0
     [ "$push_attempt" -ge 3 ] || sleep 3
   done
-  log WARN "卸载状态上报失败，主控可能暂时保留在线状态"
+  i18n_log WARN "卸载状态上报失败，主控可能暂时保留在线状态" "Uninstall status reporting failed; the controller may temporarily keep the deployment online"
   return 1
 }
 
@@ -167,7 +167,7 @@ EOF
     atomic_install "$push_periodic" /etc/periodic/15min/tsub-push 700
   elif have crontab; then
     if ! scheduler_is_running; then
-      start_scheduler_service || { add_degraded_reason "主动推送定时服务未运行"; return 0; }
+      start_scheduler_service || { i18n_degraded "主动推送定时服务未运行" "The scheduled push service is not running"; return 0; }
     fi
     push_cron="$TSUB_TMP/push.cron"
     crontab -l >"$push_cron" 2>/dev/null || :
@@ -176,9 +176,9 @@ EOF
     else push_schedule="*/$push_interval * * * *"; fi
     printf '%s %s\n' "$push_schedule" "$push_command" >>"$push_cron.new"
     crontab "$push_cron.new"
-    scheduler_is_running || add_degraded_reason "主动推送定时服务未运行"
+    scheduler_is_running || i18n_degraded "主动推送定时服务未运行" "The scheduled push service is not running"
   else
-    add_degraded_reason "没有主动推送定时入口"
+    i18n_degraded "没有主动推送定时入口" "No scheduled push entry point is available"
   fi
 }
 

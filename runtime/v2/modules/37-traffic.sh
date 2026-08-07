@@ -271,7 +271,7 @@ traffic_apply_rules() {
   if [ "$traffic_installed" = true ]; then
     traffic_mark_instance
   elif ! traffic_select_core_backend; then
-    add_degraded_reason "当前核心不支持低资源流量统计"
+    i18n_degraded "当前核心不支持低资源流量统计" "The current core does not support low-resource traffic statistics"
   fi
   printf '%s\n' "$traffic_ports" >"$TSUB_STATE/traffic.ports"
   [ -f "$TSUB_STATE/traffic.state" ] || traffic_write_state 0 0 0 0 unavailable unknown
@@ -313,7 +313,7 @@ traffic_ensure_rules() {
   if [ "$traffic_backend_value" = core-singbox ] || [ "$traffic_backend_value" = core-xray ]; then
     if traffic_read_raw >/dev/null 2>&1; then return 0; fi
     printf '%s\n' unavailable >"$TSUB_STATE/traffic.backend"
-    add_degraded_reason "代理核心流量统计接口不可用"
+    i18n_degraded "代理核心流量统计接口不可用" "The proxy core traffic statistics API is unavailable"
     return 0
   fi
   traffic_apply_rules
@@ -321,10 +321,10 @@ traffic_ensure_rules() {
   if [ "$traffic_backend_value" = core-singbox ] || [ "$traffic_backend_value" = core-xray ]; then
     if ! traffic_read_raw >/dev/null 2>&1; then
       printf '%s\n' unavailable >"$TSUB_STATE/traffic.backend"
-      add_degraded_reason "代理核心流量统计接口不可用"
+      i18n_degraded "代理核心流量统计接口不可用" "The proxy core traffic statistics API is unavailable"
     fi
   elif [ "$traffic_backend_value" = unavailable ]; then
-    add_degraded_reason "流量统计后端不可用"
+    i18n_degraded "流量统计后端不可用" "The traffic statistics backend is unavailable"
   fi
 }
 
@@ -368,7 +368,7 @@ EOF
     printf '*/15 * * * * %s\n' "$traffic_command" >>"$traffic_cron.new"
     crontab "$traffic_cron.new"
   else
-    add_degraded_reason "没有流量统计定时入口"
+    i18n_degraded "没有流量统计定时入口" "No traffic statistics scheduler is available"
   fi
 }
 

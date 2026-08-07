@@ -28,7 +28,7 @@ apply_runtime() {
           install_service_definition
           service_start || true
         fi
-        die "组件更新健康检查失败，已恢复上一核心"
+        i18n_die "组件更新健康检查失败，已恢复上一核心" "Component update health check failed; the previous core was restored"
       fi
       [ -z "$TSUB_PREVIOUS_CORE" ] || printf '%s\n' "$TSUB_PREVIOUS_CORE" >"$TSUB_STATE/core.previous.identity"
       printf '%s\n' "$TSUB_CORE_BIN" >"$TSUB_STATE/core.identity"
@@ -39,8 +39,8 @@ apply_runtime() {
     TSUB_CURRENT_RSS=$(process_rss_mb)
     unchanged_tunnel_rss=$(tunnel_health_rss 2>/dev/null || printf 0)
     TSUB_CURRENT_RSS=$((TSUB_CURRENT_RSS + unchanged_tunnel_rss))
-    push_snapshot || add_degraded_reason "首次主动推送失败"
-    emit_event succeeded "configuration unchanged"
+    push_snapshot || i18n_degraded "首次主动推送失败" "Initial push failed"
+    emit_event succeeded "$(i18n_text '配置未发生变化' 'Configuration unchanged')"
     return 0
   fi
   [ "${TSUB_CORE_DOWNLOADED:-false}" != true ] || require_install_headroom
@@ -57,11 +57,11 @@ apply_runtime() {
   atomic_install "$apply_candidate" "$TSUB_ETC/config.json" 600
   if ! firewall_ports_apply "$(kv_get inbound_ports)"; then
     firewall_restore
-    die "防火墙事务失败"
+    i18n_die "端口放行规则事务失败" "Port allow rule transaction failed"
   fi
   if ! firewall_hops_apply "$(kv_get udp_hop_rules)"; then
     firewall_restore
-    die "Hysteria2 端口跳跃规则安装失败"
+    i18n_die "Hysteria2 端口跳跃规则安装失败" "Failed to install Hysteria2 port hopping rules"
   fi
   traffic_apply_rules
   prepare_service_identity
@@ -82,7 +82,7 @@ apply_runtime() {
       fi
       service_start || true
     fi
-    die "事务切换失败，旧配置已恢复"
+    i18n_die "事务切换失败，旧配置已恢复" "Transaction switch failed; the previous configuration was restored"
   fi
   export_nodes
   [ -z "$TSUB_PREVIOUS_CORE" ] || printf '%s\n' "$TSUB_PREVIOUS_CORE" >"$TSUB_STATE/core.previous.identity"
@@ -90,12 +90,16 @@ apply_runtime() {
   printf '%s\n' "$subscription_candidate_hash" >"$TSUB_STATE/subscription.config.hash"
   printf '%s\n' "$tunnel_candidate_hash" >"$TSUB_STATE/tunnel.config.hash"
   persist_runtime
-  push_snapshot || add_degraded_reason "首次主动推送失败"
-  emit_event succeeded "apply completed${TSUB_DEGRADED_REASON:+; degraded: $TSUB_DEGRADED_REASON}"
+  push_snapshot || i18n_degraded "首次主动推送失败" "Initial push failed"
+  apply_event_message=$(i18n_text '配置应用完成' 'Apply completed')
+  if [ -n "${TSUB_DEGRADED_REASON:-}" ]; then
+    apply_event_message="$apply_event_message; $(i18n_text '降级' 'degraded'): $TSUB_DEGRADED_REASON"
+  fi
+  emit_event succeeded "$apply_event_message"
 }
 
 rollback_runtime() {
-  [ -f "$TSUB_STATE/config.previous.json" ] || die "没有可回滚快照"
+  [ -f "$TSUB_STATE/config.previous.json" ] || i18n_die "没有可回滚快照" "No rollback snapshot is available"
   traffic_checkpoint
   service_stop
   cp "$TSUB_ETC/config.json" "$TSUB_TX/config.failed.json" 2>/dev/null || true
@@ -113,7 +117,7 @@ rollback_runtime() {
   firewall_hops_apply "$(cat "$TSUB_STATE/firewall.previous.hops.rules" 2>/dev/null || true)" || true
   service_start
   health_check
-  emit_event succeeded "rollback completed"
+  emit_event succeeded "$(i18n_text '回滚完成' 'Rollback completed')"
 }
 
 uninstall_runtime() {
@@ -127,6 +131,6 @@ uninstall_runtime() {
   rm -f "$TSUB_ETC/config.json" "$TSUB_STATE/core.pid"
   remove_maintenance
   rm -f "$TSUB_STATE/deployment-time"
-  emit_event succeeded "uninstall completed"
-  printf 'TSub Proxy 卸载成功\n'
+  emit_event succeeded "$(i18n_text '卸载完成' 'Uninstall completed')"
+  i18n_print 'TSub Proxy 卸载成功' 'TSub Proxy uninstalled successfully'
 }

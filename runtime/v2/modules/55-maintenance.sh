@@ -16,7 +16,7 @@ persist_runtime() {
     [ -z "$persist_agent_value" ] || printf '%s=%s\n' "$persist_agent_key" "$persist_agent_value" >>"$TSUB_TMP/runtime.conf"
   done
   atomic_install "$TSUB_TMP/runtime.conf" "$persistent_config" 600
-  if ! install_control_command "$runtime_target" "$persistent_config"; then add_degraded_reason "服务器控制命令安装失败，可直接运行 $runtime_target menu"; fi
+  if ! install_control_command "$runtime_target" "$persistent_config"; then i18n_degraded "服务器控制命令安装失败，可直接运行 $runtime_target menu" "Server control command installation failed; run $runtime_target menu directly"; fi
   install_maintenance "$runtime_target" "$persistent_config"
   remove_traffic_maintenance
   install_push_maintenance "$runtime_target" "$persistent_config"
@@ -66,7 +66,7 @@ EOF
     printf '17 4 * * * %s\n' "$maintenance_command" >>"$cron_file.new"
     crontab "$cron_file.new"
   else
-    log WARN "没有可用的定时入口，证书需要手动 update/repair"
+    i18n_log WARN "没有可用的定时入口，证书需要手动 update/repair" "No scheduler is available; certificates require manual update/repair"
   fi
 }
 

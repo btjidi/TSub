@@ -139,30 +139,30 @@ ensure_dependencies() {
   dependency_action=$1
   detect_required_dependencies "$dependency_action"
   if [ -z "$TSUB_MISSING_DEPENDENCIES" ]; then
-    printf '依赖检查：已满足当前操作所需能力，无需安装\n'
+    i18n_print '依赖检查：已满足当前操作所需能力，无需安装' 'Dependency check: all capabilities required for this operation are available; nothing to install'
     return 0
   fi
-  printf '依赖检查：缺少 %s\n' "$TSUB_MISSING_DEPENDENCIES"
+  i18n_print "依赖检查：缺少 $TSUB_MISSING_DEPENDENCIES" "Dependency check: missing $TSUB_MISSING_DEPENDENCIES"
   if [ "$dependency_action" = plan ]; then
-    printf '计划模式不会修改系统；建议安装软件包：%s\n' "${TSUB_REQUIRED_PACKAGES:-无法自动映射}"
+    i18n_print "计划模式不会修改系统；建议安装软件包：${TSUB_REQUIRED_PACKAGES:-无法自动映射}" "Plan mode will not modify the system; suggested packages: ${TSUB_REQUIRED_PACKAGES:-no automatic mapping available}"
     return 2
   fi
-  case "$dependency_action" in apply|update|repair) : ;; *) printf '当前操作不会自动安装依赖\n'; return 2 ;; esac
+  case "$dependency_action" in apply|update|repair) : ;; *) i18n_print '当前操作不会自动安装依赖' 'This operation does not install dependencies automatically'; return 2 ;; esac
   dependency_manager=$(dependency_package_manager 2>/dev/null || true)
-  [ -n "$dependency_manager" ] || { printf '无法为该系统选择受支持的包管理器；请手动补齐：%s\n' "$TSUB_MISSING_DEPENDENCIES" >&2; return 2; }
+  [ -n "$dependency_manager" ] || { i18n_print "无法为该系统选择受支持的包管理器；请手动补齐：$TSUB_MISSING_DEPENDENCIES" "No supported package manager is available for this system; install manually: $TSUB_MISSING_DEPENDENCIES" >&2; return 2; }
   TSUB_DEPENDENCY_USE_SUDO=false
   if [ "$(id -u)" -ne 0 ]; then
     if have sudo && sudo -n true >/dev/null 2>&1; then TSUB_DEPENDENCY_USE_SUDO=true
-    else printf '无法无交互提权。请安装：%s\n' "$TSUB_REQUIRED_PACKAGES" >&2; return 2; fi
+    else i18n_print "无法无交互提权。请安装：$TSUB_REQUIRED_PACKAGES" "Cannot elevate privileges non-interactively. Install: $TSUB_REQUIRED_PACKAGES" >&2; return 2; fi
   fi
-  printf '依赖安装：使用 %s 最小化安装 %s\n' "$dependency_manager" "$TSUB_REQUIRED_PACKAGES"
+  i18n_print "依赖安装：使用 $dependency_manager 最小化安装 $TSUB_REQUIRED_PACKAGES" "Dependency installation: using $dependency_manager to minimally install $TSUB_REQUIRED_PACKAGES"
   dependency_attempt=1
   while ! install_required_dependencies_once "$dependency_manager"; do
-    [ "$dependency_attempt" -lt 2 ] || { printf '依赖安装失败\n' >&2; return 2; }
+    [ "$dependency_attempt" -lt 2 ] || { i18n_print '依赖安装失败' 'Dependency installation failed' >&2; return 2; }
     dependency_attempt=$((dependency_attempt + 1))
-    printf '依赖安装失败，正在进行最后一次重试\n' >&2
+    i18n_print '依赖安装失败，正在进行最后一次重试' 'Dependency installation failed; making one final attempt' >&2
   done
   detect_required_dependencies "$dependency_action"
-  [ -z "$TSUB_MISSING_DEPENDENCIES" ] || { printf '依赖安装后仍缺少：%s\n' "$TSUB_MISSING_DEPENDENCIES" >&2; return 2; }
-  printf '依赖安装：完成\n'
+  [ -z "$TSUB_MISSING_DEPENDENCIES" ] || { i18n_print "依赖安装后仍缺少：$TSUB_MISSING_DEPENDENCIES" "Still missing after dependency installation: $TSUB_MISSING_DEPENDENCIES" >&2; return 2; }
+  i18n_print '依赖安装：完成' 'Dependency installation completed'
 }

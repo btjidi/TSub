@@ -11,7 +11,7 @@ prepare_service_identity() {
     elif have adduser; then adduser -S -D -H -s /sbin/nologin tsub >/dev/null 2>&1 || true
     fi
   fi
-  if ! id tsub >/dev/null 2>&1; then TSUB_DEGRADED_REASON="无法创建 tsub 系统用户，服务将以 root 运行"; return 0; fi
+  if ! id tsub >/dev/null 2>&1; then i18n_degraded "无法创建 tsub 系统用户，服务将以 root 运行" "The tsub system user could not be created; the service will run as root"; return 0; fi
   TSUB_SERVICE_USER=tsub
   low_port=false
   old_ifs=$IFS; IFS=,
@@ -20,11 +20,11 @@ prepare_service_identity() {
   if [ "$low_port" = true ] && [ "$TSUB_INIT" != systemd ]; then
     if have setcap; then setcap cap_net_bind_service=+ep "$TSUB_CORE_BIN" || TSUB_SERVICE_USER=''
     else TSUB_SERVICE_USER=''; fi
-    [ -n "$TSUB_SERVICE_USER" ] || TSUB_DEGRADED_REASON="当前 init 缺少低端口降权能力，服务将以 root 运行"
+    [ -n "$TSUB_SERVICE_USER" ] || i18n_degraded "当前 init 缺少低端口降权能力，服务将以 root 运行" "The current init system cannot drop privileges for low ports; the service will run as root"
   fi
   if [ -n "$TSUB_SERVICE_USER" ] && [ "$TSUB_INIT" != systemd ] && [ "$TSUB_INIT" != openrc ] && ! have su-exec && ! setpriv_supports_identity && ! have runuser && ! have chpst && ! have s6-setuidgid; then
     TSUB_SERVICE_USER=''
-    TSUB_DEGRADED_REASON="未找到可用降权工具，服务将以 root 运行"
+    i18n_degraded "未找到可用降权工具，服务将以 root 运行" "No privilege-dropping tool was found; the service will run as root"
   fi
   [ -n "$TSUB_SERVICE_USER" ] || return 0
   service_group=$(id -gn "$TSUB_SERVICE_USER")
@@ -108,10 +108,16 @@ stop_managed_core_processes() {
 service_start() {
   core=$(active_core)
   config="$TSUB_ETC/config.json"
+  i18n_print "正在启用并启动 TSub 核心服务，请稍候..." "Enabling and starting the TSub core service, please wait..."
   case "$TSUB_INIT" in
     systemd)
-      systemctl daemon-reload
-      systemctl enable --now tsub-core.service
+      systemd_output="$TSUB_TMP/systemd-start.out"
+      : >"$systemd_output"
+      if ! systemctl daemon-reload >"$systemd_output" 2>&1 || ! systemctl enable --now tsub-core.service >>"$systemd_output" 2>&1; then
+        cat "$systemd_output" >&2
+        i18n_log ERROR "systemd 无法启用或启动 TSub 核心服务" "systemd could not enable or start the TSub core service"
+        return 1
+      fi
       ;;
     openrc) rc-update add tsub-core default >/dev/null 2>&1 || true; rc-service tsub-core restart ;;
     runit) sv up tsub-core ;;
@@ -146,7 +152,7 @@ service_start() {
         nohup "$TSUB_CORE_BIN" run -c "$config" >>"$TSUB_LOG" 2>&1 &
       fi
       printf '%s\n' "$!" >"$TSUB_STATE/core.pid"
-      TSUB_DEGRADED_REASON="无受支持的持久化 init；已使用 nohup 立即运行"
+      i18n_degraded "无受支持的持久化 init；已使用 nohup 立即运行" "No supported persistent init system was found; the service was started with nohup"
       ;;
   esac
 }
@@ -225,7 +231,7 @@ EOF
       atomic_install "$start_script" /etc/sv/tsub-core/run 755
       if [ -d /var/service ]; then ln -snf /etc/sv/tsub-core /var/service/tsub-core
       elif [ -d /etc/service ]; then ln -snf /etc/sv/tsub-core /etc/service/tsub-core
-      else TSUB_DEGRADED_REASON="runit 未发现服务扫描目录"; TSUB_INIT=none; fi
+      else i18n_degraded "runit 未发现服务扫描目录" "runit service scan directory was not found"; TSUB_INIT=none; fi
       ;;
     rc-local)
       grep -q "$TSUB_STATE/start-core.sh" /etc/rc.local 2>/dev/null || sed -i "\|^exit 0$|i $TSUB_STATE/start-core.sh >/dev/null 2>&1 \&" /etc/rc.local
@@ -241,7 +247,7 @@ EOF
         mkdir -p /etc/services.d/tsub-core
         atomic_install "$start_script" /etc/services.d/tsub-core/run 755
       else
-        TSUB_DEGRADED_REASON="s6 未发现 /etc/services.d 持久化目录"
+        i18n_degraded "s6 未发现 /etc/services.d 持久化目录" "s6 persistent directory /etc/services.d was not found"
         TSUB_INIT=none
       fi
       ;;
@@ -279,13 +285,37 @@ process_rss_mb() {
 
 health_check() {
   wait_seconds=${TSUB_HEALTH_WAIT:-5}
-  sleep "$wait_seconds"
+  case "$wait_seconds" in ''|*[!0-9]*) wait_seconds=5 ;; esac
+  [ "$wait_seconds" -gt 0 ] || wait_seconds=1
+  i18n_print "正在等待核心服务通过健康检查（最长 ${wait_seconds} 秒）..." "Waiting for the core service health check (up to ${wait_seconds} seconds)..."
+  health_elapsed=0
+  while [ "$health_elapsed" -lt "$wait_seconds" ]; do
+    TSUB_CORE_RSS=$(process_rss_mb)
+    TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0)
+    rss=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS))
+    TSUB_CURRENT_RSS=$rss
+    health_tunnel_ready=true
+    tunnel_health_rss >/dev/null 2>&1 || health_tunnel_ready=false
+    if [ "$rss" -gt 0 ] && [ "$health_tunnel_ready" = true ] && subscription_health_check >/dev/null 2>&1; then
+      if [ $((rss * 100)) -gt $((TSUB_MEMORY_MB * 80)) ]; then
+        i18n_log ERROR "核心 RSS ${rss}MB 超过 80% 内存预算" "Core RSS ${rss}MB exceeds 80% of the memory budget"
+        return 1
+      fi
+      i18n_print "健康检查通过，TSub 核心服务运行正常。" "Health check passed; the TSub core service is running normally."
+      return 0
+    fi
+    health_elapsed=$((health_elapsed + 1))
+    [ "$health_elapsed" -ge "$wait_seconds" ] || sleep 1
+    if [ "$health_elapsed" -lt "$wait_seconds" ] && [ $((health_elapsed % 5)) -eq 0 ]; then
+      i18n_print "核心服务仍在启动，已等待 ${health_elapsed} 秒..." "The core service is still starting; waited ${health_elapsed} seconds..."
+    fi
+  done
   TSUB_CORE_RSS=$(process_rss_mb)
-  TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss) || { log ERROR "Cloudflared 进程未运行"; return 1; }
-  rss=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS))
-  TSUB_CURRENT_RSS=$rss
-  if [ "$rss" -le 0 ]; then log ERROR "核心进程未运行"; return 1; fi
-  if [ $((rss * 100)) -gt $((TSUB_MEMORY_MB * 80)) ]; then log ERROR "核心 RSS ${rss}MB 超过 80% 内存预算"; return 1; fi
-  subscription_health_check || { log ERROR "服务器订阅服务未通过健康检查"; return 1; }
-  return 0
+  TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0)
+  TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS))
+  [ "$TSUB_CORE_RSS" -gt 0 ] || i18n_log ERROR "核心进程未运行" "The core process is not running"
+  tunnel_health_rss >/dev/null 2>&1 || i18n_log ERROR "Cloudflared 进程未运行" "The cloudflared process is not running"
+  subscription_health_check >/dev/null 2>&1 || i18n_log ERROR "服务器订阅服务未通过健康检查" "The server subscription service failed its health check"
+  i18n_log ERROR "健康检查在 ${wait_seconds} 秒后超时" "Health check timed out after ${wait_seconds} seconds"
+  return 1
 }

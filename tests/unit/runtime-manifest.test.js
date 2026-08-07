@@ -9,7 +9,7 @@ describe('generated TSub Proxy v2', () => {
     const source = await readFile('public/proxy/v2/tsub-proxy.sh');
     expect(source.byteLength).toBeLessThanOrEqual(512 * 1024);
     expect(createHash('sha256').update(source).digest('hex')).toBe(RUNTIME_MANIFEST.sha256);
-    expect(RUNTIME_MANIFEST.version).toBe('2.4.19');
+    expect(RUNTIME_MANIFEST.version).toBe('2.4.20');
     expect(RUNTIME_VERSION).toBe(RUNTIME_MANIFEST.version);
     expect(source.toString()).toContain(`TSUB_RUNTIME_VERSION='${RUNTIME_VERSION}'`);
     expect(source.toString()).toContain('main "$@"');
@@ -18,11 +18,11 @@ describe('generated TSub Proxy v2', () => {
   it('skips optional port allow rules when unavailable but keeps HY2 hop NAT mandatory', async () => {
     const plan = await readFile('runtime/v2/modules/20-plan.sh', 'utf8');
     const firewall = await readFile('runtime/v2/modules/35-firewall.sh', 'utf8');
-    expect(firewall).toContain('[ "$TSUB_TIER" != tiny ] || { add_degraded_reason "tiny 档已跳过端口放行规则"; return 0; }');
-    expect(firewall).toContain('[ "$TSUB_HAS_NET_ADMIN" = true ] || { add_degraded_reason "缺少 CAP_NET_ADMIN，已跳过端口放行规则"; return 0; }');
-    expect(firewall).toContain('add_degraded_reason "未找到 nftables/iptables，已跳过端口放行规则"');
-    expect(plan).toContain('[ "$TSUB_HAS_NET_ADMIN" = true ] || die "Hysteria2 端口跳跃需要 CAP_NET_ADMIN"');
-    expect(plan).toContain('have nft || have iptables || die "Hysteria2 端口跳跃需要 nftables 或 iptables"');
+    expect(firewall).toContain('[ "$TSUB_TIER" != tiny ] || { i18n_degraded "tiny 档已跳过端口放行规则"');
+    expect(firewall).toContain('[ "$TSUB_HAS_NET_ADMIN" = true ] || { i18n_degraded "缺少 CAP_NET_ADMIN，已跳过端口放行规则"');
+    expect(firewall).toContain('i18n_degraded "未找到 nftables/iptables，已跳过端口放行规则"');
+    expect(plan).toContain('[ "$TSUB_HAS_NET_ADMIN" = true ] || i18n_die "Hysteria2 端口跳跃需要 CAP_NET_ADMIN"');
+    expect(plan).toContain('have nft || have iptables || i18n_die "Hysteria2 端口跳跃需要 nftables 或 iptables"');
     expect(firewall).toContain('firewall_hops_apply()');
   });
 
@@ -33,7 +33,7 @@ describe('generated TSub Proxy v2', () => {
     expect(common).toContain('TSUB_OPERATION_LOCK_WAIT_SECONDS:-1800');
     expect(common).toContain('kill -0 "$runtime_lock_pid"');
     expect(common).toContain('rmdir "$TSUB_OPERATION_LOCK"');
-    expect(common).toContain('die "等待其他 TSub 操作完成超时"');
+    expect(common).toContain('i18n_die "等待其他 TSub 操作完成超时"');
     expect(common.indexOf('release_runtime_operation_lock')).toBeLessThan(common.indexOf('rm -rf "$TSUB_TMP"'));
     expect(main).toContain('acquire_runtime_operation_lock "$action"');
     expect(main).toContain("trap 'cleanup_runtime' EXIT");
@@ -122,7 +122,7 @@ describe('generated TSub Proxy v2', () => {
     expect(main).toContain('rollback) load_installed_core; rollback_runtime; record_runtime_change_time');
     expect(main).not.toMatch(/restart\).*record_runtime_change_time/);
     expect(transaction.indexOf('push_uninstall_event || true')).toBeLessThan(transaction.indexOf('subscription_remove'));
-    expect(transaction.indexOf('emit_event succeeded "uninstall completed"')).toBeLessThan(transaction.indexOf("printf 'TSub Proxy 卸载成功"));
+    expect(transaction.indexOf("emit_event succeeded \"$(i18n_text '卸载完成' 'Uninstall completed')\"")).toBeLessThan(transaction.indexOf("i18n_print 'TSub Proxy 卸载成功'"));
   });
 
   it('allows an unchanged update to reuse a verified installed core before enforcing change headroom', async () => {
@@ -131,7 +131,7 @@ describe('generated TSub Proxy v2', () => {
     expect(plan).toContain('planned_core_is_installed || require_install_headroom');
     expect(plan).toContain('planned_sha=$(kv_get "${core}_${TSUB_ARCH}_binary_sha256")');
     expect(plan).toContain('[ -x "$planned_target" ] && [ "$(sha256_file "$planned_target")" = "$planned_sha" ]');
-    expect(transaction.indexOf('emit_event succeeded "configuration unchanged"')).toBeLessThan(transaction.indexOf('TSUB_CORE_DOWNLOADED'));
+    expect(transaction.indexOf("emit_event succeeded \"$(i18n_text '配置未发生变化' 'Configuration unchanged')\"")).toBeLessThan(transaction.indexOf('TSUB_CORE_DOWNLOADED'));
     expect(transaction).toContain('[ "${TSUB_CORE_DOWNLOADED:-false}" != true ] || require_install_headroom');
     expect(transaction.indexOf('TSUB_CORE_DOWNLOADED')).toBeLessThan(transaction.indexOf('validate_config "$apply_candidate"'));
     expect(transaction).toContain('[ "${action:-}" = repair ]');
@@ -143,7 +143,7 @@ describe('generated TSub Proxy v2', () => {
     expect(plan).toContain('confirm_low_memory_install()');
     expect(plan).toContain("confirmation_input=${TSUB_CONFIRM_INPUT:-/dev/tty}");
     expect(plan).toContain("y|Y)");
-    expect(plan).toContain('add_degraded_reason "用户已确认低内存强制安装"');
+    expect(plan).toContain('i18n_degraded "用户已确认低内存强制安装"');
     expect(plan).toContain('当前为非交互执行，无法确认强制安装');
     expect(main).toContain('TSUB_FORCE_LOW_MEMORY_INSTALL=false');
   });
@@ -207,7 +207,7 @@ describe('generated TSub Proxy v2', () => {
     expect(executor).toContain('"hostname":"%s"');
     expect(executor).toContain('RUNTIME_SOURCE=${TSUB_RUNTIME_SOURCE_PATH:-/opt/tsub-controller/dist/proxy/v2/tsub-proxy.sh}');
     expect(executor).toContain('command_runtime=$(executor_runtime_path)');
-    expect(main).toContain('list) export_nodes; push_snapshot || die "节点同步推送失败"; emit_event succeeded "nodes exported"');
+    expect(main).toContain("list) export_nodes; push_snapshot || i18n_die \"节点同步推送失败\" \"Node synchronization push failed\"; emit_event succeeded \"$(i18n_text '节点导出完成' 'Nodes exported')\"");
     expect(main).toContain('restart) plan_runtime; load_installed_core; ensure_tunnel_binary; prepare_service_identity;');
   });
 
@@ -221,5 +221,20 @@ describe('generated TSub Proxy v2', () => {
     expect(maintenance).toContain('Environment=TSUB_SUPPRESS_SENSITIVE_OUTPUT=true');
     expect(agent).toContain('TSUB_SUPPRESS_SENSITIVE_OUTPUT=true');
     expect(agent).toContain('append_redacted_log "$agent_command_log"');
+  });
+
+  it('localizes service lifecycle output and suppresses successful systemd symlink noise', async () => {
+    const service = await readFile('runtime/v2/modules/40-service.sh', 'utf8');
+    const common = await readFile('runtime/v2/modules/00-common.sh', 'utf8');
+    const menu = await readFile('runtime/v2/modules/56-control-menu.sh', 'utf8');
+    expect(common).toContain('runtime_output_language');
+    expect(service).toContain('正在启用并启动 TSub 核心服务，请稍候');
+    expect(service).toContain('Enabling and starting the TSub core service');
+    expect(service).toContain('systemctl enable --now tsub-core.service >>"$systemd_output" 2>&1');
+    expect(service).toContain('cat "$systemd_output" >&2');
+    expect(service).toContain('while [ "$health_elapsed" -lt "$wait_seconds" ]');
+    expect(service).toContain('Health check passed; the TSub core service is running normally.');
+    expect(menu).toContain('TSub Proxy control menu');
+    expect(service).not.toContain('Created symlink');
   });
 });

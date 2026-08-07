@@ -32,8 +32,8 @@ control_write_launcher() {
 
 install_control_command() {
   control_requested=$(kv_get control_command); control_requested=${control_requested:-tsub}
-  case "$control_requested" in ''|[!a-z]*|*[!a-z0-9_-]*) log WARN "服务器控制命令格式无效: $control_requested"; return 1 ;; esac
-  [ "${#control_requested}" -le 32 ] || { log WARN "服务器控制命令超过 32 位"; return 1; }
+  case "$control_requested" in ''|[!a-z]*|*[!a-z0-9_-]*) i18n_log WARN "服务器控制命令格式无效: $control_requested" "Invalid server control command: $control_requested"; return 1 ;; esac
+  [ "${#control_requested}" -le 32 ] || { i18n_log WARN "服务器控制命令超过 32 位" "The server control command exceeds 32 characters"; return 1; }
 
   control_use_sudo=false
   if [ "$(id -u)" -eq 0 ]; then
@@ -61,7 +61,7 @@ install_control_command() {
     if [ "$control_resolved_available" = true ] && [ "$control_target_available" = true ]; then break; fi
     control_index=$((control_index + 1))
   done
-  [ "$control_index" -le 999 ] || { log WARN "无法为服务器控制命令找到可用名称"; return 1; }
+  [ "$control_index" -le 999 ] || { i18n_log WARN "无法为服务器控制命令找到可用名称" "No available name could be found for the server control command"; return 1; }
 
   control_config_quoted=$(printf '%s' "$2" | sed "s/'/'\\\\''/g")
   control_runtime_quoted=$(printf '%s' "$1" | sed "s/'/'\\\\''/g")
@@ -90,7 +90,7 @@ EOF
         if ! grep -q '^# TSub Proxy user command path$' "$control_profile" 2>/dev/null; then
           printf '\n# TSub Proxy user command path\nexport PATH="$HOME/.local/bin:$PATH"\n' >>"$control_profile" || true
         fi
-        add_degraded_reason "控制命令目录将在重新登录后加入 PATH；当前可执行 $control_target"
+        i18n_degraded "控制命令目录将在重新登录后加入 PATH；当前可执行 $control_target" "The control command directory will be added to PATH after signing in again; run $control_target for now"
       fi
       ;;
   esac
@@ -107,13 +107,13 @@ remove_control_command() {
 control_menu() {
   print_runtime_basic_info
   while :; do
-    printf '\nTSub Proxy 控制菜单\n'
-    printf '1. 显示全部节点与订阅链接\n'
+    printf '\n'; i18n_print 'TSub Proxy 控制菜单' 'TSub Proxy control menu'
+    i18n_print '1. 显示全部节点与订阅链接' '1. Show all nodes and subscription links'
     control_push_available=false
-    if push_enabled; then control_push_available=true; printf '2. 立即主动推送到主控\n'; fi
-    printf '3. 卸载 TSub Proxy\n'
-    printf '0. 退出\n'
-    printf '请选择：'
+    if push_enabled; then control_push_available=true; i18n_print '2. 立即主动推送到主控' '2. Push to the controller now'; fi
+    i18n_print '3. 卸载 TSub Proxy' '3. Uninstall TSub Proxy'
+    i18n_print '0. 退出' '0. Exit'
+    i18n_text '请选择：' 'Select an option: '
     IFS= read -r control_choice || return 0
     case "$control_choice" in
       1)
@@ -122,22 +122,22 @@ control_menu() {
         ;;
       2)
         if [ "$control_push_available" = true ]; then
-          if push_snapshot; then printf '主动推送请求已发送。\n'; else printf '主动推送失败，请检查网络和主控状态。\n' >&2; fi
+          if push_snapshot; then i18n_print '主动推送请求已发送。' 'Push request sent.'; else i18n_print '主动推送失败，请检查网络和主控状态。' 'Push failed; check the network and controller status.' >&2; fi
         else
-          printf '无效选项。\n'
+          i18n_print '无效选项。' 'Invalid option.'
         fi
         ;;
       3)
-        printf '卸载将停止代理并清理 TSub 管理的服务、规则和控制命令。输入 Y 确认：'
+        i18n_text '卸载将停止代理并清理 TSub 管理的服务、规则和控制命令。输入 Y 确认：' 'Uninstalling stops the proxy and removes TSub-managed services, rules, and control commands. Enter Y to confirm: '
         control_confirm=''
         IFS= read -r control_confirm || true
         case "$control_confirm" in
           y|Y) uninstall_runtime; return 0 ;;
-          *) printf '已取消卸载。\n' ;;
+          *) i18n_print '已取消卸载。' 'Uninstall canceled.' ;;
         esac
         ;;
       0|q|Q) return 0 ;;
-      *) printf '无效选项。\n' ;;
+      *) i18n_print '无效选项。' 'Invalid option.' ;;
     esac
   done
 }

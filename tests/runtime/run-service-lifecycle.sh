@@ -77,10 +77,27 @@ grep -q '用户未确认强制安装' "$TMP/rejected.out"
 unset TSUB_CONFIRM_INPUT TSUB_CONFIRM_OUTPUT
 TSUB_FORCE_LOW_MEMORY_INSTALL=false
 
+cat >"$TMP/english.conf" <<'EOF'
+runtime_output_language=en-US
+sing-box_amd64_format=binary
+EOF
+TSUB_CONFIG="$TMP/english.conf"
+printf 'Y\n' >"$TMP/confirm.en"
+: >"$TMP/prompt.en"
+TSUB_MEMORY_AVAILABLE_MB=16
+TSUB_DEGRADED_REASON=''
+TSUB_FORCE_LOW_MEMORY_INSTALL=false
+TSUB_CONFIRM_INPUT="$TMP/confirm.en" TSUB_CONFIRM_OUTPUT="$TMP/prompt.en" require_install_headroom
+grep -q 'Enter Y to force installation' "$TMP/prompt.en"
+! grep -q '输入 Y' "$TMP/prompt.en"
+[ "$TSUB_DEGRADED_REASON" = 'Low-memory forced installation was confirmed' ]
+unset TSUB_CONFIRM_INPUT TSUB_CONFIRM_OUTPUT
+
 TSUB_STATE="$TMP/state"
+TSUB_ETC="$TMP/etc"
 TSUB_BIN="$TMP/bin"
 TSUB_CORE_BIN="$TSUB_BIN/xray-test"
-mkdir -p "$TSUB_STATE" "$TSUB_BIN"
+mkdir -p "$TSUB_STATE" "$TSUB_ETC" "$TSUB_BIN"
 cp "$(command -v sleep)" "$TSUB_CORE_BIN"
 chmod 700 "$TSUB_CORE_BIN"
 
@@ -113,4 +130,47 @@ grep -q 'pidfile="/run/tsub-core.pid"' "$ROOT/runtime/v2/modules/40-service.sh"
 grep -q 'chown "$TSUB_SERVICE_USER:$service_group" "$TSUB_STATE/tunnel-supervisor.sh"' "$ROOT/runtime/v2/modules/40-service.sh"
 grep -q 'chmod 700 "$TSUB_STATE/tunnel-supervisor.sh"' "$ROOT/runtime/v2/modules/40-service.sh"
 grep -q 'dependency_add_package gcompat' "$ROOT/runtime/v2/modules/15-dependencies.sh"
+
+mkdir -p "$TMP/systemd-bin"
+cat >"$TMP/systemd-bin/systemctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "Created symlink '/etc/systemd/system/example'"
+EOF
+chmod 755 "$TMP/systemd-bin/systemctl"
+PATH="$TMP/systemd-bin:$PATH"; export PATH
+TSUB_TMP="$TMP/runtime-tmp"; mkdir -p "$TSUB_TMP"
+TSUB_INIT=systemd
+set +e
+service_start >"$TMP/systemd-success.out" 2>&1
+systemd_success_rc=$?
+set -e
+if [ "$systemd_success_rc" -ne 0 ]; then cat "$TMP/systemd-success.out" >&2; exit 1; fi
+grep -q 'Enabling and starting the TSub core service' "$TMP/systemd-success.out"
+! grep -q 'Created symlink' "$TMP/systemd-success.out"
+
+cat >"$TMP/systemd-bin/systemctl" <<'EOF'
+#!/bin/sh
+case " $* " in
+  *' enable --now '*) printf '%s\n' 'mock systemd failure' >&2; exit 1 ;;
+esac
+EOF
+chmod 755 "$TMP/systemd-bin/systemctl"
+if service_start >"$TMP/systemd-failure.out" 2>&1; then
+  echo 'failed systemd start unexpectedly succeeded' >&2
+  exit 1
+fi
+grep -q 'mock systemd failure' "$TMP/systemd-failure.out"
+grep -q 'systemd could not enable or start the TSub core service' "$TMP/systemd-failure.out"
+
+process_rss_mb() {
+  health_count=$(cat "$TMP/health-count" 2>/dev/null || printf 0)
+  health_count=$((health_count + 1)); printf '%s\n' "$health_count" >"$TMP/health-count"
+  [ "$health_count" -ge 2 ] && printf 12 || printf 0
+}
+tunnel_health_rss() { printf 0; }
+subscription_health_check() { return 0; }
+TSUB_HEALTH_WAIT=4; TSUB_MEMORY_MB=64
+health_check >"$TMP/health.out" 2>&1
+grep -q 'Waiting for the core service health check' "$TMP/health.out"
+grep -q 'Health check passed' "$TMP/health.out"
 echo 'service lifecycle tests passed'

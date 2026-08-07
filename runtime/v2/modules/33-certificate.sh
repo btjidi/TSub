@@ -110,7 +110,7 @@ replace_certificate_pin_in_file() {
       vmess://*)
         certificate_vmess_payload="$TSUB_TMP/vmess-pin.$certificate_line_number.json"
         if ! certificate_base64_decode_value "${certificate_line#vmess://}" "$certificate_vmess_payload"; then
-          log ERROR "VMess 节点证书指纹写入失败：链接 Base64 无效"
+          i18n_log ERROR "VMess 节点证书指纹写入失败：链接 Base64 无效" "Failed to write the VMess certificate pin: invalid link Base64"
           return 1
         fi
         sed -e "s/__TSUB_CERT_PIN_SHA256__/$certificate_pin/g" -e "s|__TSUB_CERT_SPKI_SHA256__|$certificate_spki|g" "$certificate_vmess_payload" >"$certificate_vmess_payload.pinned"
@@ -123,7 +123,7 @@ replace_certificate_pin_in_file() {
     esac
   done <"$certificate_nodes_file"
   if grep -Eq '__TSUB_CERT_(PIN|SPKI)_SHA256__' "$certificate_nodes_output" 2>/dev/null; then
-    log ERROR "节点证书指纹占位符未完全替换"
+    i18n_log ERROR "节点证书指纹占位符未完全替换" "Node certificate pin placeholders were not fully replaced"
     return 1
   fi
   mv -f "$certificate_nodes_output" "$certificate_nodes_file"
@@ -149,13 +149,13 @@ apply_exported_certificate_pin() {
   certificate_domain=$(kv_get certificate_domain)
   [ -n "$certificate_domain" ] || return 0
   certificate_file="$TSUB_STATE/certificates/certificates/$certificate_domain.crt"
-  [ -s "$certificate_file" ] || { log ERROR "自签证书不存在，无法固定客户端证书指纹"; return 1; }
-  certificate_pin=$(certificate_pin_sha256 "$certificate_file") || { log ERROR "自签证书 SHA-256 指纹计算失败"; return 1; }
-  certificate_spki=$(certificate_spki_sha256 "$certificate_file") || { log ERROR "自签证书 SPKI SHA-256 计算失败"; return 1; }
+  [ -s "$certificate_file" ] || { i18n_log ERROR "自签证书不存在，无法固定客户端证书指纹" "The self-signed certificate does not exist; client certificate pinning cannot be applied"; return 1; }
+  certificate_pin=$(certificate_pin_sha256 "$certificate_file") || { i18n_log ERROR "自签证书 SHA-256 指纹计算失败" "Failed to calculate the self-signed certificate SHA-256 fingerprint"; return 1; }
+  certificate_spki=$(certificate_spki_sha256 "$certificate_file") || { i18n_log ERROR "自签证书 SPKI SHA-256 计算失败" "Failed to calculate the self-signed certificate SPKI SHA-256 pin"; return 1; }
   replace_certificate_pin_in_file "$TSUB_NODES_FILE" "$certificate_pin" "$certificate_spki" || return 1
   replace_certificate_pin_in_file "$TSUB_NODE_DETAILS_FILE" "$certificate_pin" "$certificate_spki" || return 1
   validate_exported_tuic_certificate_pin "$TSUB_NODES_FILE" "$certificate_pin" "$certificate_spki" \
-    || { log ERROR "TUIC 节点缺少有效的自签证书指纹"; return 1; }
+    || { i18n_log ERROR "TUIC 节点缺少有效的自签证书指纹" "The TUIC node is missing valid self-signed certificate pins"; return 1; }
   printf '%s\n' "$certificate_pin" >"$TSUB_TMP/certificate.pin"
   atomic_install "$TSUB_TMP/certificate.pin" "$TSUB_STATE/certificate.pin-sha256" 600
   printf '%s\n' "$certificate_spki" >"$TSUB_TMP/certificate.spki"
@@ -213,10 +213,10 @@ ensure_certificate() {
           fi
         done
         ;;
-      *) die "当前核心不支持生成自签证书" ;;
+      *) i18n_die "当前核心不支持生成自签证书" "The current core cannot generate a self-signed certificate" ;;
     esac
-    grep -q 'BEGIN.*PRIVATE KEY' "$self_signed_key" 2>/dev/null || die "核心未生成有效的自签证书私钥"
-    grep -q 'BEGIN CERTIFICATE' "$self_signed_cert" 2>/dev/null || die "核心未生成有效的自签证书"
+    grep -q 'BEGIN.*PRIVATE KEY' "$self_signed_key" 2>/dev/null || i18n_die "核心未生成有效的自签证书私钥" "The core did not generate a valid self-signed certificate private key"
+    grep -q 'BEGIN CERTIFICATE' "$self_signed_cert" 2>/dev/null || i18n_die "核心未生成有效的自签证书" "The core did not generate a valid self-signed certificate"
     atomic_install "$self_signed_key" "$key_file" 600
     atomic_install "$self_signed_cert" "$cert_file" 600
     date +%s >"$TSUB_TMP/certificate.generated"
@@ -224,10 +224,10 @@ ensure_certificate() {
     TSUB_CERT_CHANGED=true
     return 0
   fi
-  [ "$(id -u)" -eq 0 ] || die "ACME 自动证书需要 root 权限"
+  [ "$(id -u)" -eq 0 ] || i18n_die "ACME 自动证书需要 root 权限" "Automatic ACME certificates require root"
   version=$(kv_get lego_version); version=${version:-stable}
   expected=$(component_binary_sha lego)
-  [ -n "$expected" ] || die "lego/$TSUB_ARCH 缺少 SHA-256"
+  [ -n "$expected" ] || i18n_die "lego/$TSUB_ARCH 缺少 SHA-256" "lego/$TSUB_ARCH is missing a SHA-256"
   lego_bin="$TSUB_BIN/lego-$version-$TSUB_ARCH-$expected"
   if [ -x "$lego_bin" ] && [ "$(sha256_file "$lego_bin")" != "$expected" ]; then rm -f "$lego_bin"; fi
   [ -x "$lego_bin" ] || verify_download lego "$lego_bin"
@@ -237,13 +237,13 @@ ensure_certificate() {
   mkdir -p "$cert_root"
   if [ "$mode" = cloudflare-dns01 ]; then
     token_file="$TSUB_TMP/cloudflare-dns.token"
-    b64_decode_file certificate_api_token_b64 "$token_file" || die "DNS-01 Token 解码失败"
+    b64_decode_file certificate_api_token_b64 "$token_file" || i18n_die "DNS-01 Token 解码失败" "Failed to decode the DNS-01 token"
     CF_DNS_API_TOKEN=$(cat "$token_file"); export CF_DNS_API_TOKEN
     if [ -s "$cert_file" ]; then "$lego_bin" --path "$cert_root" --email "$email" --domains "$domain" --dns cloudflare renew --days 30
     else "$lego_bin" --path "$cert_root" --email "$email" --domains "$domain" --dns cloudflare --accept-tos run; fi
     unset CF_DNS_API_TOKEN
   else
-    if have ss && ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '[:.]80$'; then die "HTTP-01 需要空闲的 80 端口"; fi
+    if have ss && ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '[:.]80$'; then i18n_die "HTTP-01 需要空闲的 80 端口" "HTTP-01 requires port 80 to be available"; fi
     acme_firewall_open
     set +e
     if [ -s "$cert_file" ]; then "$lego_bin" --path "$cert_root" --email "$email" --domains "$domain" --http renew --days 30
@@ -251,9 +251,9 @@ ensure_certificate() {
     acme_result=$?
     set -e
     acme_firewall_close
-    [ "$acme_result" -eq 0 ] || die "HTTP-01 证书申请失败"
+    [ "$acme_result" -eq 0 ] || i18n_die "HTTP-01 证书申请失败" "HTTP-01 certificate issuance failed"
   fi
-  [ -s "$cert_file" ] || die "ACME 未生成证书"
+  [ -s "$cert_file" ] || i18n_die "ACME 未生成证书" "ACME did not generate a certificate"
   current_cert_hash=$(sha256_file "$cert_file")
   [ "$previous_cert_hash" = "$current_cert_hash" ] || TSUB_CERT_CHANGED=true
 }

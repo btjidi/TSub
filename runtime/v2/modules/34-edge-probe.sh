@@ -3,19 +3,19 @@ edge_probe_number() {
 }
 
 edge_probe() {
-  have curl || die 'CDN 真实握手检测需要 curl'
+  have curl || i18n_die 'CDN 真实握手检测需要 curl' 'The real CDN handshake probe requires curl'
   edge_probe_host=$(kv_get edge_probe_hostname)
   edge_probe_port=$(kv_get edge_probe_port)
-  case "$edge_probe_host" in ''|*[!A-Za-z0-9.-]*) die 'CDN 握手入口域名无效' ;; esac
-  case "$edge_probe_port" in 443|2053|2083|2087|2096|8443) ;; *) die 'CDN 握手端口无效' ;; esac
+  case "$edge_probe_host" in ''|*[!A-Za-z0-9.-]*) i18n_die 'CDN 握手入口域名无效' 'Invalid CDN handshake hostname' ;; esac
+  case "$edge_probe_port" in 443|2053|2083|2087|2096|8443) ;; *) i18n_die 'CDN 握手端口无效' 'Invalid CDN handshake port' ;; esac
   edge_probe_address_file="$TSUB_TMP/edge-probe.address"
   edge_probe_path_file="$TSUB_TMP/edge-probe.path"
-  b64_decode_file edge_probe_address_b64 "$edge_probe_address_file" || die 'CDN 握手地址无效'
-  b64_decode_file edge_probe_path_b64 "$edge_probe_path_file" || die 'CDN 握手路径无效'
+  b64_decode_file edge_probe_address_b64 "$edge_probe_address_file" || i18n_die 'CDN 握手地址无效' 'Invalid CDN handshake address'
+  b64_decode_file edge_probe_path_b64 "$edge_probe_path_file" || i18n_die 'CDN 握手路径无效' 'Invalid CDN handshake path'
   edge_probe_address=$(cat "$edge_probe_address_file")
   edge_probe_path=$(cat "$edge_probe_path_file")
-  case "$edge_probe_address" in ''|*[!A-Za-z0-9.:-]*) die 'CDN 握手地址无效' ;; esac
-  case "$edge_probe_path" in /*) ;; *) die 'CDN 握手路径无效' ;; esac
+  case "$edge_probe_address" in ''|*[!A-Za-z0-9.:-]*) i18n_die 'CDN 握手地址无效' 'Invalid CDN handshake address' ;; esac
+  case "$edge_probe_path" in /*) ;; *) i18n_die 'CDN 握手路径无效' 'Invalid CDN handshake path' ;; esac
 
   edge_probe_format='%{remote_ip}|%{time_connect}|%{time_appconnect}|%{http_code}|%{time_total}'
   edge_probe_output="$TSUB_TMP/edge-probe.curl"
@@ -44,10 +44,9 @@ edge_probe() {
   printf 'TSUB_EDGE_PROBE_RESULT dns=%s tcp=%s tls=%s hostSni=%s websocket101=%s latencyMs=%s\n' \
     "$edge_probe_dns" "$edge_probe_tcp" "$edge_probe_tls_ok" "$edge_probe_host_sni" "$edge_probe_ws" "$(edge_probe_number "$edge_probe_latency")"
   if [ "$edge_probe_dns" = true ] && [ "$edge_probe_tcp" = true ] && [ "$edge_probe_tls_ok" = true ] && [ "$edge_probe_ws" = true ]; then
-    printf 'CDN 真实握手通过：TLS、Host/SNI 与 WebSocket 101 正常（%sms）\n' "$edge_probe_latency"
+    i18n_print "CDN 真实握手通过：TLS、Host/SNI 与 WebSocket 101 正常（${edge_probe_latency}ms）" "Real CDN handshake passed: TLS, Host/SNI, and WebSocket 101 are valid (${edge_probe_latency}ms)"
     return 0
   fi
-  printf 'CDN 真实握手失败：DNS=%s TCP=%s TLS=%s Host/SNI=%s WebSocket101=%s（%sms）\n' \
-    "$edge_probe_dns" "$edge_probe_tcp" "$edge_probe_tls_ok" "$edge_probe_host_sni" "$edge_probe_ws" "$edge_probe_latency" >&2
+  i18n_print "CDN 真实握手失败：DNS=$edge_probe_dns TCP=$edge_probe_tcp TLS=$edge_probe_tls_ok Host/SNI=$edge_probe_host_sni WebSocket101=$edge_probe_ws（${edge_probe_latency}ms）" "Real CDN handshake failed: DNS=$edge_probe_dns TCP=$edge_probe_tcp TLS=$edge_probe_tls_ok Host/SNI=$edge_probe_host_sni WebSocket101=$edge_probe_ws (${edge_probe_latency}ms)" >&2
   return 1
 }

@@ -20,20 +20,20 @@ ensure_subscription_httpd() {
   if [ -n "$TSUB_HTTPD_BIN" ]; then return 0; fi
   subscription_version=$(kv_get busybox_version)
   subscription_expected=$(component_binary_sha busybox)
-  [ -n "$subscription_version" ] && [ -n "$subscription_expected" ] || die "订阅服务缺少 BusyBox provider"
+  [ -n "$subscription_version" ] && [ -n "$subscription_expected" ] || i18n_die "订阅服务缺少 BusyBox provider" "The subscription service is missing its BusyBox provider"
   TSUB_HTTPD_BIN="$TSUB_BIN/busybox-$subscription_version-$TSUB_ARCH-$subscription_expected"
   if [ -x "$TSUB_HTTPD_BIN" ] && [ "$(sha256_file "$TSUB_HTTPD_BIN")" != "$subscription_expected" ]; then rm -f "$TSUB_HTTPD_BIN"; fi
   [ -x "$TSUB_HTTPD_BIN" ] || verify_download busybox "$TSUB_HTTPD_BIN"
-  "$TSUB_HTTPD_BIN" --list 2>/dev/null | grep -qx httpd || die "BusyBox provider 不包含 httpd applet"
+  "$TSUB_HTTPD_BIN" --list 2>/dev/null | grep -qx httpd || i18n_die "BusyBox provider 不包含 httpd applet" "The BusyBox provider does not contain the httpd applet"
 }
 
 subscription_prepare() {
   subscription_enabled || { subscription_stop; return 0; }
   ensure_subscription_httpd
   subscription_token_file="$TSUB_TMP/subscription.token"
-  b64_decode_file subscription_server_token_b64 "$subscription_token_file" || die "订阅 Token 解码失败"
+  b64_decode_file subscription_server_token_b64 "$subscription_token_file" || i18n_die "订阅 Token 解码失败" "Failed to decode the subscription token"
   subscription_token=$(cat "$subscription_token_file")
-  case "$subscription_token" in ''|*[!A-Za-z0-9_-]*) die "订阅 Token 格式无效" ;; esac
+  case "$subscription_token" in ''|*[!A-Za-z0-9_-]*) i18n_die "订阅 Token 格式无效" "Invalid subscription token format" ;; esac
   TSUB_SUBSCRIPTION_ROOT="$TSUB_STATE/subscription-web"
   subscription_cgi="$TSUB_SUBSCRIPTION_ROOT/cgi-bin/$subscription_token"
   mkdir -p "$TSUB_SUBSCRIPTION_ROOT/cgi-bin"

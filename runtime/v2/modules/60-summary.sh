@@ -28,18 +28,18 @@ summary_number() {
 summary_traffic_backend() {
   summary_backend=$(traffic_backend 2>/dev/null || printf unavailable)
   case "$summary_backend" in
-    core-xray) printf '核心统计 · Xray' ;;
-    core-singbox) printf '核心统计 · sing-box' ;;
-    nftables|iptables) printf '端口统计 · %s' "$summary_backend" ;;
-    *) printf '统计不可用' ;;
+    core-xray) i18n_text '核心统计 · Xray' 'Core statistics · Xray' ;;
+    core-singbox) i18n_text '核心统计 · sing-box' 'Core statistics · sing-box' ;;
+    nftables|iptables) printf '%s · %s' "$(i18n_text '端口统计' 'Port statistics')" "$summary_backend" ;;
+    *) i18n_text '统计不可用' 'Statistics unavailable' ;;
   esac
 }
 
 print_runtime_basic_info() {
-  printf '\nTSub Proxy 基础信息\n'
+  printf '\n'; i18n_print 'TSub Proxy 基础信息' 'TSub Proxy basic information'
   summary_deployment_time=$(cat "$TSUB_STATE/deployment-time" 2>/dev/null || true)
-  [ -n "$summary_deployment_time" ] || summary_deployment_time='未记录（重新 Apply 后生成）'
-  printf '部署时间：%s\n' "$summary_deployment_time"
+  [ -n "$summary_deployment_time" ] || summary_deployment_time=$(i18n_text '未记录（重新 Apply 后生成）' 'Not recorded (generated after applying again)')
+  printf '%s%s\n' "$(i18n_text '部署时间：' 'Deployment time: ')" "$summary_deployment_time"
 
   summary_core=$(kv_get runtime_core); summary_core=${summary_core:-unknown}
   summary_tier=$(kv_get runtime_tier_mode)
@@ -47,13 +47,13 @@ print_runtime_basic_info() {
   [ -n "$summary_tier" ] || summary_tier=${TSUB_TIER:-auto}
   summary_node_count=$(awk 'NF { count++ } END { print count + 0 }' "$TSUB_STATE/nodes.txt" 2>/dev/null || printf 0)
   summary_node_count=$(summary_number "$summary_node_count")
-  printf '%s · %s · %s 个节点' "$summary_core" "$summary_tier" "$summary_node_count"
+  printf '%s · %s · %s %s' "$summary_core" "$summary_tier" "$summary_node_count" "$(i18n_text '个节点' 'nodes')"
 
-  [ "$(kv_get certificate_mode)" != self-signed ] || printf ' · 自签证书/指纹固定'
+  [ "$(kv_get certificate_mode)" != self-signed ] || printf ' · %s' "$(i18n_text '自签证书/指纹固定' 'self-signed certificate/pinning')"
   if subscription_enabled; then
-    printf ' · 服务器订阅：%s' "$(kv_get subscription_server_port)"
+    printf ' · %s%s' "$(i18n_text '服务器订阅：' 'server subscription: ')" "$(kv_get subscription_server_port)"
     if [ "$(kv_get subscription_traffic_enabled)" = true ]; then
-      printf '/流量统计 · %s' "$(summary_traffic_backend)"
+      printf '/%s · %s' "$(i18n_text '流量统计' 'traffic statistics')" "$(summary_traffic_backend)"
     fi
   fi
 
@@ -65,19 +65,19 @@ print_runtime_basic_info() {
   printf ' · %s/%s · %s/%sMB' "${TSUB_CONTAINER:-unknown}" "${TSUB_INIT:-none}" "$summary_rss" "${TSUB_MEMORY_MB:-0}"
   summary_control=${TSUB_CONTROL_COMMAND_ACTUAL:-}
   [ -n "$summary_control" ] || summary_control=$(kv_get control_command)
-  [ -z "$summary_control" ] || printf ' · 服务器命令：%s' "$summary_control"
+  [ -z "$summary_control" ] || printf ' · %s%s' "$(i18n_text '服务器命令：' 'server command: ')" "$summary_control"
   printf '\n'
 }
 
 print_connection_info() {
-  printf '核心：%s %s\n' "$(kv_get runtime_core)" "${TSUB_CORE_VERSION:-$(kv_get "$(kv_get runtime_core)_version")}"
+  printf '%s%s %s\n' "$(i18n_text '核心：' 'Core: ')" "$(kv_get runtime_core)" "${TSUB_CORE_VERSION:-$(kv_get "$(kv_get runtime_core)_version")}"
   if [ -s "$TSUB_STATE/nodes.txt" ]; then
-    printf '\n注意：以下节点链接包含 UUID、密码等敏感凭据，请妥善保管。\n'
-    printf '节点信息：\n\n'
+    printf '\n'; i18n_print '注意：以下节点链接包含 UUID、密码等敏感凭据，请妥善保管。' 'Caution: the following node links contain sensitive credentials such as UUIDs and passwords. Store them securely.'
+    i18n_print '节点信息：' 'Node information:'; printf '\n'
     if [ -s "$TSUB_STATE/node-details.txt" ]; then cat "$TSUB_STATE/node-details.txt"; printf '\n'
     else cat "$TSUB_STATE/nodes.txt"; fi
   else
-    printf '节点信息：当前没有可输出的节点\n'
+    i18n_print '节点信息：当前没有可输出的节点' 'Node information: no nodes are available for output'
   fi
   if subscription_enabled; then
     summary_host=$(summary_subscription_host)
@@ -85,30 +85,30 @@ print_connection_info() {
     if [ -n "$summary_host" ] && [ -n "$summary_token" ]; then
       if [ "$(kv_get subscription_address_mode)" = dual ]; then
         summary_ipv4=$(kv_get subscription_ipv4); summary_ipv6=$(kv_get subscription_ipv6)
-        [ -z "$summary_ipv4" ] || printf '\n服务器本地 HTTP 订阅（IPv4）：http://%s:%s/cgi-bin/%s\n' "$summary_ipv4" "$(kv_get subscription_server_port)" "$summary_token"
-        [ -z "$summary_ipv6" ] || printf '服务器本地 HTTP 订阅（IPv6）：http://[%s]:%s/cgi-bin/%s\n' "$summary_ipv6" "$(kv_get subscription_server_port)" "$summary_token"
+        [ -z "$summary_ipv4" ] || printf '\n%shttp://%s:%s/cgi-bin/%s\n' "$(i18n_text '服务器本地 HTTP 订阅（IPv4）：' 'Local server HTTP subscription (IPv4): ')" "$summary_ipv4" "$(kv_get subscription_server_port)" "$summary_token"
+        [ -z "$summary_ipv6" ] || printf '%shttp://[%s]:%s/cgi-bin/%s\n' "$(i18n_text '服务器本地 HTTP 订阅（IPv6）：' 'Local server HTTP subscription (IPv6): ')" "$summary_ipv6" "$(kv_get subscription_server_port)" "$summary_token"
       else
-        printf '\n服务器本地 HTTP 订阅：http://%s:%s/cgi-bin/%s\n' "$summary_host" "$(kv_get subscription_server_port)" "$summary_token"
+        printf '\n%shttp://%s:%s/cgi-bin/%s\n' "$(i18n_text '服务器本地 HTTP 订阅：' 'Local server HTTP subscription: ')" "$summary_host" "$(kv_get subscription_server_port)" "$summary_token"
       fi
     fi
     summary_mirror=$(summary_decode_value subscription_mirror_url_b64 2>/dev/null || true)
-    [ -z "$summary_mirror" ] || printf '主控 HTTPS 镜像订阅：%s\n' "$summary_mirror"
+    [ -z "$summary_mirror" ] || printf '%s%s\n' "$(i18n_text '主控 HTTPS 镜像订阅：' 'Controller HTTPS mirror subscription: ')" "$summary_mirror"
   else
-    printf '\n服务器订阅：未启用服务器订阅\n'
+    printf '\n'; i18n_print '服务器订阅：未启用服务器订阅' 'Server subscription: disabled'
   fi
 }
 
 print_runtime_summary() {
   summary_action=$1
   if [ "${TSUB_SUPPRESS_SENSITIVE_OUTPUT:-false}" = true ]; then
-    case "$summary_action" in update) printf 'TSub Proxy 更新成功\n' ;; repair) printf 'TSub Proxy 修复成功\n' ;; *) printf 'TSub Proxy 安装成功\n' ;; esac
+    case "$summary_action" in update) i18n_print 'TSub Proxy 更新成功' 'TSub Proxy updated successfully' ;; repair) i18n_print 'TSub Proxy 修复成功' 'TSub Proxy repaired successfully' ;; *) i18n_print 'TSub Proxy 安装成功' 'TSub Proxy installed successfully' ;; esac
     return 0
   fi
-  printf '\nTSub Proxy 安装结果\n'
+  printf '\n'; i18n_print 'TSub Proxy 安装结果' 'TSub Proxy installation result'
   print_connection_info
-  if push_enabled; then printf '主动推送：已开启（每 %s 分钟）\n' "$(push_interval_minutes)"; else printf '主动推送：未开启\n'; fi
-  printf '流量统计：%s\n' "$(traffic_backend 2>/dev/null || printf unavailable)"
-  if [ -n "${TSUB_CONTROL_COMMAND_ACTUAL:-}" ]; then printf '服务器控制命令：%s\n' "$TSUB_CONTROL_COMMAND_ACTUAL"; fi
-  [ -z "${TSUB_DEGRADED_REASON:-}" ] || printf '降级原因：%s\n' "$TSUB_DEGRADED_REASON"
-  case "$summary_action" in update) printf 'TSub Proxy 更新成功\n' ;; repair) printf 'TSub Proxy 修复成功\n' ;; *) printf 'TSub Proxy 安装成功\n' ;; esac
+  if push_enabled; then printf '%s%s %s\n' "$(i18n_text '主动推送：已开启（每 ' 'Push: enabled (every ')" "$(push_interval_minutes)" "$(i18n_text '分钟）' 'minutes)')"; else i18n_print '主动推送：未开启' 'Push: disabled'; fi
+  printf '%s%s\n' "$(i18n_text '流量统计：' 'Traffic statistics: ')" "$(traffic_backend 2>/dev/null || printf unavailable)"
+  if [ -n "${TSUB_CONTROL_COMMAND_ACTUAL:-}" ]; then printf '%s%s\n' "$(i18n_text '服务器控制命令：' 'Server control command: ')" "$TSUB_CONTROL_COMMAND_ACTUAL"; fi
+  [ -z "${TSUB_DEGRADED_REASON:-}" ] || printf '%s%s\n' "$(i18n_text '降级原因：' 'Degraded reason: ')" "$TSUB_DEGRADED_REASON"
+  case "$summary_action" in update) i18n_print 'TSub Proxy 更新成功' 'TSub Proxy updated successfully' ;; repair) i18n_print 'TSub Proxy 修复成功' 'TSub Proxy repaired successfully' ;; *) i18n_print 'TSub Proxy 安装成功' 'TSub Proxy installed successfully' ;; esac
 }

@@ -34,8 +34,8 @@ const deploymentModeOptions = computed(() => [
   { value: 'uninstall', label: t('deployments.modes.uninstall') }
 ]);
 const remoteUpdate = ref(false);
-const reinstallMode = computed(() => deploymentMode.value === 'update' && targetDeployment.value
-  && targetDeployment.value.reinstallable === true);
+const configurationAction = ref('update');
+const reinstallMode = computed(() => deploymentMode.value === 'update' && configurationAction.value === 'reinstall');
 const submitLabel = computed(() => remoteUpdate.value ? t('deployments.submit.remoteUpdate') : t(`deployments.submit.${reinstallMode.value ? 'reinstall' : deploymentMode.value}`));
 const visibleProtocols = PROTOCOL_OPTIONS;
 const PREFERRED_DOMAIN_PRESETS = Object.freeze([
@@ -55,6 +55,7 @@ const retainedSecrets = ref(false);
 const showLoadConfigDialog = ref(false);
 const pendingTemplateRecord = ref(null);
 const pendingTemplateRemote = ref(false);
+const pendingTemplateAction = ref('update');
 const loading = ref(false);
 const defaultsLoading = ref(false);
 const globalOpen = ref(false);
@@ -874,12 +875,13 @@ function hydrateDeploymentTemplate(payload, mode) {
   activeTab.value = 'generator';
 }
 
-async function loadDeploymentConfig(deployment, mode, useRemote = false) {
+async function loadDeploymentConfig(deployment, mode, useRemote = false, action = 'update') {
   loading.value = true;
   try {
     const result = await getDeploymentTemplate(deployment.id);
     hydrateDeploymentTemplate(result.data || {}, mode);
     remoteUpdate.value = mode === 'update' && useRemote;
+    configurationAction.value = mode === 'update' ? action : 'update';
     clearCommandOutput();
     toast.showToast(mode === 'update' ? t('deployments.notices.configLoaded') : t('deployments.notices.configReused'), 'success');
   } catch (error) {
@@ -887,9 +889,10 @@ async function loadDeploymentConfig(deployment, mode, useRemote = false) {
   } finally { loading.value = false; }
 }
 
-function requestUpdateConfig(deployment, useRemote = false) {
+function requestUpdateConfig(deployment, useRemote = false, action = 'update') {
   pendingTemplateRecord.value = deployment;
   pendingTemplateRemote.value = useRemote;
+  pendingTemplateAction.value = action;
   showLoadConfigDialog.value = true;
 }
 
@@ -897,30 +900,35 @@ function requestRemoteUpdateConfig(deployment) {
   remoteMenuId.value = '';
   if (!capabilities.value.features.remoteCommands) return toast.showToast(t('deployments.remote.requiresD1'), 'warning');
   if (!deployment.agent?.online) return toast.showToast(t('deployments.remote.offline'), 'warning');
-  requestUpdateConfig(deployment, true);
+  requestUpdateConfig(deployment, true, 'update');
 }
 
 function cancelLoadConfig() {
   showLoadConfigDialog.value = false;
   pendingTemplateRecord.value = null;
   pendingTemplateRemote.value = false;
+  pendingTemplateAction.value = 'update';
 }
 
 async function confirmLoadConfig() {
   const deployment = pendingTemplateRecord.value;
   const useRemote = pendingTemplateRemote.value;
+  const action = pendingTemplateAction.value;
   showLoadConfigDialog.value = false;
   pendingTemplateRecord.value = null;
   pendingTemplateRemote.value = false;
-  if (deployment) await loadDeploymentConfig(deployment, 'update', useRemote);
+  pendingTemplateAction.value = 'update';
+  if (deployment) await loadDeploymentConfig(deployment, 'update', useRemote, action);
 }
 
 function reconfigureDeployment() {
   const deployment = pendingTemplateRecord.value;
   const useRemote = pendingTemplateRemote.value;
+  const action = pendingTemplateAction.value;
   showLoadConfigDialog.value = false;
   pendingTemplateRecord.value = null;
   pendingTemplateRemote.value = false;
+  pendingTemplateAction.value = 'update';
   if (!deployment) return;
   deploymentMode.value = 'update';
   targetDeploymentId.value = deployment.id || '';
@@ -929,6 +937,7 @@ function reconfigureDeployment() {
   templateConfigRevision.value = Number(deployment.configRevision || 1);
   retainedSecrets.value = false;
   remoteUpdate.value = useRemote;
+  configurationAction.value = action;
   form.name = deployment.name || '';
   clearCommandOutput();
   activeTab.value = 'generator';
@@ -944,7 +953,9 @@ function setDeploymentMode(mode) {
   showLoadConfigDialog.value = false;
   pendingTemplateRecord.value = null;
   pendingTemplateRemote.value = false;
+  pendingTemplateAction.value = 'update';
   remoteUpdate.value = false;
+  configurationAction.value = 'update';
   deploymentMode.value = mode;
   clearCommandOutput();
   if (mode === 'install') {
@@ -970,7 +981,7 @@ function selectTargetDeployment(event) {
   if (!deployment) { targetDeploymentId.value = ''; return; }
   if (deploymentMode.value === 'update') {
     event.target.value = targetDeploymentId.value;
-    requestUpdateConfig(deployment, remoteUpdate.value);
+    requestUpdateConfig(deployment, remoteUpdate.value, 'update');
   }
   else {
     targetDeploymentId.value = deployment.id;
@@ -1120,7 +1131,7 @@ async function generateInstallCommand() {
     if (deploymentMode.value === 'update') {
       const payload = {
         name: form.name.trim(), nodeGroup: defaults.deployment?.nodeGroup || '', profileId: defaults.deployment?.profileId || '',
-        configRevision: templateConfigRevision.value, config: buildConfig(defaults)
+        configRevision: templateConfigRevision.value, config: buildConfig(defaults), outputLanguage: locale.value
       };
       const action = reinstallMode.value ? 'reinstall' : 'update';
       result = remoteUpdate.value
@@ -1137,7 +1148,7 @@ async function generateInstallCommand() {
       toast.showToast(t(reinstallMode.value ? 'deployments.notices.reinstallCommandGenerated' : 'deployments.notices.updateCommandGenerated'), 'success');
     } else {
       result = await createDeployment({
-        name: form.name.trim(), nodeGroup: defaults.deployment?.nodeGroup || '', profileId: defaults.deployment?.profileId || '', config: buildConfig(defaults),
+        name: form.name.trim(), nodeGroup: defaults.deployment?.nodeGroup || '', profileId: defaults.deployment?.profileId || '', config: buildConfig(defaults), outputLanguage: locale.value,
         ...(templateSourceId.value ? {
           cloneFromDeploymentId: templateSourceId.value,
           configRevision: templateConfigRevision.value,
@@ -1201,7 +1212,7 @@ function setCommand(result) {
 async function executeActionCommand(deployment, action) {
   loading.value = true;
   try {
-    const result = await createDeploymentCommand(deployment.id, action);
+    const result = await createDeploymentCommand(deployment.id, action, { outputLanguage: locale.value });
     assignCommand(operationOutput, result);
     operationOutput.deploymentName = deployment.name;
     operationOutput.action = action;
@@ -1213,14 +1224,13 @@ async function executeActionCommand(deployment, action) {
   catch { toast.showToast(t('deployments.errors.generateCommand'), 'error'); }
   finally { loading.value = false; }
 }
-async function generateDirectConfigCommand(deployment) {
+async function generateDirectConfigCommand(deployment, action) {
   loading.value = true;
   try {
-    const action = deployment.reinstallable ? 'reinstall' : 'update';
-    const result = await createDeploymentCommand(deployment.id, action);
+    const result = await createDeploymentCommand(deployment.id, action, { outputLanguage: locale.value });
     assignCommand(operationOutput, result);
     operationOutput.deploymentName = deployment.name;
-    operationOutput.action = deployment.reinstallable ? 'reinstall' : 'plan';
+    operationOutput.action = action === 'reinstall' ? 'reinstall' : 'plan';
     selectedDeploymentId.value = deployment.id;
     showOperationCommandModal.value = true;
     await refreshDeployments({ silent: true });
@@ -1231,10 +1241,12 @@ async function generateDirectConfigCommand(deployment) {
 }
 async function generateDirectPendingCommand() {
   const deployment = pendingTemplateRecord.value;
+  const action = pendingTemplateAction.value;
   showLoadConfigDialog.value = false;
   pendingTemplateRecord.value = null;
   pendingTemplateRemote.value = false;
-  if (deployment) await generateDirectConfigCommand(deployment);
+  pendingTemplateAction.value = 'update';
+  if (deployment) await generateDirectConfigCommand(deployment, action);
 }
 function cancelOperationCommand() { pendingOperation.value = null; }
 async function confirmOperationCommand() {
@@ -1261,7 +1273,7 @@ async function generateRemoteCommand(deployment, action) {
   } else if (!window.confirm(t('deployments.remote.confirm', { action: t(`deployments.actions.${action}`), name: deployment.name }))) return;
   loading.value = true;
   try {
-    await createRemoteDeploymentCommand(deployment.id, action);
+    await createRemoteDeploymentCommand(deployment.id, action, { outputLanguage: locale.value });
     toast.showToast(t('deployments.remote.queued'), 'success');
     await refreshDeployments();
   } catch (error) { toast.showToast(error?.data?.message || t('deployments.remote.failed'), 'error'); }
@@ -1705,7 +1717,8 @@ onBeforeUnmount(() => {
           <div class="flex flex-wrap gap-2 xl:justify-end">
             <button v-if="deployment.configSummary?.subscriptionServer?.pushEnabled" data-testid="deployment-push-history" type="button" class="min-h-9 border border-primary-200 bg-primary-50 px-3 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300" @click="openPushHistory(deployment)">{{ t('pushHistory.open') }}</button>
             <button v-if="!deployment.demo && deployment.subscriptionSourceDisabled" data-testid="restore-deployment-source" type="button" class="min-h-9 border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" :disabled="loading" @click="restoreSubscriptionSource(deployment)">{{ t('deployments.restoreSource') }}</button>
-            <button v-if="!deployment.demo" :data-testid="deployment.reinstallable ? 'deployment-reinstall-config' : 'deployment-update-config'" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || loading" @click="requestUpdateConfig(deployment)">{{ t(deployment.reinstallable ? 'deployments.actions.reinstall' : 'deployments.actions.plan') }}</button>
+            <button v-if="!deployment.demo" data-testid="deployment-update-config" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || deployment.status === 'offline' || loading" :title="deployment.status === 'offline' ? t('deployments.errors.offlineUseReinstall') : ''" @click="requestUpdateConfig(deployment, false, 'update')">{{ t('deployments.actions.plan') }}</button>
+            <button v-if="!deployment.demo && deployment.schemaVersion === 2" data-testid="deployment-reinstall-config" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="loading" @click="requestUpdateConfig(deployment, false, 'reinstall')">{{ t('deployments.actions.reinstall') }}</button>
             <button v-if="!deployment.demo" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || deployment.status === 'offline' || loading" @click="reuseDeploymentConfig(deployment)">{{ t('deployments.actions.apply') }}</button>
             <button v-if="!deployment.demo && capabilities.features?.localExecutor && deployment.controlTransport !== 'local-executor'" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="loading" @click="connectLocalExecutor(deployment)">{{ t('deployments.remote.connectLocal') }}</button>
             <details v-if="!deployment.demo" data-remote-menu class="relative" :open="remoteMenuId === deployment.id">
@@ -1760,8 +1773,8 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <div v-if="showLoadConfigDialog" class="deployment-risk-dialog fixed inset-0 z-[101] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="load-config-title" @click.self="cancelLoadConfig">
         <div data-testid="load-config-dialog" class="deployment-risk-panel w-full max-w-lg rounded-xl border border-gray-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-gray-900">
-          <h2 id="load-config-title" class="text-lg font-semibold">{{ t('deployments.loadConfig.title') }}</h2>
-          <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">{{ t('deployments.loadConfig.description', { name: pendingTemplateRecord?.name || '' }) }}</p>
+          <h2 id="load-config-title" class="text-lg font-semibold">{{ t(pendingTemplateAction === 'reinstall' ? 'deployments.loadConfig.reinstallTitle' : 'deployments.loadConfig.title') }}</h2>
+          <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">{{ t(pendingTemplateAction === 'reinstall' ? 'deployments.loadConfig.reinstallDescription' : 'deployments.loadConfig.description', { name: pendingTemplateRecord?.name || '' }) }}</p>
           <div class="mt-3 space-y-2 text-xs leading-5 text-gray-500 dark:text-gray-400"><p>{{ t('deployments.loadConfig.directDescription') }}</p><p>{{ t('deployments.loadConfig.loadDescription') }}</p><p>{{ t('deployments.loadConfig.reconfigureDescription') }}</p></div>
           <div class="mt-5 flex flex-wrap justify-end gap-2"><button type="button" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm" :disabled="loading" @click="cancelLoadConfig">{{ t('actions.cancel') }}</button><button type="button" data-testid="direct-deployment-command" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm font-semibold" :disabled="loading" @click="generateDirectPendingCommand">{{ t('deployments.loadConfig.directCommand') }}</button><button type="button" data-testid="reconfigure-deployment" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm font-semibold" :disabled="loading" @click="reconfigureDeployment">{{ t('deployments.loadConfig.reconfigure') }}</button><button type="button" class="deploy-btn-primary min-h-10 rounded-lg bg-primary-600 px-4 text-sm font-semibold text-white shadow-sm" :disabled="loading" @click="confirmLoadConfig">{{ t('deployments.loadConfig.confirm') }}</button></div>
         </div>

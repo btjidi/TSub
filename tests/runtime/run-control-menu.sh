@@ -102,6 +102,13 @@ printf '3\nY\n' | control_menu >"$TEST_TMP/menu-uninstalled.out"
 grep -q 'TSub Proxy 卸载成功' "$TEST_TMP/menu-uninstalled.out"
 [ -f "$TEST_TMP/uninstalled" ]
 
+printf '\nruntime_output_language=en-US\n' >>"$TSUB_CONFIG"
+printf '0\n' | control_menu >"$TEST_TMP/menu-english.out"
+grep -q '^TSub Proxy basic information$' "$TEST_TMP/menu-english.out"
+grep -q '^TSub Proxy control menu$' "$TEST_TMP/menu-english.out"
+grep -q '^0. Exit$' "$TEST_TMP/menu-english.out"
+! grep -q '控制菜单\|请选择\|退出' "$TEST_TMP/menu-english.out"
+
 printf '#!/bin/sh\n# external file\n' >"$HOME/.local/bin/keep-me"
 printf '%s\n' "$HOME/.local/bin/keep-me" >"$TSUB_STATE/control-command.path"
 remove_control_command

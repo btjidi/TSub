@@ -729,12 +729,12 @@ describe('TSub V2 deployment handler', () => {
     expect(staleCallback.status).toBe(401);
   });
 
-  it('only marks failed or running never-deployed records as reinstallable', async () => {
+  it('marks every non-demo V2 deployment as reinstallable regardless of lifecycle state', async () => {
     const pendingEnv = createEnv();
     const pendingCreate = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Pending', config: config() }), pendingEnv, '/deployments');
     expect(pendingCreate.status).toBe(201);
     const pendingList = await handleDeploymentsRequest(jsonRequest('/deployments', 'GET'), pendingEnv, '/deployments');
-    expect((await pendingList.json()).data[0].reinstallable).toBe(false);
+    expect((await pendingList.json()).data[0].reinstallable).toBe(true);
 
     const failedEnv = createEnv();
     const failedInstall = await createAndBootstrap(failedEnv);
@@ -764,16 +764,16 @@ describe('TSub V2 deployment handler', () => {
     const updateBootstrap = await handleDeployBootstrap(new Request('https://tsub.example/api/deploy/bootstrap', { headers: { Authorization: `Bearer ${updateToken}` } }), deployedEnv);
     const updateCallback = callbackFromScript(await updateBootstrap.text());
     let deployedList = await handleDeploymentsRequest(jsonRequest('/deployments', 'GET'), deployedEnv, '/deployments');
-    expect((await deployedList.json()).data[0]).toMatchObject({ status: 'running', reinstallable: false });
+    expect((await deployedList.json()).data[0]).toMatchObject({ status: 'running', reinstallable: true });
     await handleDeployEvents(new Request('https://tsub.example/api/deploy/events', {
       method: 'POST', headers: { Authorization: `Bearer ${updateCallback}` }, body: 'status=failed\nstage=update\nmessage=update failed'
     }), deployedEnv);
     deployedList = await handleDeploymentsRequest(jsonRequest('/deployments', 'GET'), deployedEnv, '/deployments');
-    expect((await deployedList.json()).data[0]).toMatchObject({ status: 'failed', reinstallable: false });
+    expect((await deployedList.json()).data[0]).toMatchObject({ status: 'failed', reinstallable: true });
     const rejected = await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/operations`, 'POST', {
       action: 'reinstall', configRevision: template.configRevision + 1, config: template.config
     }), deployedEnv, `/deployments/${id}/operations`);
-    expect(rejected.status).toBe(409);
+    expect(rejected.status).toBe(200);
   });
 
   it('makes a deployment reinstallable as soon as an uninstall command is generated', async () => {
@@ -823,7 +823,7 @@ describe('TSub V2 deployment handler', () => {
     const activeReinstall = await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/operations`, 'POST', {
       action: 'reinstall', configRevision: activeTemplate.configRevision, config: activeTemplate.config
     }), env, `/deployments/${id}/operations`);
-    expect(activeReinstall.status).toBe(409);
+    expect(activeReinstall.status).toBe(200);
 
     const uninstall = await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/operations`, 'POST', { action: 'uninstall' }), env, `/deployments/${id}/operations`);
     const uninstallToken = bearerFromCommand((await uninstall.json()).data.command);
@@ -843,7 +843,7 @@ describe('TSub V2 deployment handler', () => {
     expect(reinstall.status).toBe(200);
     const reinstallBody = await reinstall.json();
     expect(reinstallBody.data.operation.action).toBe('reinstall');
-    expect(env.TSUB_KV.dump('tsub_deployments_v2')[0]).toMatchObject({ name: 'HK Reinstalled', status: 'pending', pendingReason: 'reinstall', configRevision: 2 });
+    expect(env.TSUB_KV.dump('tsub_deployments_v2')[0]).toMatchObject({ name: 'HK Reinstalled', status: 'pending', pendingReason: 'reinstall', configRevision: 3 });
 
     const reinstallBootstrap = await handleDeployBootstrap(new Request('https://tsub.example/api/deploy/bootstrap', {
       headers: { Authorization: `Bearer ${bearerFromCommand(reinstallBody.data.command)}` }
@@ -871,7 +871,7 @@ describe('TSub V2 deployment handler', () => {
     }), env);
 
     const restored = env.TSUB_KV.dump('tsub_deployments_v2')[0];
-    expect(restored).toMatchObject({ id, status: 'succeeded', subscriptionSourceDisabled: false, configRevision: 2, deployedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) });
+    expect(restored).toMatchObject({ id, status: 'succeeded', subscriptionSourceDisabled: false, configRevision: 3, deployedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) });
     expect(restored).not.toHaveProperty('pendingReason');
     expect(env.TSUB_KV.dump('tsub_subscriptions_v1')[0]).toMatchObject({ enabled: true, nodeCount: 1 });
   });
@@ -1076,5 +1076,40 @@ describe('TSub V2 deployment handler', () => {
       const response = await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/operations`, 'POST', { action }), env, `/deployments/${id}/operations`);
       expect((await response.json()).data.diagnosticCommand).not.toContain('输入 Y 确认');
     }
+  });
+
+  it('persists and normalizes the requested Runtime output language', async () => {
+    const env = createEnv();
+    const created = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', {
+      name: 'English Runtime', config: config(), outputLanguage: 'en-US'
+    }), env, '/deployments');
+    const createdBody = await created.json();
+    expect(createdBody.data.operation).toMatchObject({ action: 'apply', outputLanguage: 'en-US' });
+    expect(createdBody.data.diagnosticCommand).toContain('Enter Y to confirm');
+    expect(createdBody.data.diagnosticCommand).not.toContain('输入 Y 确认');
+
+    const token = bearerFromCommand(createdBody.data.command);
+    const prepare = await handleDeployPrepare(new Request('https://tsub.example/api/deploy/prepare', {
+      headers: { Authorization: `Bearer ${token}` }
+    }), env);
+    const launcher = await prepare.text();
+    expect(launcher).toContain('Enter Y to confirm');
+    expect(launcher).toContain('Operation canceled.');
+    expect(launcher).not.toContain('输入 Y 确认');
+
+    const bootstrap = await handleDeployBootstrap(new Request('https://tsub.example/api/deploy/bootstrap', {
+      headers: { Authorization: `Bearer ${token}` }
+    }), env);
+    const script = await bootstrap.text();
+    expect(script).toContain('runtime_output_language=en-US');
+    expect(script).toContain('Downloading the TSub Runtime, please wait');
+    expect(script).not.toContain('正在下载 TSub Runtime');
+    expect(atob(configValue(script, 'node_details_b64'))).toContain(' (VLESS)');
+
+    const id = createdBody.data.deployment.id;
+    const fallback = await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/operations`, 'POST', {
+      action: 'status', outputLanguage: 'unsupported'
+    }), env, `/deployments/${id}/operations`);
+    expect((await fallback.json()).data.operation.outputLanguage).toBe('zh-CN');
   });
 });

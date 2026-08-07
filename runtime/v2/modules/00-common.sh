@@ -77,6 +77,20 @@ kv_get() {
   return 0
 }
 
+runtime_language() {
+  runtime_language_value=$(kv_get runtime_output_language)
+  case "$runtime_language_value" in en|en-*) printf en-US ;; *) printf zh-CN ;; esac
+}
+
+i18n_text() {
+  if [ "$(runtime_language)" = en-US ]; then printf '%s' "$2"; else printf '%s' "$1"; fi
+}
+
+i18n_print() { i18n_text "$1" "$2"; printf '\n'; }
+i18n_log() { i18n_log_level=$1; shift; log "$i18n_log_level" "$(i18n_text "$1" "$2")"; }
+i18n_die() { i18n_die_zh=$1; i18n_die_en=$2; i18n_die_code=${3:-1}; die "$(i18n_text "$i18n_die_zh" "$i18n_die_en")" "$i18n_die_code"; }
+i18n_degraded() { add_degraded_reason "$(i18n_text "$1" "$2")"; }
+
 b64_decode_file() {
   key=$1
   output=$2
@@ -105,7 +119,7 @@ sha256_file() {
   if have sha256sum; then sha256sum "$1" | awk '{print $1}'
   elif have shasum; then shasum -a 256 "$1" | awk '{print $1}'
   elif have openssl; then openssl dgst -sha256 "$1" | awk '{print $NF}'
-  else die "缺少 SHA-256 工具"; fi
+  else i18n_die "缺少 SHA-256 工具" "No SHA-256 tool is available"; fi
 }
 
 download_file() {
@@ -113,7 +127,7 @@ download_file() {
   download_target=$2
   if have curl; then curl -fL --retry 2 --connect-timeout 15 --max-time 600 -o "$download_target" "$download_url"
   elif have wget; then wget -O "$download_target" "$download_url"
-  else die "必须预装 curl 或 wget"; fi
+  else i18n_die "必须预装 curl 或 wget" "curl or wget must be installed"; fi
 }
 
 atomic_install() {
@@ -153,7 +167,7 @@ acquire_runtime_operation_lock() {
       rmdir "$TSUB_OPERATION_LOCK" 2>/dev/null || true
       continue
     fi
-    [ "$runtime_lock_elapsed" -lt "$runtime_lock_wait" ] || die "等待其他 TSub 操作完成超时"
+    [ "$runtime_lock_elapsed" -lt "$runtime_lock_wait" ] || i18n_die "等待其他 TSub 操作完成超时" "Timed out waiting for another TSub operation"
     sleep "$runtime_lock_poll"
     runtime_lock_elapsed=$((runtime_lock_elapsed + runtime_lock_poll))
   done
@@ -247,6 +261,6 @@ emit_event() {
     [ "$event_sent" = false ] || break
     [ "$event_attempt" -ge 6 ] || sleep 3
   done
-  [ "$event_sent" = true ] || log ERROR "事件回调失败，已重试 $event_attempt 次"
+  [ "$event_sent" = true ] || i18n_log ERROR "事件回调失败，已重试 $event_attempt 次" "Event callback failed after $event_attempt attempts"
   rm -f "$event_file"
 }

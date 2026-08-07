@@ -813,7 +813,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     await wrapper.findAll('button').find(button => button.text() === '更新配置').trigger('click');
     document.querySelector('[data-testid="direct-deployment-command"]').click();
     await flushPromises();
-    expect(createDeploymentCommand).toHaveBeenCalledWith('deploy-template', 'update');
+    expect(createDeploymentCommand).toHaveBeenCalledWith('deploy-template', 'update', { outputLanguage: 'zh-CN' });
     expect(wrapper.find('[data-testid="deployment-basic-settings"]').exists()).toBe(false);
     expect(document.querySelector('[data-testid="deployment-operation-command-dialog"] textarea').value).toBe('update wget');
     expect(document.querySelector('[data-testid="load-config-dialog"]')).toBeNull();
@@ -921,7 +921,8 @@ describe('TSub Proxy simplified deployment generator', () => {
 
     await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
     await flushPromises();
-    expect(wrapper.find('[data-testid="deployment-update-config"]').exists()).toBe(false);
+    const offlineUpdateButton = wrapper.get('[data-testid="deployment-update-config"]');
+    expect(offlineUpdateButton.attributes()).toHaveProperty('disabled');
     const reinstallButton = wrapper.get('[data-testid="deployment-reinstall-config"]');
     expect(reinstallButton.text()).toBe('重新安装');
     expect(reinstallButton.attributes('disabled')).toBeUndefined();
@@ -929,7 +930,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     await flushPromises();
     document.querySelector('[data-testid="direct-deployment-command"]').click();
     await flushPromises();
-    expect(createDeploymentCommand).toHaveBeenCalledWith('deploy-offline', 'reinstall');
+    expect(createDeploymentCommand).toHaveBeenCalledWith('deploy-offline', 'reinstall', { outputLanguage: 'zh-CN' });
     expect(wrapper.find('[data-testid="deployment-basic-settings"]').exists()).toBe(false);
     expect(document.querySelector('[data-testid="deployment-operation-command-dialog"] textarea').value).toBe('reinstall wget');
     expect(document.querySelector('[data-testid="load-config-dialog"]')).toBeNull();
@@ -965,8 +966,8 @@ describe('TSub Proxy simplified deployment generator', () => {
     await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
     await flushPromises();
 
-    expect(wrapper.findAll('[data-testid="deployment-reinstall-config"]')).toHaveLength(2);
-    expect(wrapper.findAll('[data-testid="deployment-update-config"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-testid="deployment-reinstall-config"]')).toHaveLength(3);
+    expect(wrapper.findAll('[data-testid="deployment-update-config"]')).toHaveLength(3);
   });
 
   it('silently refreshes pending and running deployment records until their callback finishes', async () => {
@@ -1005,7 +1006,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     document.querySelector('[data-testid="confirm-deployment-operation"]').click();
     await flushPromises();
 
-    expect(createDeploymentCommand).toHaveBeenCalledWith('deploy-uninstalling', 'uninstall');
+    expect(createDeploymentCommand).toHaveBeenCalledWith('deploy-uninstalling', 'uninstall', { outputLanguage: 'zh-CN' });
     expect(wrapper.get('[data-testid="deployment-reinstall-config"]').text()).toBe('重新安装');
     expect(document.querySelector('[data-testid="deployment-operation-command-dialog"] textarea').value).toBe('wget uninstall');
     expect(wrapper.find('[data-testid="deployment-basic-settings"]').exists()).toBe(false);
@@ -1034,7 +1035,7 @@ describe('TSub Proxy simplified deployment generator', () => {
       expect(commandDialog.textContent).toContain(`独角鲸日本软银 · ${label}命令`);
       expect(commandDialog.querySelector('textarea').value).toBe('wget command');
       expect(wrapper.find('[data-testid="deployment-basic-settings"]').exists()).toBe(false);
-      expect(createDeploymentCommand).toHaveBeenLastCalledWith('deploy-operation', action);
+      expect(createDeploymentCommand).toHaveBeenLastCalledWith('deploy-operation', action, { outputLanguage: 'zh-CN' });
       Array.from(commandDialog.querySelectorAll('button')).find(button => button.textContent === 'curl').click();
       await flushPromises();
       expect(commandDialog.querySelector('textarea').value).toBe('curl command');
@@ -1081,7 +1082,7 @@ describe('TSub Proxy simplified deployment generator', () => {
       }
       document.querySelector('[data-testid="confirm-deployment-operation"]').click();
       await flushPromises();
-      expect(createDeploymentCommand).toHaveBeenLastCalledWith('deploy-operation', action);
+      expect(createDeploymentCommand).toHaveBeenLastCalledWith('deploy-operation', action, { outputLanguage: 'zh-CN' });
       expect(document.querySelector('[data-testid="deployment-operation-confirm-dialog"]')).toBeNull();
       expect(document.querySelector('[data-testid="deployment-operation-command-dialog"] textarea').value).toBe('wget operation');
       expect(wrapper.find('[data-testid="deployment-basic-settings"]').exists()).toBe(false);

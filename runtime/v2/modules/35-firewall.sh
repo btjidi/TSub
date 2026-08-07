@@ -1,9 +1,9 @@
 firewall_ports_apply() {
   ports=$1
   [ "$(kv_get firewall_enabled)" = true ] || return 0
-  [ "$TSUB_TIER" != tiny ] || { add_degraded_reason "tiny 档已跳过端口放行规则"; return 0; }
-  [ "$TSUB_HAS_NET_ADMIN" = true ] || { add_degraded_reason "缺少 CAP_NET_ADMIN，已跳过端口放行规则"; return 0; }
-  [ "$(id -u)" -eq 0 ] || { add_degraded_reason "无特权模式，已跳过端口放行规则"; return 0; }
+  [ "$TSUB_TIER" != tiny ] || { i18n_degraded "tiny 档已跳过端口放行规则" "Port allow rules were skipped on the tiny tier"; return 0; }
+  [ "$TSUB_HAS_NET_ADMIN" = true ] || { i18n_degraded "缺少 CAP_NET_ADMIN，已跳过端口放行规则" "Port allow rules were skipped because CAP_NET_ADMIN is unavailable"; return 0; }
+  [ "$(id -u)" -eq 0 ] || { i18n_degraded "无特权模式，已跳过端口放行规则" "Port allow rules were skipped in unprivileged mode"; return 0; }
   if have nft; then
     nft delete table inet tsub >/dev/null 2>&1 || true
     nft add table inet tsub
@@ -27,7 +27,7 @@ firewall_ports_apply() {
     IFS=$old_ifs
     printf '%s\n' iptables >"$TSUB_STATE/firewall.backend"
   else
-    add_degraded_reason "未找到 nftables/iptables，已跳过端口放行规则"
+    i18n_degraded "未找到 nftables/iptables，已跳过端口放行规则" "Port allow rules were skipped because nftables/iptables was not found"
     return 0
   fi
   printf '%s\n' "$ports" >"$TSUB_STATE/firewall.ports"

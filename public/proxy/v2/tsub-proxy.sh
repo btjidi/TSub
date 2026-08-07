@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='2.4.19'
+TSUB_RUNTIME_VERSION='2.4.20'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -80,6 +80,20 @@ kv_get() {
   return 0
 }
 
+runtime_language() {
+  runtime_language_value=$(kv_get runtime_output_language)
+  case "$runtime_language_value" in en|en-*) printf en-US ;; *) printf zh-CN ;; esac
+}
+
+i18n_text() {
+  if [ "$(runtime_language)" = en-US ]; then printf '%s' "$2"; else printf '%s' "$1"; fi
+}
+
+i18n_print() { i18n_text "$1" "$2"; printf '\n'; }
+i18n_log() { i18n_log_level=$1; shift; log "$i18n_log_level" "$(i18n_text "$1" "$2")"; }
+i18n_die() { i18n_die_zh=$1; i18n_die_en=$2; i18n_die_code=${3:-1}; die "$(i18n_text "$i18n_die_zh" "$i18n_die_en")" "$i18n_die_code"; }
+i18n_degraded() { add_degraded_reason "$(i18n_text "$1" "$2")"; }
+
 b64_decode_file() {
   key=$1
   output=$2
@@ -108,7 +122,7 @@ sha256_file() {
   if have sha256sum; then sha256sum "$1" | awk '{print $1}'
   elif have shasum; then shasum -a 256 "$1" | awk '{print $1}'
   elif have openssl; then openssl dgst -sha256 "$1" | awk '{print $NF}'
-  else die "缺少 SHA-256 工具"; fi
+  else i18n_die "缺少 SHA-256 工具" "No SHA-256 tool is available"; fi
 }
 
 download_file() {
@@ -116,7 +130,7 @@ download_file() {
   download_target=$2
   if have curl; then curl -fL --retry 2 --connect-timeout 15 --max-time 600 -o "$download_target" "$download_url"
   elif have wget; then wget -O "$download_target" "$download_url"
-  else die "必须预装 curl 或 wget"; fi
+  else i18n_die "必须预装 curl 或 wget" "curl or wget must be installed"; fi
 }
 
 atomic_install() {
@@ -156,7 +170,7 @@ acquire_runtime_operation_lock() {
       rmdir "$TSUB_OPERATION_LOCK" 2>/dev/null || true
       continue
     fi
-    [ "$runtime_lock_elapsed" -lt "$runtime_lock_wait" ] || die "等待其他 TSub 操作完成超时"
+    [ "$runtime_lock_elapsed" -lt "$runtime_lock_wait" ] || i18n_die "等待其他 TSub 操作完成超时" "Timed out waiting for another TSub operation"
     sleep "$runtime_lock_poll"
     runtime_lock_elapsed=$((runtime_lock_elapsed + runtime_lock_poll))
   done
@@ -250,7 +264,7 @@ emit_event() {
     [ "$event_sent" = false ] || break
     [ "$event_attempt" -ge 6 ] || sleep 3
   done
-  [ "$event_sent" = true ] || log ERROR "事件回调失败，已重试 $event_attempt 次"
+  [ "$event_sent" = true ] || i18n_log ERROR "事件回调失败，已重试 $event_attempt 次" "Event callback failed after $event_attempt attempts"
   rm -f "$event_file"
 }
 
@@ -322,7 +336,7 @@ detect_system_identity() {
   case "$TSUB_ARCH" in
     x86_64|amd64) TSUB_ARCH=amd64 ;;
     aarch64|arm64) TSUB_ARCH=arm64 ;;
-    *) die "不支持的 CPU 架构: $TSUB_ARCH" ;;
+    *) i18n_die "不支持的 CPU 架构: $TSUB_ARCH" "Unsupported CPU architecture: $TSUB_ARCH" ;;
   esac
 
   TSUB_OS_RELEASE_FILE=${TSUB_OS_RELEASE_FILE:-/etc/os-release}
@@ -345,17 +359,17 @@ detect_system_identity() {
       TSUB_OS_VERIFIED=false
       ;;
   esac
-  printf '系统类型：%s（ID=%s，版本=%s）\n' "$TSUB_OS_PRETTY" "$TSUB_OS" "$TSUB_OS_VERSION"
-  printf 'CPU 架构：%s\n' "$TSUB_ARCH"
-  [ "$TSUB_OS_VERIFIED" = true ] || printf '系统兼容性：未验证，将按 %s 系兼容能力处理\n' "$TSUB_OS_FAMILY"
+  i18n_print "系统类型：$TSUB_OS_PRETTY（ID=$TSUB_OS，版本=$TSUB_OS_VERSION）" "System: $TSUB_OS_PRETTY (ID=$TSUB_OS, version=$TSUB_OS_VERSION)"
+  i18n_print "CPU 架构：$TSUB_ARCH" "CPU architecture: $TSUB_ARCH"
+  [ "$TSUB_OS_VERIFIED" = true ] || i18n_print "系统兼容性：未验证，将按 $TSUB_OS_FAMILY 系兼容能力处理" "System compatibility is unverified; using $TSUB_OS_FAMILY-compatible behavior"
   if [ "$TSUB_OS_FAMILY" = rhel ]; then
     TSUB_SELINUX_MODE=unavailable
     if have getenforce; then TSUB_SELINUX_MODE=$(getenforce 2>/dev/null || printf unknown); fi
-    printf 'SELinux：%s；Enforcing 模式下服务启动失败时请检查审计日志\n' "$TSUB_SELINUX_MODE"
+    i18n_print "SELinux：$TSUB_SELINUX_MODE；Enforcing 模式下服务启动失败时请检查审计日志" "SELinux: $TSUB_SELINUX_MODE; check the audit log if service startup fails in Enforcing mode"
   fi
   detect_bootstrap_environment
-  printf '运行环境：%s；init：%s\n' "$TSUB_CONTAINER" "$TSUB_INIT"
-  printf '初步资源档位：%s；内存限制：%sMB\n' "$TSUB_BOOTSTRAP_TIER" "$TSUB_BOOTSTRAP_MEMORY_MB"
+  i18n_print "运行环境：$TSUB_CONTAINER；init：$TSUB_INIT" "Environment: $TSUB_CONTAINER; init: $TSUB_INIT"
+  i18n_print "初步资源档位：$TSUB_BOOTSTRAP_TIER；内存限制：${TSUB_BOOTSTRAP_MEMORY_MB}MB" "Initial resource tier: $TSUB_BOOTSTRAP_TIER; memory limit: ${TSUB_BOOTSTRAP_MEMORY_MB}MB"
 }
 
 detect_platform_capabilities() {
@@ -478,19 +492,19 @@ detect_resources() {
   case "$requested" in
     tiny) TSUB_TIER=tiny ;;
     small)
-      if [ "$TSUB_DETECTED_TIER" = tiny ]; then [ "$(kv_get runtime_confirm_higher_tier)" = true ] || die "提高资源档位需要二次确认"; fi
+      if [ "$TSUB_DETECTED_TIER" = tiny ]; then [ "$(kv_get runtime_confirm_higher_tier)" = true ] || i18n_die "提高资源档位需要二次确认" "Increasing the resource tier requires confirmation"; fi
       TSUB_TIER=small
       ;;
     standard)
-      if [ "$TSUB_DETECTED_TIER" != standard ]; then [ "$(kv_get runtime_confirm_higher_tier)" = true ] || die "提高资源档位需要二次确认"; fi
+      if [ "$TSUB_DETECTED_TIER" != standard ]; then [ "$(kv_get runtime_confirm_higher_tier)" = true ] || i18n_die "提高资源档位需要二次确认" "Increasing the resource tier requires confirmation"; fi
       TSUB_TIER=standard
       ;;
     '') : ;;
-    *) die "未知资源档位: $requested" ;;
+    *) i18n_die "未知资源档位: $requested" "Unknown resource tier: $requested" ;;
   esac
   TSUB_DISK_KB=$(df -Pk "$TSUB_STATE" 2>/dev/null | awk 'NR==2 {print $4}' || printf 0)
   TSUB_PID_LIMIT=$(cat /sys/fs/cgroup/pids.max 2>/dev/null || printf unknown)
-  printf '资源复核：%s；内存限制：%sMB；当前可用：%sMB；Swap：%s/%sMB\n' "$TSUB_TIER" "$TSUB_MEMORY_MB" "$TSUB_MEMORY_AVAILABLE_MB" "$TSUB_SWAP_USED_MB" "$TSUB_SWAP_TOTAL_MB"
+  i18n_print "资源复核：$TSUB_TIER；内存限制：${TSUB_MEMORY_MB}MB；当前可用：${TSUB_MEMORY_AVAILABLE_MB}MB；Swap：${TSUB_SWAP_USED_MB}/${TSUB_SWAP_TOTAL_MB}MB" "Resource check: $TSUB_TIER; memory limit: ${TSUB_MEMORY_MB}MB; available: ${TSUB_MEMORY_AVAILABLE_MB}MB; Swap: ${TSUB_SWAP_USED_MB}/${TSUB_SWAP_TOTAL_MB}MB"
 }
 
 # module: 15-dependencies.sh
@@ -635,32 +649,32 @@ ensure_dependencies() {
   dependency_action=$1
   detect_required_dependencies "$dependency_action"
   if [ -z "$TSUB_MISSING_DEPENDENCIES" ]; then
-    printf '依赖检查：已满足当前操作所需能力，无需安装\n'
+    i18n_print '依赖检查：已满足当前操作所需能力，无需安装' 'Dependency check: all capabilities required for this operation are available; nothing to install'
     return 0
   fi
-  printf '依赖检查：缺少 %s\n' "$TSUB_MISSING_DEPENDENCIES"
+  i18n_print "依赖检查：缺少 $TSUB_MISSING_DEPENDENCIES" "Dependency check: missing $TSUB_MISSING_DEPENDENCIES"
   if [ "$dependency_action" = plan ]; then
-    printf '计划模式不会修改系统；建议安装软件包：%s\n' "${TSUB_REQUIRED_PACKAGES:-无法自动映射}"
+    i18n_print "计划模式不会修改系统；建议安装软件包：${TSUB_REQUIRED_PACKAGES:-无法自动映射}" "Plan mode will not modify the system; suggested packages: ${TSUB_REQUIRED_PACKAGES:-no automatic mapping available}"
     return 2
   fi
-  case "$dependency_action" in apply|update|repair) : ;; *) printf '当前操作不会自动安装依赖\n'; return 2 ;; esac
+  case "$dependency_action" in apply|update|repair) : ;; *) i18n_print '当前操作不会自动安装依赖' 'This operation does not install dependencies automatically'; return 2 ;; esac
   dependency_manager=$(dependency_package_manager 2>/dev/null || true)
-  [ -n "$dependency_manager" ] || { printf '无法为该系统选择受支持的包管理器；请手动补齐：%s\n' "$TSUB_MISSING_DEPENDENCIES" >&2; return 2; }
+  [ -n "$dependency_manager" ] || { i18n_print "无法为该系统选择受支持的包管理器；请手动补齐：$TSUB_MISSING_DEPENDENCIES" "No supported package manager is available for this system; install manually: $TSUB_MISSING_DEPENDENCIES" >&2; return 2; }
   TSUB_DEPENDENCY_USE_SUDO=false
   if [ "$(id -u)" -ne 0 ]; then
     if have sudo && sudo -n true >/dev/null 2>&1; then TSUB_DEPENDENCY_USE_SUDO=true
-    else printf '无法无交互提权。请安装：%s\n' "$TSUB_REQUIRED_PACKAGES" >&2; return 2; fi
+    else i18n_print "无法无交互提权。请安装：$TSUB_REQUIRED_PACKAGES" "Cannot elevate privileges non-interactively. Install: $TSUB_REQUIRED_PACKAGES" >&2; return 2; fi
   fi
-  printf '依赖安装：使用 %s 最小化安装 %s\n' "$dependency_manager" "$TSUB_REQUIRED_PACKAGES"
+  i18n_print "依赖安装：使用 $dependency_manager 最小化安装 $TSUB_REQUIRED_PACKAGES" "Dependency installation: using $dependency_manager to minimally install $TSUB_REQUIRED_PACKAGES"
   dependency_attempt=1
   while ! install_required_dependencies_once "$dependency_manager"; do
-    [ "$dependency_attempt" -lt 2 ] || { printf '依赖安装失败\n' >&2; return 2; }
+    [ "$dependency_attempt" -lt 2 ] || { i18n_print '依赖安装失败' 'Dependency installation failed' >&2; return 2; }
     dependency_attempt=$((dependency_attempt + 1))
-    printf '依赖安装失败，正在进行最后一次重试\n' >&2
+    i18n_print '依赖安装失败，正在进行最后一次重试' 'Dependency installation failed; making one final attempt' >&2
   done
   detect_required_dependencies "$dependency_action"
-  [ -z "$TSUB_MISSING_DEPENDENCIES" ] || { printf '依赖安装后仍缺少：%s\n' "$TSUB_MISSING_DEPENDENCIES" >&2; return 2; }
-  printf '依赖安装：完成\n'
+  [ -z "$TSUB_MISSING_DEPENDENCIES" ] || { i18n_print "依赖安装后仍缺少：$TSUB_MISSING_DEPENDENCIES" "Still missing after dependency installation: $TSUB_MISSING_DEPENDENCIES" >&2; return 2; }
+  i18n_print '依赖安装：完成' 'Dependency installation completed'
 }
 
 # module: 20-plan.sh
@@ -675,24 +689,26 @@ provider_budget() {
 }
 
 confirm_low_memory_install() {
-  install_warning=$1
+  install_warning_zh=$1
+  install_warning_en=$2
+  install_warning=$(i18n_text "$install_warning_zh" "$install_warning_en")
   [ "${TSUB_FORCE_LOW_MEMORY_INSTALL:-false}" != true ] || return 0
   confirmation_input=${TSUB_CONFIRM_INPUT:-/dev/tty}
   confirmation_output=${TSUB_CONFIRM_OUTPUT:-/dev/tty}
   if [ ! -r "$confirmation_input" ] || [ ! -w "$confirmation_output" ]; then
-    die "$install_warning；当前为非交互执行，无法确认强制安装"
+    i18n_die "$install_warning_zh；当前为非交互执行，无法确认强制安装" "$install_warning_en; forced installation cannot be confirmed in non-interactive mode"
   fi
   printf '%s\n' "$install_warning" >"$confirmation_output"
-  printf '%s' '继续可能触发 OOM 并导致安装回滚。输入 Y 强制安装，其他输入取消：' >>"$confirmation_output"
+  i18n_text '继续可能触发 OOM 并导致安装回滚。输入 Y 强制安装，其他输入取消：' 'Continuing may trigger OOM and roll back the installation. Enter Y to force installation; any other input cancels: ' >>"$confirmation_output"
   install_confirmation=''
   IFS= read -r install_confirmation <"$confirmation_input" || true
   case "$install_confirmation" in
     y|Y)
       TSUB_FORCE_LOW_MEMORY_INSTALL=true
-      add_degraded_reason "用户已确认低内存强制安装"
-      log WARN "用户已确认低内存强制安装；继续执行"
+      i18n_degraded "用户已确认低内存强制安装" "Low-memory forced installation was confirmed"
+      i18n_log WARN "用户已确认低内存强制安装；继续执行" "Low-memory forced installation confirmed; continuing"
       ;;
-    *) die "$install_warning；用户未确认强制安装" ;;
+    *) i18n_die "$install_warning_zh；用户未确认强制安装" "$install_warning_en; forced installation was not confirmed" ;;
   esac
 }
 
@@ -706,11 +722,13 @@ require_install_headroom() {
   install_required=$((install_rss + install_reserve))
   if [ "$TSUB_MEMORY_AVAILABLE_MB" -lt "$install_required" ]; then
     if [ "$TSUB_MEMORY_MB" -le 64 ] && [ "$(kv_get "${core}_${TSUB_ARCH}_format")" = tar.gz ]; then
-      install_warning="64MB 节点不能安全解包 $core；建议改用经过 SHA-256 校验的预解包 binary 资产"
+      install_warning_zh="64MB 节点不能安全解包 $core；建议改用经过 SHA-256 校验的预解包 binary 资产"
+      install_warning_en="A 64MB node cannot safely unpack $core; use a pre-extracted binary asset verified with SHA-256"
     else
-      install_warning="当前可用内存 ${TSUB_MEMORY_AVAILABLE_MB}MB 不足以安全安装；需要至少 ${install_required}MB 可用内存"
+      install_warning_zh="当前可用内存 ${TSUB_MEMORY_AVAILABLE_MB}MB 不足以安全安装；需要至少 ${install_required}MB 可用内存"
+      install_warning_en="${TSUB_MEMORY_AVAILABLE_MB}MB of available memory is insufficient for safe installation; at least ${install_required}MB is required"
     fi
-    confirm_low_memory_install "$install_warning"
+    confirm_low_memory_install "$install_warning_zh" "$install_warning_en"
   fi
 }
 
@@ -726,10 +744,10 @@ planned_core_is_installed() {
 plan_runtime() {
   TSUB_STAGE=plan
   core=$(kv_get runtime_core)
-  case "$core" in xray|sing-box|naive) : ;; *) die "配置未选择受支持的主核心" ;; esac
+  case "$core" in xray|sing-box|naive) : ;; *) i18n_die "配置未选择受支持的主核心" "No supported primary core is selected" ;; esac
   inbound_count=$(kv_get inbound_count)
-  case "$inbound_count" in ''|*[!0-9]*) die "inbound_count 无效" ;; esac
-  [ "$inbound_count" -gt 0 ] || die "至少需要一个入站"
+  case "$inbound_count" in ''|*[!0-9]*) i18n_die "inbound_count 无效" "Invalid inbound_count" ;; esac
+  [ "$inbound_count" -gt 0 ] || i18n_die "至少需要一个入站" "At least one inbound is required"
   provider_budget "$core"
   estimated_rss=$budget_rss
   TSUB_ESTIMATED_CORE_RSS=$budget_rss
@@ -738,8 +756,8 @@ plan_runtime() {
   binary_mb=$budget_binary_mb
   tunnels=$(kv_get tunnel_count); tunnels=${tunnels:-0}
   if [ "$tunnels" -gt 0 ]; then
-    [ "$TSUB_TIER" != tiny ] || die "tiny 档默认拒绝 cloudflared；请使用核心内协议或提高资源"
-    [ "$TSUB_MEMORY_MB" -ge 128 ] || log WARN "隧道建议服务器 cgroup 内存上限至少为 128MB；当前为 ${TSUB_MEMORY_MB}MB"
+    [ "$TSUB_TIER" != tiny ] || i18n_die "tiny 档默认拒绝 cloudflared；请使用核心内协议或提高资源" "The tiny tier does not allow cloudflared by default; use a core-native protocol or increase resources"
+    [ "$TSUB_MEMORY_MB" -ge 128 ] || i18n_log WARN "隧道建议服务器 cgroup 内存上限至少为 128MB；当前为 ${TSUB_MEMORY_MB}MB" "Tunnels should have a cgroup memory limit of at least 128MB; current limit is ${TSUB_MEMORY_MB}MB"
     estimated_rss=$((estimated_rss + 45))
     TSUB_ESTIMATED_CLOUDFLARED_RSS=45
     binary_mb=$((binary_mb + 35))
@@ -750,37 +768,37 @@ plan_runtime() {
   fi
   certificate_mode=$(kv_get certificate_mode)
   case "$certificate_mode" in existing|self-signed) : ;; *) binary_mb=$((binary_mb + 20)) ;; esac
-  [ $((estimated_rss * 100)) -le $((TSUB_MEMORY_MB * 80)) ] || die "预计常驻内存 ${estimated_rss}MB 超过 cgroup 80% 预算"
+  [ $((estimated_rss * 100)) -le $((TSUB_MEMORY_MB * 80)) ] || i18n_die "预计常驻内存 ${estimated_rss}MB 超过 cgroup 80% 预算" "Estimated resident memory ${estimated_rss}MB exceeds 80% of the cgroup budget"
   required_kb=$((binary_mb * 2 * 1024 + 8192))
-  [ "$TSUB_DISK_KB" -ge "$required_kb" ] || die "磁盘不足：至少需要 ${required_kb}KB 可用空间"
-  [ "$TSUB_MEMORY_MB" -ge 56 ] || die "低于 56MB 的内存限制不受支持"
+  [ "$TSUB_DISK_KB" -ge "$required_kb" ] || i18n_die "磁盘不足：至少需要 ${required_kb}KB 可用空间" "Insufficient disk space: at least ${required_kb}KB is required"
+  [ "$TSUB_MEMORY_MB" -ge 56 ] || i18n_die "低于 56MB 的内存限制不受支持" "Memory limits below 56MB are not supported"
   planned_core_is_installed || require_install_headroom
   case "$TSUB_PID_LIMIT" in
     ''|max|*[!0-9]*) : ;;
-    *) required_pids=$((12 + tunnels * 4)); [ "$TSUB_PID_LIMIT" -ge "$required_pids" ] || die "PID 上限 $TSUB_PID_LIMIT 低于所需 $required_pids" ;;
+    *) required_pids=$((12 + tunnels * 4)); [ "$TSUB_PID_LIMIT" -ge "$required_pids" ] || i18n_die "PID 上限 $TSUB_PID_LIMIT 低于所需 $required_pids" "PID limit $TSUB_PID_LIMIT is below the required $required_pids" ;;
   esac
   if [ "$(id -u)" -ne 0 ]; then
     old_ifs=$IFS; IFS=,
     for port_spec in $(kv_get inbound_ports); do
       port_number=${port_spec%/*}
-      if [ "$port_number" -lt 1024 ]; then IFS=$old_ifs; die "无特权模式不能绑定低于 1024 的端口"; fi
+      if [ "$port_number" -lt 1024 ]; then IFS=$old_ifs; i18n_die "无特权模式不能绑定低于 1024 的端口" "Unprivileged mode cannot bind ports below 1024"; fi
     done
     IFS=$old_ifs
   fi
   if [ "$(kv_get firewall_enabled)" = true ] && [ "$TSUB_TIER" = tiny ]; then
-    add_degraded_reason "tiny 档已跳过端口放行规则"
-    log WARN "tiny 档自动跳过端口放行规则"
+    i18n_degraded "tiny 档已跳过端口放行规则" "Port allow rules were skipped on the tiny tier"
+    i18n_log WARN "tiny 档自动跳过端口放行规则" "Port allow rules were automatically skipped on the tiny tier"
   elif [ "$(kv_get firewall_enabled)" = true ] && [ "$TSUB_HAS_NET_ADMIN" != true ]; then
-    add_degraded_reason "缺少 CAP_NET_ADMIN，已跳过端口放行规则"
-    log WARN "缺少 CAP_NET_ADMIN，已跳过端口放行规则"
+    i18n_degraded "缺少 CAP_NET_ADMIN，已跳过端口放行规则" "Port allow rules were skipped because CAP_NET_ADMIN is unavailable"
+    i18n_log WARN "缺少 CAP_NET_ADMIN，已跳过端口放行规则" "Port allow rules were skipped because CAP_NET_ADMIN is unavailable"
   fi
   if [ -n "$(kv_get udp_hop_rules)" ]; then
-    [ "$TSUB_HAS_NET_ADMIN" = true ] || die "Hysteria2 端口跳跃需要 CAP_NET_ADMIN"
-    [ "$(id -u)" -eq 0 ] || die "Hysteria2 端口跳跃需要 root 权限"
-    have nft || have iptables || die "Hysteria2 端口跳跃需要 nftables 或 iptables"
+    [ "$TSUB_HAS_NET_ADMIN" = true ] || i18n_die "Hysteria2 端口跳跃需要 CAP_NET_ADMIN" "Hysteria2 port hopping requires CAP_NET_ADMIN"
+    [ "$(id -u)" -eq 0 ] || i18n_die "Hysteria2 端口跳跃需要 root 权限" "Hysteria2 port hopping requires root"
+    have nft || have iptables || i18n_die "Hysteria2 端口跳跃需要 nftables 或 iptables" "Hysteria2 port hopping requires nftables or iptables"
   fi
   if [ "$(kv_get warp_backend)" = tun ] && [ "$TSUB_HAS_TUN" != true ]; then
-    die "配置要求 TUN WARP，但 /dev/net/tun 不可用"
+    i18n_die "配置要求 TUN WARP，但 /dev/net/tun 不可用" "The configuration requires TUN WARP, but /dev/net/tun is unavailable"
   fi
   if [ ! -f "$TSUB_ETC/config.json" ] && have ss; then
     old_ifs=$IFS; IFS=,
@@ -788,16 +806,16 @@ plan_runtime() {
       port_number=${port_spec%/*}
       if ss -lntu 2>/dev/null | awk '{print $5}' | grep -Eq "[:.]${port_number}$"; then
         IFS=$old_ifs
-        die "端口 $port_number 已被占用"
+        i18n_die "端口 $port_number 已被占用" "Port $port_number is already in use"
       fi
     done
     IFS=$old_ifs
     subscription_port=$(kv_get subscription_server_port)
     if [ -n "$subscription_port" ] && ss -lntu 2>/dev/null | awk '{print $5}' | grep -Eq "[:.]${subscription_port}$"; then
-      die "订阅端口 $subscription_port 已被占用"
+      i18n_die "订阅端口 $subscription_port 已被占用" "Subscription port $subscription_port is already in use"
     fi
   fi
-  emit_event running "plan accepted: core=$core tier=$TSUB_TIER memory=${TSUB_MEMORY_MB}MB"
+  emit_event running "$(i18n_text "计划检查通过：核心=$core 档位=$TSUB_TIER 内存=${TSUB_MEMORY_MB}MB" "Plan accepted: core=$core tier=$TSUB_TIER memory=${TSUB_MEMORY_MB}MB")"
 }
 
 # module: 30-provider.sh
@@ -808,37 +826,40 @@ verify_download() {
   expected=$(kv_get "${component}_${TSUB_ARCH}_sha256")
   format=$(kv_get "${component}_${TSUB_ARCH}_format"); format=${format:-binary}
   binary_expected=$(kv_get "${component}_${TSUB_ARCH}_binary_sha256"); binary_expected=${binary_expected:-$expected}
-  [ -n "$url" ] && [ -n "$expected" ] || die "$component/$TSUB_ARCH 缺少版本清单或 SHA-256"
+  [ -n "$url" ] && [ -n "$expected" ] || i18n_die "$component/$TSUB_ARCH 缺少版本清单或 SHA-256" "$component/$TSUB_ARCH is missing a manifest entry or SHA-256"
   TSUB_DOWNLOAD_PART="$output.part"
+  i18n_print "正在下载 $component 核心组件..." "Downloading the $component core component..."
   download_file "$url" "$TSUB_DOWNLOAD_PART"
+  i18n_print "下载完成，正在校验 $component..." "Download completed; verifying $component..."
   actual=$(sha256_file "$TSUB_DOWNLOAD_PART")
-  [ "$actual" = "$expected" ] || die "$component 校验失败"
+  [ "$actual" = "$expected" ] || i18n_die "$component 校验失败" "$component verification failed"
   case "$format" in
     binary)
-      [ "$actual" = "$binary_expected" ] || die "$component 二进制校验失败"
+      [ "$actual" = "$binary_expected" ] || i18n_die "$component 二进制校验失败" "$component binary verification failed"
       chmod 755 "$TSUB_DOWNLOAD_PART"
       mv -f "$TSUB_DOWNLOAD_PART" "$output"
       ;;
     tar.gz)
       archive_listing="$TSUB_TMP/${component}.archive.list.$$"
-      tar -tzf "$TSUB_DOWNLOAD_PART" >"$archive_listing" || die "$component 压缩包目录读取失败"
-      if grep -Eq '(^/|(^|/)\.\.(/|$))' "$archive_listing"; then die "$component 压缩包包含不安全路径"; fi
+      tar -tzf "$TSUB_DOWNLOAD_PART" >"$archive_listing" || i18n_die "$component 压缩包目录读取失败" "Could not read the $component archive listing"
+      if grep -Eq '(^/|(^|/)\.\.(/|$))' "$archive_listing"; then i18n_die "$component 压缩包包含不安全路径" "The $component archive contains an unsafe path"; fi
       extracted_list="$TSUB_TMP/${component}.archive.candidates.$$"
       awk -F/ -v component="$component" '$NF == component { print }' "$archive_listing" >"$extracted_list"
-      [ "$(wc -l <"$extracted_list" | tr -d ' ')" = 1 ] || die "$component 压缩包必须包含唯一二进制文件"
+      [ "$(wc -l <"$extracted_list" | tr -d ' ')" = 1 ] || i18n_die "$component 压缩包必须包含唯一二进制文件" "The $component archive must contain exactly one binary"
       extracted=$(sed -n '1p' "$extracted_list")
       extracted_file="$TSUB_TMP/${component}.binary.$$"
-      tar -xOzf "$TSUB_DOWNLOAD_PART" "$extracted" >"$extracted_file" || die "$component 压缩包解压失败"
-      [ -s "$extracted_file" ] || die "$component 压缩包中的二进制文件为空"
+      tar -xOzf "$TSUB_DOWNLOAD_PART" "$extracted" >"$extracted_file" || i18n_die "$component 压缩包解压失败" "Failed to extract the $component archive"
+      [ -s "$extracted_file" ] || i18n_die "$component 压缩包中的二进制文件为空" "The binary in the $component archive is empty"
       extracted_hash=$(sha256_file "$extracted_file")
-      [ "$extracted_hash" = "$binary_expected" ] || die "$component 二进制校验失败"
+      [ "$extracted_hash" = "$binary_expected" ] || i18n_die "$component 二进制校验失败" "$component binary verification failed"
       chmod 755 "$extracted_file"
       mv -f "$extracted_file" "$output"
       rm -f "$archive_listing" "$extracted_list" "$TSUB_DOWNLOAD_PART"
       ;;
-    *) die "$component 资产格式不受支持" ;;
+    *) i18n_die "$component 资产格式不受支持" "Unsupported $component asset format" ;;
   esac
   TSUB_DOWNLOAD_PART=''
+  i18n_print "$component 下载并校验完成。" "$component was downloaded and verified successfully."
 }
 
 component_binary_sha() {
@@ -852,7 +873,7 @@ ensure_core() {
   core=$(kv_get runtime_core)
   version=$(kv_get "${core}_version")
   expected=$(component_binary_sha "$core")
-  [ -n "$expected" ] || die "$core/$TSUB_ARCH 缺少 SHA-256"
+  [ -n "$expected" ] || i18n_die "$core/$TSUB_ARCH 缺少 SHA-256" "$core/$TSUB_ARCH is missing a SHA-256"
   target="$TSUB_BIN/$core-$version-$TSUB_ARCH-$expected"
   if [ -x "$target" ] && [ "$(sha256_file "$target")" != "$expected" ]; then rm -f "$target"; fi
   TSUB_CORE_DOWNLOADED=false
@@ -871,14 +892,14 @@ ensure_core() {
 
 load_installed_core() {
   TSUB_CORE_BIN=$(cat "$TSUB_STATE/core.identity" 2>/dev/null || true)
-  [ -n "$TSUB_CORE_BIN" ] && [ -x "$TSUB_CORE_BIN" ] || die "未找到已安装核心，请先执行 apply"
+  [ -n "$TSUB_CORE_BIN" ] && [ -x "$TSUB_CORE_BIN" ] || i18n_die "未找到已安装核心，请先执行 apply" "No installed core was found; run apply first"
   TSUB_CORE_VERSION=$(basename "$TSUB_CORE_BIN")
 }
 
 render_config() {
   core=$(kv_get runtime_core)
   output=$1
-  b64_decode_file "${core}_config_b64" "$output" || die "$core 配置 Base64 解码失败或内容为空"
+  b64_decode_file "${core}_config_b64" "$output" || i18n_die "$core 配置 Base64 解码失败或内容为空" "The $core configuration could not be decoded from Base64 or is empty"
   cert_dir="$TSUB_STATE/certificates/certificates"
   sed "s|__TSUB_CERT_DIR__|$cert_dir|g" "$output" >"$output.rendered"
   mv "$output.rendered" "$output"
@@ -893,7 +914,7 @@ validate_config() {
     xray) run_core_command "$TSUB_CORE_BIN" run -test -config "$config" >/dev/null 2>"$TSUB_TMP/validate.err" ;;
     sing-box) run_core_command "$TSUB_CORE_BIN" check -c "$config" >/dev/null 2>"$TSUB_TMP/validate.err" ;;
     naive) "$TSUB_CORE_BIN" validate --config "$config" --adapter caddyfile >/dev/null 2>"$TSUB_TMP/validate.err" ;;
-  esac || die "核心配置检查失败: $(tail -c 300 "$TSUB_TMP/validate.err" 2>/dev/null)"
+  esac || i18n_die "核心配置检查失败: $(tail -c 300 "$TSUB_TMP/validate.err" 2>/dev/null)" "Core configuration validation failed: $(tail -c 300 "$TSUB_TMP/validate.err" 2>/dev/null)"
 }
 
 export_nodes() {
@@ -903,7 +924,7 @@ export_nodes() {
   TSUB_NODE_DETAILS_FILE="$TSUB_STATE/node-details.txt"
   b64_decode_file node_details_b64 "$TSUB_NODE_DETAILS_FILE" || : >"$TSUB_NODE_DETAILS_FILE"
   replace_runtime_secrets "$TSUB_NODE_DETAILS_FILE"
-  apply_exported_certificate_pin || die "节点证书指纹写入失败"
+  apply_exported_certificate_pin || i18n_die "节点证书指纹写入失败" "Failed to write node certificate pins"
   chmod 600 "$TSUB_NODE_DETAILS_FILE"
   if [ -r "$TSUB_STATE/legacy-nodes.txt" ] && [ ! -s "$TSUB_NODES_FILE" ]; then
     cp "$TSUB_STATE/legacy-nodes.txt" "$TSUB_NODES_FILE"
@@ -938,7 +959,7 @@ valid_warp_key() {
 ensure_warp_identity() {
   [ "$(kv_get warp_backend)" = userspace ] || return 0
   [ "$(kv_get warp_provisioning)" = auto ] || return 0
-  [ "$(kv_get warp_terms_accepted)" = true ] || die "自动 WARP 未确认服务条款"
+  [ "$(kv_get warp_terms_accepted)" = true ] || i18n_die "自动 WARP 未确认服务条款" "The WARP terms have not been accepted for automatic setup"
   warp_dir="$TSUB_STATE/secrets/warp"
   warp_profile="$warp_dir/wgcf-profile.conf"
   mkdir -p "$warp_dir"
@@ -946,7 +967,7 @@ ensure_warp_identity() {
   if [ ! -s "$warp_profile" ]; then
     version=$(kv_get wgcf_version); version=${version:-2.2.22}
     expected=$(component_binary_sha wgcf)
-    [ -n "$expected" ] || die "wgcf/$TSUB_ARCH 缺少 SHA-256"
+    [ -n "$expected" ] || i18n_die "wgcf/$TSUB_ARCH 缺少 SHA-256" "wgcf/$TSUB_ARCH is missing a SHA-256"
     warp_bin="$TSUB_BIN/wgcf-$version-$TSUB_ARCH-$expected"
     if [ -x "$warp_bin" ] && [ "$(sha256_file "$warp_bin")" != "$expected" ]; then rm -f "$warp_bin"; fi
     [ -x "$warp_bin" ] || verify_download wgcf "$warp_bin"
@@ -955,10 +976,10 @@ ensure_warp_identity() {
     if ! (cd "$warp_work" && "$warp_bin" register --accept-tos >/dev/null 2>register.err && "$warp_bin" generate >/dev/null 2>generate.err); then
       append_redacted_log "$warp_work/register.err"
       append_redacted_log "$warp_work/generate.err"
-      die "WARP 免费身份注册失败；请稍后重试或切换手工导入"
+      i18n_die "WARP 免费身份注册失败；请稍后重试或切换手工导入" "WARP free identity registration failed; retry later or import one manually"
     fi
     [ -s "$warp_work/wgcf-account.toml" ] && atomic_install "$warp_work/wgcf-account.toml" "$warp_dir/wgcf-account.toml" 600
-    [ -s "$warp_work/wgcf-profile.conf" ] || die "WARP 身份生成结果缺少配置"
+    [ -s "$warp_work/wgcf-profile.conf" ] || i18n_die "WARP 身份生成结果缺少配置" "The generated WARP identity is missing its configuration"
     atomic_install "$warp_work/wgcf-profile.conf" "$warp_profile" 600
   fi
   chmod 600 "$warp_dir"/* 2>/dev/null || true
@@ -971,10 +992,10 @@ ensure_warp_identity() {
   warp_endpoint=${warp_endpoint_value%:*}; warp_port=${warp_endpoint_value##*:}
   warp_reserved=$(sed -n 's/^[[:space:]]*Reserved[[:space:]]*=[[:space:]]*//p' "$warp_profile" | sed -n '1p' | tr -d '[][:space:]')
   [ -n "$warp_reserved" ] || warp_reserved=0,0,0
-  valid_warp_key "$warp_private" && valid_warp_key "$warp_peer" || die "WARP 身份中的密钥格式无效"
-  [ -n "$warp_ipv4" ] && [ -n "$warp_ipv6" ] || die "WARP 身份缺少双栈地址"
-  case "$warp_port" in ''|*[!0-9]*) die "WARP Endpoint 端口无效" ;; esac
-  case "$warp_reserved" in *[!0-9,]*) die "WARP Reserved 格式无效" ;; esac
+  valid_warp_key "$warp_private" && valid_warp_key "$warp_peer" || i18n_die "WARP 身份中的密钥格式无效" "The WARP identity contains an invalid key"
+  [ -n "$warp_ipv4" ] && [ -n "$warp_ipv6" ] || i18n_die "WARP 身份缺少双栈地址" "The WARP identity is missing dual-stack addresses"
+  case "$warp_port" in ''|*[!0-9]*) i18n_die "WARP Endpoint 端口无效" "Invalid WARP endpoint port" ;; esac
+  case "$warp_reserved" in *[!0-9,]*) i18n_die "WARP Reserved 格式无效" "Invalid WARP reserved value" ;; esac
 }
 
 ensure_runtime_secrets() {
@@ -988,14 +1009,14 @@ ensure_runtime_secrets() {
   chmod 700 "$secrets_dir"
   old_ifs=$IFS; IFS=,
   for id in $ids; do
-    case "$id" in ''|*[!A-Za-z0-9_]*) IFS=$old_ifs; die "Reality 入站标识无效" ;; esac
+    case "$id" in ''|*[!A-Za-z0-9_]*) IFS=$old_ifs; i18n_die "Reality 入站标识无效" "Invalid Reality inbound identifier" ;; esac
     secret_file="$secrets_dir/reality-$id.conf"
     if [ ! -s "$secret_file" ]; then
       generated="$TSUB_TMP/reality-$id.out"
-      generate_reality_keypair "$generated" || { IFS=$old_ifs; die "Reality 密钥生成失败"; }
+      generate_reality_keypair "$generated" || { IFS=$old_ifs; i18n_die "Reality 密钥生成失败" "Failed to generate Reality keys"; }
       private_key=$(sed -n 's/^[Pp]rivate[Kk]ey:[[:space:]]*//p; s/^[Pp]rivate key:[[:space:]]*//p' "$generated" | sed -n '1p')
       public_key=$(sed -n 's/^[Pp]ublic[Kk]ey:[[:space:]]*//p; s/^[Pp]ublic key:[[:space:]]*//p; s/^[Pp]assword ([Pp]ublic[Kk]ey):[[:space:]]*//p; s/^[Pp]assword:[[:space:]]*//p' "$generated" | sed -n '1p')
-      valid_reality_key "$private_key" && valid_reality_key "$public_key" || { IFS=$old_ifs; die "Reality 密钥输出无法识别"; }
+      valid_reality_key "$private_key" && valid_reality_key "$public_key" || { IFS=$old_ifs; i18n_die "Reality 密钥输出无法识别" "Unrecognized Reality key output"; }
       printf 'private=%s\npublic=%s\n' "$private_key" "$public_key" >"$TSUB_TMP/reality-$id.conf"
       atomic_install "$TSUB_TMP/reality-$id.conf" "$secret_file" 600
     fi
@@ -1010,7 +1031,7 @@ replace_runtime_secrets() {
     old_ifs=$IFS; IFS=,
     for id in $ids; do
       secret_file="$TSUB_STATE/secrets/reality-$id.conf"
-      [ -r "$secret_file" ] || { IFS=$old_ifs; die "Reality 密钥不存在: $id"; }
+      [ -r "$secret_file" ] || { IFS=$old_ifs; i18n_die "Reality 密钥不存在: $id" "Reality key does not exist: $id"; }
       private_key=$(sed -n 's/^private=//p' "$secret_file" | sed -n '1p')
       public_key=$(sed -n 's/^public=//p' "$secret_file" | sed -n '1p')
       sed "s|__TSUB_REALITY_PRIVATE_${id}__|$private_key|g; s|__TSUB_REALITY_PUBLIC_${id}__|$public_key|g" "$target" >"$target.secrets"
@@ -1038,16 +1059,16 @@ ensure_tunnel_binary() {
   fi
   version=$(kv_get cloudflared_version); version=${version:-stable}
   expected=$(component_binary_sha cloudflared)
-  [ -n "$expected" ] || die "cloudflared/$TSUB_ARCH 缺少 SHA-256"
+  [ -n "$expected" ] || i18n_die "cloudflared/$TSUB_ARCH 缺少 SHA-256" "cloudflared/$TSUB_ARCH is missing a SHA-256"
   TSUB_TUNNEL_BIN="$TSUB_BIN/cloudflared-$version-$TSUB_ARCH-$expected"
   if [ -x "$TSUB_TUNNEL_BIN" ] && [ "$(sha256_file "$TSUB_TUNNEL_BIN")" != "$expected" ]; then rm -f "$TSUB_TUNNEL_BIN"; fi
   [ -x "$TSUB_TUNNEL_BIN" ] || verify_download cloudflared "$TSUB_TUNNEL_BIN"
   index=1
   while [ "$index" -le "$count" ]; do
     if [ "$(kv_get "tunnel_${index}_type")" = named ]; then
-      b64_decode_file "tunnel_${index}_token_b64" "$TSUB_STATE/tunnel-$index.token" || die "Tunnel Token 解码失败"
+      b64_decode_file "tunnel_${index}_token_b64" "$TSUB_STATE/tunnel-$index.token" || i18n_die "Tunnel Token 解码失败" "Failed to decode the tunnel token"
     elif [ "$(kv_get "tunnel_${index}_type")" = quick ]; then
-      b64_decode_file push_token_b64 "$TSUB_STATE/quick-tunnel.token" || die "Quick Tunnel 回传凭证解码失败"
+      b64_decode_file push_token_b64 "$TSUB_STATE/quick-tunnel.token" || i18n_die "Quick Tunnel 回传凭证解码失败" "Failed to decode the Quick Tunnel callback credential"
     fi
     index=$((index + 1))
   done
@@ -1342,7 +1363,7 @@ replace_certificate_pin_in_file() {
       vmess://*)
         certificate_vmess_payload="$TSUB_TMP/vmess-pin.$certificate_line_number.json"
         if ! certificate_base64_decode_value "${certificate_line#vmess://}" "$certificate_vmess_payload"; then
-          log ERROR "VMess 节点证书指纹写入失败：链接 Base64 无效"
+          i18n_log ERROR "VMess 节点证书指纹写入失败：链接 Base64 无效" "Failed to write the VMess certificate pin: invalid link Base64"
           return 1
         fi
         sed -e "s/__TSUB_CERT_PIN_SHA256__/$certificate_pin/g" -e "s|__TSUB_CERT_SPKI_SHA256__|$certificate_spki|g" "$certificate_vmess_payload" >"$certificate_vmess_payload.pinned"
@@ -1355,7 +1376,7 @@ replace_certificate_pin_in_file() {
     esac
   done <"$certificate_nodes_file"
   if grep -Eq '__TSUB_CERT_(PIN|SPKI)_SHA256__' "$certificate_nodes_output" 2>/dev/null; then
-    log ERROR "节点证书指纹占位符未完全替换"
+    i18n_log ERROR "节点证书指纹占位符未完全替换" "Node certificate pin placeholders were not fully replaced"
     return 1
   fi
   mv -f "$certificate_nodes_output" "$certificate_nodes_file"
@@ -1381,13 +1402,13 @@ apply_exported_certificate_pin() {
   certificate_domain=$(kv_get certificate_domain)
   [ -n "$certificate_domain" ] || return 0
   certificate_file="$TSUB_STATE/certificates/certificates/$certificate_domain.crt"
-  [ -s "$certificate_file" ] || { log ERROR "自签证书不存在，无法固定客户端证书指纹"; return 1; }
-  certificate_pin=$(certificate_pin_sha256 "$certificate_file") || { log ERROR "自签证书 SHA-256 指纹计算失败"; return 1; }
-  certificate_spki=$(certificate_spki_sha256 "$certificate_file") || { log ERROR "自签证书 SPKI SHA-256 计算失败"; return 1; }
+  [ -s "$certificate_file" ] || { i18n_log ERROR "自签证书不存在，无法固定客户端证书指纹" "The self-signed certificate does not exist; client certificate pinning cannot be applied"; return 1; }
+  certificate_pin=$(certificate_pin_sha256 "$certificate_file") || { i18n_log ERROR "自签证书 SHA-256 指纹计算失败" "Failed to calculate the self-signed certificate SHA-256 fingerprint"; return 1; }
+  certificate_spki=$(certificate_spki_sha256 "$certificate_file") || { i18n_log ERROR "自签证书 SPKI SHA-256 计算失败" "Failed to calculate the self-signed certificate SPKI SHA-256 pin"; return 1; }
   replace_certificate_pin_in_file "$TSUB_NODES_FILE" "$certificate_pin" "$certificate_spki" || return 1
   replace_certificate_pin_in_file "$TSUB_NODE_DETAILS_FILE" "$certificate_pin" "$certificate_spki" || return 1
   validate_exported_tuic_certificate_pin "$TSUB_NODES_FILE" "$certificate_pin" "$certificate_spki" \
-    || { log ERROR "TUIC 节点缺少有效的自签证书指纹"; return 1; }
+    || { i18n_log ERROR "TUIC 节点缺少有效的自签证书指纹" "The TUIC node is missing valid self-signed certificate pins"; return 1; }
   printf '%s\n' "$certificate_pin" >"$TSUB_TMP/certificate.pin"
   atomic_install "$TSUB_TMP/certificate.pin" "$TSUB_STATE/certificate.pin-sha256" 600
   printf '%s\n' "$certificate_spki" >"$TSUB_TMP/certificate.spki"
@@ -1445,10 +1466,10 @@ ensure_certificate() {
           fi
         done
         ;;
-      *) die "当前核心不支持生成自签证书" ;;
+      *) i18n_die "当前核心不支持生成自签证书" "The current core cannot generate a self-signed certificate" ;;
     esac
-    grep -q 'BEGIN.*PRIVATE KEY' "$self_signed_key" 2>/dev/null || die "核心未生成有效的自签证书私钥"
-    grep -q 'BEGIN CERTIFICATE' "$self_signed_cert" 2>/dev/null || die "核心未生成有效的自签证书"
+    grep -q 'BEGIN.*PRIVATE KEY' "$self_signed_key" 2>/dev/null || i18n_die "核心未生成有效的自签证书私钥" "The core did not generate a valid self-signed certificate private key"
+    grep -q 'BEGIN CERTIFICATE' "$self_signed_cert" 2>/dev/null || i18n_die "核心未生成有效的自签证书" "The core did not generate a valid self-signed certificate"
     atomic_install "$self_signed_key" "$key_file" 600
     atomic_install "$self_signed_cert" "$cert_file" 600
     date +%s >"$TSUB_TMP/certificate.generated"
@@ -1456,10 +1477,10 @@ ensure_certificate() {
     TSUB_CERT_CHANGED=true
     return 0
   fi
-  [ "$(id -u)" -eq 0 ] || die "ACME 自动证书需要 root 权限"
+  [ "$(id -u)" -eq 0 ] || i18n_die "ACME 自动证书需要 root 权限" "Automatic ACME certificates require root"
   version=$(kv_get lego_version); version=${version:-stable}
   expected=$(component_binary_sha lego)
-  [ -n "$expected" ] || die "lego/$TSUB_ARCH 缺少 SHA-256"
+  [ -n "$expected" ] || i18n_die "lego/$TSUB_ARCH 缺少 SHA-256" "lego/$TSUB_ARCH is missing a SHA-256"
   lego_bin="$TSUB_BIN/lego-$version-$TSUB_ARCH-$expected"
   if [ -x "$lego_bin" ] && [ "$(sha256_file "$lego_bin")" != "$expected" ]; then rm -f "$lego_bin"; fi
   [ -x "$lego_bin" ] || verify_download lego "$lego_bin"
@@ -1469,13 +1490,13 @@ ensure_certificate() {
   mkdir -p "$cert_root"
   if [ "$mode" = cloudflare-dns01 ]; then
     token_file="$TSUB_TMP/cloudflare-dns.token"
-    b64_decode_file certificate_api_token_b64 "$token_file" || die "DNS-01 Token 解码失败"
+    b64_decode_file certificate_api_token_b64 "$token_file" || i18n_die "DNS-01 Token 解码失败" "Failed to decode the DNS-01 token"
     CF_DNS_API_TOKEN=$(cat "$token_file"); export CF_DNS_API_TOKEN
     if [ -s "$cert_file" ]; then "$lego_bin" --path "$cert_root" --email "$email" --domains "$domain" --dns cloudflare renew --days 30
     else "$lego_bin" --path "$cert_root" --email "$email" --domains "$domain" --dns cloudflare --accept-tos run; fi
     unset CF_DNS_API_TOKEN
   else
-    if have ss && ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '[:.]80$'; then die "HTTP-01 需要空闲的 80 端口"; fi
+    if have ss && ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '[:.]80$'; then i18n_die "HTTP-01 需要空闲的 80 端口" "HTTP-01 requires port 80 to be available"; fi
     acme_firewall_open
     set +e
     if [ -s "$cert_file" ]; then "$lego_bin" --path "$cert_root" --email "$email" --domains "$domain" --http renew --days 30
@@ -1483,9 +1504,9 @@ ensure_certificate() {
     acme_result=$?
     set -e
     acme_firewall_close
-    [ "$acme_result" -eq 0 ] || die "HTTP-01 证书申请失败"
+    [ "$acme_result" -eq 0 ] || i18n_die "HTTP-01 证书申请失败" "HTTP-01 certificate issuance failed"
   fi
-  [ -s "$cert_file" ] || die "ACME 未生成证书"
+  [ -s "$cert_file" ] || i18n_die "ACME 未生成证书" "ACME did not generate a certificate"
   current_cert_hash=$(sha256_file "$cert_file")
   [ "$previous_cert_hash" = "$current_cert_hash" ] || TSUB_CERT_CHANGED=true
 }
@@ -1496,19 +1517,19 @@ edge_probe_number() {
 }
 
 edge_probe() {
-  have curl || die 'CDN 真实握手检测需要 curl'
+  have curl || i18n_die 'CDN 真实握手检测需要 curl' 'The real CDN handshake probe requires curl'
   edge_probe_host=$(kv_get edge_probe_hostname)
   edge_probe_port=$(kv_get edge_probe_port)
-  case "$edge_probe_host" in ''|*[!A-Za-z0-9.-]*) die 'CDN 握手入口域名无效' ;; esac
-  case "$edge_probe_port" in 443|2053|2083|2087|2096|8443) ;; *) die 'CDN 握手端口无效' ;; esac
+  case "$edge_probe_host" in ''|*[!A-Za-z0-9.-]*) i18n_die 'CDN 握手入口域名无效' 'Invalid CDN handshake hostname' ;; esac
+  case "$edge_probe_port" in 443|2053|2083|2087|2096|8443) ;; *) i18n_die 'CDN 握手端口无效' 'Invalid CDN handshake port' ;; esac
   edge_probe_address_file="$TSUB_TMP/edge-probe.address"
   edge_probe_path_file="$TSUB_TMP/edge-probe.path"
-  b64_decode_file edge_probe_address_b64 "$edge_probe_address_file" || die 'CDN 握手地址无效'
-  b64_decode_file edge_probe_path_b64 "$edge_probe_path_file" || die 'CDN 握手路径无效'
+  b64_decode_file edge_probe_address_b64 "$edge_probe_address_file" || i18n_die 'CDN 握手地址无效' 'Invalid CDN handshake address'
+  b64_decode_file edge_probe_path_b64 "$edge_probe_path_file" || i18n_die 'CDN 握手路径无效' 'Invalid CDN handshake path'
   edge_probe_address=$(cat "$edge_probe_address_file")
   edge_probe_path=$(cat "$edge_probe_path_file")
-  case "$edge_probe_address" in ''|*[!A-Za-z0-9.:-]*) die 'CDN 握手地址无效' ;; esac
-  case "$edge_probe_path" in /*) ;; *) die 'CDN 握手路径无效' ;; esac
+  case "$edge_probe_address" in ''|*[!A-Za-z0-9.:-]*) i18n_die 'CDN 握手地址无效' 'Invalid CDN handshake address' ;; esac
+  case "$edge_probe_path" in /*) ;; *) i18n_die 'CDN 握手路径无效' 'Invalid CDN handshake path' ;; esac
 
   edge_probe_format='%{remote_ip}|%{time_connect}|%{time_appconnect}|%{http_code}|%{time_total}'
   edge_probe_output="$TSUB_TMP/edge-probe.curl"
@@ -1537,11 +1558,10 @@ edge_probe() {
   printf 'TSUB_EDGE_PROBE_RESULT dns=%s tcp=%s tls=%s hostSni=%s websocket101=%s latencyMs=%s\n' \
     "$edge_probe_dns" "$edge_probe_tcp" "$edge_probe_tls_ok" "$edge_probe_host_sni" "$edge_probe_ws" "$(edge_probe_number "$edge_probe_latency")"
   if [ "$edge_probe_dns" = true ] && [ "$edge_probe_tcp" = true ] && [ "$edge_probe_tls_ok" = true ] && [ "$edge_probe_ws" = true ]; then
-    printf 'CDN 真实握手通过：TLS、Host/SNI 与 WebSocket 101 正常（%sms）\n' "$edge_probe_latency"
+    i18n_print "CDN 真实握手通过：TLS、Host/SNI 与 WebSocket 101 正常（${edge_probe_latency}ms）" "Real CDN handshake passed: TLS, Host/SNI, and WebSocket 101 are valid (${edge_probe_latency}ms)"
     return 0
   fi
-  printf 'CDN 真实握手失败：DNS=%s TCP=%s TLS=%s Host/SNI=%s WebSocket101=%s（%sms）\n' \
-    "$edge_probe_dns" "$edge_probe_tcp" "$edge_probe_tls_ok" "$edge_probe_host_sni" "$edge_probe_ws" "$edge_probe_latency" >&2
+  i18n_print "CDN 真实握手失败：DNS=$edge_probe_dns TCP=$edge_probe_tcp TLS=$edge_probe_tls_ok Host/SNI=$edge_probe_host_sni WebSocket101=$edge_probe_ws（${edge_probe_latency}ms）" "Real CDN handshake failed: DNS=$edge_probe_dns TCP=$edge_probe_tcp TLS=$edge_probe_tls_ok Host/SNI=$edge_probe_host_sni WebSocket101=$edge_probe_ws (${edge_probe_latency}ms)" >&2
   return 1
 }
 
@@ -1549,9 +1569,9 @@ edge_probe() {
 firewall_ports_apply() {
   ports=$1
   [ "$(kv_get firewall_enabled)" = true ] || return 0
-  [ "$TSUB_TIER" != tiny ] || { add_degraded_reason "tiny 档已跳过端口放行规则"; return 0; }
-  [ "$TSUB_HAS_NET_ADMIN" = true ] || { add_degraded_reason "缺少 CAP_NET_ADMIN，已跳过端口放行规则"; return 0; }
-  [ "$(id -u)" -eq 0 ] || { add_degraded_reason "无特权模式，已跳过端口放行规则"; return 0; }
+  [ "$TSUB_TIER" != tiny ] || { i18n_degraded "tiny 档已跳过端口放行规则" "Port allow rules were skipped on the tiny tier"; return 0; }
+  [ "$TSUB_HAS_NET_ADMIN" = true ] || { i18n_degraded "缺少 CAP_NET_ADMIN，已跳过端口放行规则" "Port allow rules were skipped because CAP_NET_ADMIN is unavailable"; return 0; }
+  [ "$(id -u)" -eq 0 ] || { i18n_degraded "无特权模式，已跳过端口放行规则" "Port allow rules were skipped in unprivileged mode"; return 0; }
   if have nft; then
     nft delete table inet tsub >/dev/null 2>&1 || true
     nft add table inet tsub
@@ -1575,7 +1595,7 @@ firewall_ports_apply() {
     IFS=$old_ifs
     printf '%s\n' iptables >"$TSUB_STATE/firewall.backend"
   else
-    add_degraded_reason "未找到 nftables/iptables，已跳过端口放行规则"
+    i18n_degraded "未找到 nftables/iptables，已跳过端口放行规则" "Port allow rules were skipped because nftables/iptables was not found"
     return 0
   fi
   printf '%s\n' "$ports" >"$TSUB_STATE/firewall.ports"
@@ -1953,7 +1973,7 @@ traffic_apply_rules() {
   if [ "$traffic_installed" = true ]; then
     traffic_mark_instance
   elif ! traffic_select_core_backend; then
-    add_degraded_reason "当前核心不支持低资源流量统计"
+    i18n_degraded "当前核心不支持低资源流量统计" "The current core does not support low-resource traffic statistics"
   fi
   printf '%s\n' "$traffic_ports" >"$TSUB_STATE/traffic.ports"
   [ -f "$TSUB_STATE/traffic.state" ] || traffic_write_state 0 0 0 0 unavailable unknown
@@ -1995,7 +2015,7 @@ traffic_ensure_rules() {
   if [ "$traffic_backend_value" = core-singbox ] || [ "$traffic_backend_value" = core-xray ]; then
     if traffic_read_raw >/dev/null 2>&1; then return 0; fi
     printf '%s\n' unavailable >"$TSUB_STATE/traffic.backend"
-    add_degraded_reason "代理核心流量统计接口不可用"
+    i18n_degraded "代理核心流量统计接口不可用" "The proxy core traffic statistics API is unavailable"
     return 0
   fi
   traffic_apply_rules
@@ -2003,10 +2023,10 @@ traffic_ensure_rules() {
   if [ "$traffic_backend_value" = core-singbox ] || [ "$traffic_backend_value" = core-xray ]; then
     if ! traffic_read_raw >/dev/null 2>&1; then
       printf '%s\n' unavailable >"$TSUB_STATE/traffic.backend"
-      add_degraded_reason "代理核心流量统计接口不可用"
+      i18n_degraded "代理核心流量统计接口不可用" "The proxy core traffic statistics API is unavailable"
     fi
   elif [ "$traffic_backend_value" = unavailable ]; then
-    add_degraded_reason "流量统计后端不可用"
+    i18n_degraded "流量统计后端不可用" "The traffic statistics backend is unavailable"
   fi
 }
 
@@ -2050,7 +2070,7 @@ EOF
     printf '*/15 * * * * %s\n' "$traffic_command" >>"$traffic_cron.new"
     crontab "$traffic_cron.new"
   else
-    add_degraded_reason "没有流量统计定时入口"
+    i18n_degraded "没有流量统计定时入口" "No traffic statistics scheduler is available"
   fi
 }
 
@@ -2110,9 +2130,9 @@ agent_maybe_update_runtime() {
   if [ -x "$agent_update_target" ] && [ "$(sha256_file "$agent_update_target")" = "$agent_update_sha" ]; then return 0; fi
   agent_update_download="$TSUB_TMP/runtime-update.sh"
   download_file "$agent_update_origin$agent_update_path?v=$agent_update_sha" "$agent_update_download" || return 0
-  [ "$(sha256_file "$agent_update_download")" = "$agent_update_sha" ] || { log ERROR 'Runtime 自动更新校验失败'; return 0; }
+  [ "$(sha256_file "$agent_update_download")" = "$agent_update_sha" ] || { i18n_log ERROR 'Runtime 自动更新校验失败' 'Runtime automatic update verification failed'; return 0; }
   atomic_install "$agent_update_download" "$agent_update_target" 700
-  log INFO "Runtime 已更新到 $agent_update_version，正在重新加载 Agent"
+  i18n_log INFO "Runtime 已更新到 $agent_update_version，正在重新加载 Agent" "Runtime updated to $agent_update_version; reloading the agent"
   rm -rf "$TSUB_TMP"
   trap - 0 1 2 15
   exec /bin/sh "$agent_update_target" agent
@@ -2327,10 +2347,10 @@ agent_poll_once() {
 }
 
 run_agent_loop() {
-  agent_enabled || die '服务器 Agent 未配置'
-  have curl || die '服务器 Agent 需要 curl'
+  agent_enabled || i18n_die '服务器 Agent 未配置' 'The server agent is not configured'
+  have curl || i18n_die '服务器 Agent 需要 curl' 'The server agent requires curl'
   agent_token_file="$TSUB_TMP/agent.token"
-  b64_decode_file agent_token_b64 "$agent_token_file" || die '服务器 Agent Token 无效'
+  b64_decode_file agent_token_b64 "$agent_token_file" || i18n_die '服务器 Agent Token 无效' 'Invalid server agent token'
   TSUB_AGENT_TOKEN=$(cat "$agent_token_file")
   TSUB_AGENT_URL=$(kv_get agent_controller_url)
   agent_loop_running=true
@@ -2378,7 +2398,7 @@ EOF
     atomic_install "$agent_service" /etc/systemd/system/tsub-agent.service 644
     systemctl daemon-reload
     systemctl enable tsub-agent.service >/dev/null 2>&1 || true
-    systemctl restart tsub-agent.service >/dev/null 2>&1 || add_degraded_reason '服务器 Agent 启动失败'
+    systemctl restart tsub-agent.service >/dev/null 2>&1 || i18n_degraded '服务器 Agent 启动失败' 'The server agent failed to start'
   elif [ "$TSUB_INIT" = openrc ] && [ "$(id -u)" -eq 0 ] && have rc-service; then
     agent_service="$TSUB_TMP/tsub-agent"
     cat >"$agent_service" <<EOF
@@ -2396,14 +2416,14 @@ depend() { need net; }
 EOF
     atomic_install "$agent_service" /etc/init.d/tsub-agent 700
     rc-update add tsub-agent default >/dev/null 2>&1 || true
-    rc-service tsub-agent restart >/dev/null 2>&1 || add_degraded_reason '服务器 Agent 启动失败'
+    rc-service tsub-agent restart >/dev/null 2>&1 || i18n_degraded '服务器 Agent 启动失败' 'The server agent failed to start'
   elif have crontab; then
     agent_cron="$TSUB_TMP/agent.cron"
     crontab -l 2>/dev/null | grep -v 'tsub-proxy.sh agent' >"$agent_cron" || true
     printf '*/5 * * * * TSUB_CONFIG=%s timeout 290 %s agent >>%s 2>&1\n' "$agent_config" "$agent_runtime" "$TSUB_LOG" >>"$agent_cron"
     crontab "$agent_cron"
   else
-    add_degraded_reason '没有可用的服务器 Agent 调度入口'
+    i18n_degraded '没有可用的服务器 Agent 调度入口' 'No server agent scheduler is available'
   fi
 }
 
@@ -2445,20 +2465,20 @@ ensure_subscription_httpd() {
   if [ -n "$TSUB_HTTPD_BIN" ]; then return 0; fi
   subscription_version=$(kv_get busybox_version)
   subscription_expected=$(component_binary_sha busybox)
-  [ -n "$subscription_version" ] && [ -n "$subscription_expected" ] || die "订阅服务缺少 BusyBox provider"
+  [ -n "$subscription_version" ] && [ -n "$subscription_expected" ] || i18n_die "订阅服务缺少 BusyBox provider" "The subscription service is missing its BusyBox provider"
   TSUB_HTTPD_BIN="$TSUB_BIN/busybox-$subscription_version-$TSUB_ARCH-$subscription_expected"
   if [ -x "$TSUB_HTTPD_BIN" ] && [ "$(sha256_file "$TSUB_HTTPD_BIN")" != "$subscription_expected" ]; then rm -f "$TSUB_HTTPD_BIN"; fi
   [ -x "$TSUB_HTTPD_BIN" ] || verify_download busybox "$TSUB_HTTPD_BIN"
-  "$TSUB_HTTPD_BIN" --list 2>/dev/null | grep -qx httpd || die "BusyBox provider 不包含 httpd applet"
+  "$TSUB_HTTPD_BIN" --list 2>/dev/null | grep -qx httpd || i18n_die "BusyBox provider 不包含 httpd applet" "The BusyBox provider does not contain the httpd applet"
 }
 
 subscription_prepare() {
   subscription_enabled || { subscription_stop; return 0; }
   ensure_subscription_httpd
   subscription_token_file="$TSUB_TMP/subscription.token"
-  b64_decode_file subscription_server_token_b64 "$subscription_token_file" || die "订阅 Token 解码失败"
+  b64_decode_file subscription_server_token_b64 "$subscription_token_file" || i18n_die "订阅 Token 解码失败" "Failed to decode the subscription token"
   subscription_token=$(cat "$subscription_token_file")
-  case "$subscription_token" in ''|*[!A-Za-z0-9_-]*) die "订阅 Token 格式无效" ;; esac
+  case "$subscription_token" in ''|*[!A-Za-z0-9_-]*) i18n_die "订阅 Token 格式无效" "Invalid subscription token format" ;; esac
   TSUB_SUBSCRIPTION_ROOT="$TSUB_STATE/subscription-web"
   subscription_cgi="$TSUB_SUBSCRIPTION_ROOT/cgi-bin/$subscription_token"
   mkdir -p "$TSUB_SUBSCRIPTION_ROOT/cgi-bin"
@@ -2627,7 +2647,7 @@ push_snapshot() {
   [ "$push_previous_generation" = "$push_generation" ] || push_sequence=0
   push_sequence=$((push_sequence + 1))
   push_token_file="$TSUB_TMP/push.token"
-  b64_decode_file push_token_b64 "$push_token_file" || { log WARN "主动推送凭证不可用"; return 1; }
+  b64_decode_file push_token_b64 "$push_token_file" || { i18n_log WARN "主动推送凭证不可用" "Push credential is unavailable"; return 1; }
   push_token=$(cat "$push_token_file")
   push_upload=$(traffic_number "$(traffic_state_get upload_total)")
   push_download=$(traffic_number "$(traffic_state_get download_total)")
@@ -2697,14 +2717,14 @@ push_snapshot() {
     atomic_install "$push_state_tmp" "$TSUB_STATE/push.state" 600
     return 0
   fi
-  log WARN "主动推送失败，已重试 $push_attempt 次"
+  i18n_log WARN "主动推送失败，已重试 $push_attempt 次" "Push failed after $push_attempt attempts"
   return 1
 }
 
 push_uninstall_event() {
   push_enabled || return 0
   push_token_file="$TSUB_TMP/push-uninstall.token"
-  b64_decode_file push_token_b64 "$push_token_file" || { log WARN "卸载状态上报凭证不可用"; return 1; }
+  b64_decode_file push_token_b64 "$push_token_file" || { i18n_log WARN "卸载状态上报凭证不可用" "Uninstall status reporting credential is unavailable"; return 1; }
   push_token=$(cat "$push_token_file")
   push_file="$TSUB_TMP/push-uninstall.event"
   printf 'pushGeneration=%s\nevent=uninstall\n' "$(kv_get push_generation)" >"$push_file"
@@ -2729,7 +2749,7 @@ push_uninstall_event() {
     [ "$push_sent" = false ] || return 0
     [ "$push_attempt" -ge 3 ] || sleep 3
   done
-  log WARN "卸载状态上报失败，主控可能暂时保留在线状态"
+  i18n_log WARN "卸载状态上报失败，主控可能暂时保留在线状态" "Uninstall status reporting failed; the controller may temporarily keep the deployment online"
   return 1
 }
 
@@ -2773,7 +2793,7 @@ EOF
     atomic_install "$push_periodic" /etc/periodic/15min/tsub-push 700
   elif have crontab; then
     if ! scheduler_is_running; then
-      start_scheduler_service || { add_degraded_reason "主动推送定时服务未运行"; return 0; }
+      start_scheduler_service || { i18n_degraded "主动推送定时服务未运行" "The scheduled push service is not running"; return 0; }
     fi
     push_cron="$TSUB_TMP/push.cron"
     crontab -l >"$push_cron" 2>/dev/null || :
@@ -2782,9 +2802,9 @@ EOF
     else push_schedule="*/$push_interval * * * *"; fi
     printf '%s %s\n' "$push_schedule" "$push_command" >>"$push_cron.new"
     crontab "$push_cron.new"
-    scheduler_is_running || add_degraded_reason "主动推送定时服务未运行"
+    scheduler_is_running || i18n_degraded "主动推送定时服务未运行" "The scheduled push service is not running"
   else
-    add_degraded_reason "没有主动推送定时入口"
+    i18n_degraded "没有主动推送定时入口" "No scheduled push entry point is available"
   fi
 }
 
@@ -2880,7 +2900,7 @@ prepare_service_identity() {
     elif have adduser; then adduser -S -D -H -s /sbin/nologin tsub >/dev/null 2>&1 || true
     fi
   fi
-  if ! id tsub >/dev/null 2>&1; then TSUB_DEGRADED_REASON="无法创建 tsub 系统用户，服务将以 root 运行"; return 0; fi
+  if ! id tsub >/dev/null 2>&1; then i18n_degraded "无法创建 tsub 系统用户，服务将以 root 运行" "The tsub system user could not be created; the service will run as root"; return 0; fi
   TSUB_SERVICE_USER=tsub
   low_port=false
   old_ifs=$IFS; IFS=,
@@ -2889,11 +2909,11 @@ prepare_service_identity() {
   if [ "$low_port" = true ] && [ "$TSUB_INIT" != systemd ]; then
     if have setcap; then setcap cap_net_bind_service=+ep "$TSUB_CORE_BIN" || TSUB_SERVICE_USER=''
     else TSUB_SERVICE_USER=''; fi
-    [ -n "$TSUB_SERVICE_USER" ] || TSUB_DEGRADED_REASON="当前 init 缺少低端口降权能力，服务将以 root 运行"
+    [ -n "$TSUB_SERVICE_USER" ] || i18n_degraded "当前 init 缺少低端口降权能力，服务将以 root 运行" "The current init system cannot drop privileges for low ports; the service will run as root"
   fi
   if [ -n "$TSUB_SERVICE_USER" ] && [ "$TSUB_INIT" != systemd ] && [ "$TSUB_INIT" != openrc ] && ! have su-exec && ! setpriv_supports_identity && ! have runuser && ! have chpst && ! have s6-setuidgid; then
     TSUB_SERVICE_USER=''
-    TSUB_DEGRADED_REASON="未找到可用降权工具，服务将以 root 运行"
+    i18n_degraded "未找到可用降权工具，服务将以 root 运行" "No privilege-dropping tool was found; the service will run as root"
   fi
   [ -n "$TSUB_SERVICE_USER" ] || return 0
   service_group=$(id -gn "$TSUB_SERVICE_USER")
@@ -2977,10 +2997,16 @@ stop_managed_core_processes() {
 service_start() {
   core=$(active_core)
   config="$TSUB_ETC/config.json"
+  i18n_print "正在启用并启动 TSub 核心服务，请稍候..." "Enabling and starting the TSub core service, please wait..."
   case "$TSUB_INIT" in
     systemd)
-      systemctl daemon-reload
-      systemctl enable --now tsub-core.service
+      systemd_output="$TSUB_TMP/systemd-start.out"
+      : >"$systemd_output"
+      if ! systemctl daemon-reload >"$systemd_output" 2>&1 || ! systemctl enable --now tsub-core.service >>"$systemd_output" 2>&1; then
+        cat "$systemd_output" >&2
+        i18n_log ERROR "systemd 无法启用或启动 TSub 核心服务" "systemd could not enable or start the TSub core service"
+        return 1
+      fi
       ;;
     openrc) rc-update add tsub-core default >/dev/null 2>&1 || true; rc-service tsub-core restart ;;
     runit) sv up tsub-core ;;
@@ -3015,7 +3041,7 @@ service_start() {
         nohup "$TSUB_CORE_BIN" run -c "$config" >>"$TSUB_LOG" 2>&1 &
       fi
       printf '%s\n' "$!" >"$TSUB_STATE/core.pid"
-      TSUB_DEGRADED_REASON="无受支持的持久化 init；已使用 nohup 立即运行"
+      i18n_degraded "无受支持的持久化 init；已使用 nohup 立即运行" "No supported persistent init system was found; the service was started with nohup"
       ;;
   esac
 }
@@ -3094,7 +3120,7 @@ EOF
       atomic_install "$start_script" /etc/sv/tsub-core/run 755
       if [ -d /var/service ]; then ln -snf /etc/sv/tsub-core /var/service/tsub-core
       elif [ -d /etc/service ]; then ln -snf /etc/sv/tsub-core /etc/service/tsub-core
-      else TSUB_DEGRADED_REASON="runit 未发现服务扫描目录"; TSUB_INIT=none; fi
+      else i18n_degraded "runit 未发现服务扫描目录" "runit service scan directory was not found"; TSUB_INIT=none; fi
       ;;
     rc-local)
       grep -q "$TSUB_STATE/start-core.sh" /etc/rc.local 2>/dev/null || sed -i "\|^exit 0$|i $TSUB_STATE/start-core.sh >/dev/null 2>&1 \&" /etc/rc.local
@@ -3110,7 +3136,7 @@ EOF
         mkdir -p /etc/services.d/tsub-core
         atomic_install "$start_script" /etc/services.d/tsub-core/run 755
       else
-        TSUB_DEGRADED_REASON="s6 未发现 /etc/services.d 持久化目录"
+        i18n_degraded "s6 未发现 /etc/services.d 持久化目录" "s6 persistent directory /etc/services.d was not found"
         TSUB_INIT=none
       fi
       ;;
@@ -3148,15 +3174,39 @@ process_rss_mb() {
 
 health_check() {
   wait_seconds=${TSUB_HEALTH_WAIT:-5}
-  sleep "$wait_seconds"
+  case "$wait_seconds" in ''|*[!0-9]*) wait_seconds=5 ;; esac
+  [ "$wait_seconds" -gt 0 ] || wait_seconds=1
+  i18n_print "正在等待核心服务通过健康检查（最长 ${wait_seconds} 秒）..." "Waiting for the core service health check (up to ${wait_seconds} seconds)..."
+  health_elapsed=0
+  while [ "$health_elapsed" -lt "$wait_seconds" ]; do
+    TSUB_CORE_RSS=$(process_rss_mb)
+    TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0)
+    rss=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS))
+    TSUB_CURRENT_RSS=$rss
+    health_tunnel_ready=true
+    tunnel_health_rss >/dev/null 2>&1 || health_tunnel_ready=false
+    if [ "$rss" -gt 0 ] && [ "$health_tunnel_ready" = true ] && subscription_health_check >/dev/null 2>&1; then
+      if [ $((rss * 100)) -gt $((TSUB_MEMORY_MB * 80)) ]; then
+        i18n_log ERROR "核心 RSS ${rss}MB 超过 80% 内存预算" "Core RSS ${rss}MB exceeds 80% of the memory budget"
+        return 1
+      fi
+      i18n_print "健康检查通过，TSub 核心服务运行正常。" "Health check passed; the TSub core service is running normally."
+      return 0
+    fi
+    health_elapsed=$((health_elapsed + 1))
+    [ "$health_elapsed" -ge "$wait_seconds" ] || sleep 1
+    if [ "$health_elapsed" -lt "$wait_seconds" ] && [ $((health_elapsed % 5)) -eq 0 ]; then
+      i18n_print "核心服务仍在启动，已等待 ${health_elapsed} 秒..." "The core service is still starting; waited ${health_elapsed} seconds..."
+    fi
+  done
   TSUB_CORE_RSS=$(process_rss_mb)
-  TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss) || { log ERROR "Cloudflared 进程未运行"; return 1; }
-  rss=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS))
-  TSUB_CURRENT_RSS=$rss
-  if [ "$rss" -le 0 ]; then log ERROR "核心进程未运行"; return 1; fi
-  if [ $((rss * 100)) -gt $((TSUB_MEMORY_MB * 80)) ]; then log ERROR "核心 RSS ${rss}MB 超过 80% 内存预算"; return 1; fi
-  subscription_health_check || { log ERROR "服务器订阅服务未通过健康检查"; return 1; }
-  return 0
+  TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0)
+  TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS))
+  [ "$TSUB_CORE_RSS" -gt 0 ] || i18n_log ERROR "核心进程未运行" "The core process is not running"
+  tunnel_health_rss >/dev/null 2>&1 || i18n_log ERROR "Cloudflared 进程未运行" "The cloudflared process is not running"
+  subscription_health_check >/dev/null 2>&1 || i18n_log ERROR "服务器订阅服务未通过健康检查" "The server subscription service failed its health check"
+  i18n_log ERROR "健康检查在 ${wait_seconds} 秒后超时" "Health check timed out after ${wait_seconds} seconds"
+  return 1
 }
 
 # module: 50-transaction.sh
@@ -3190,7 +3240,7 @@ apply_runtime() {
           install_service_definition
           service_start || true
         fi
-        die "组件更新健康检查失败，已恢复上一核心"
+        i18n_die "组件更新健康检查失败，已恢复上一核心" "Component update health check failed; the previous core was restored"
       fi
       [ -z "$TSUB_PREVIOUS_CORE" ] || printf '%s\n' "$TSUB_PREVIOUS_CORE" >"$TSUB_STATE/core.previous.identity"
       printf '%s\n' "$TSUB_CORE_BIN" >"$TSUB_STATE/core.identity"
@@ -3201,8 +3251,8 @@ apply_runtime() {
     TSUB_CURRENT_RSS=$(process_rss_mb)
     unchanged_tunnel_rss=$(tunnel_health_rss 2>/dev/null || printf 0)
     TSUB_CURRENT_RSS=$((TSUB_CURRENT_RSS + unchanged_tunnel_rss))
-    push_snapshot || add_degraded_reason "首次主动推送失败"
-    emit_event succeeded "configuration unchanged"
+    push_snapshot || i18n_degraded "首次主动推送失败" "Initial push failed"
+    emit_event succeeded "$(i18n_text '配置未发生变化' 'Configuration unchanged')"
     return 0
   fi
   [ "${TSUB_CORE_DOWNLOADED:-false}" != true ] || require_install_headroom
@@ -3219,11 +3269,11 @@ apply_runtime() {
   atomic_install "$apply_candidate" "$TSUB_ETC/config.json" 600
   if ! firewall_ports_apply "$(kv_get inbound_ports)"; then
     firewall_restore
-    die "防火墙事务失败"
+    i18n_die "端口放行规则事务失败" "Port allow rule transaction failed"
   fi
   if ! firewall_hops_apply "$(kv_get udp_hop_rules)"; then
     firewall_restore
-    die "Hysteria2 端口跳跃规则安装失败"
+    i18n_die "Hysteria2 端口跳跃规则安装失败" "Failed to install Hysteria2 port hopping rules"
   fi
   traffic_apply_rules
   prepare_service_identity
@@ -3244,7 +3294,7 @@ apply_runtime() {
       fi
       service_start || true
     fi
-    die "事务切换失败，旧配置已恢复"
+    i18n_die "事务切换失败，旧配置已恢复" "Transaction switch failed; the previous configuration was restored"
   fi
   export_nodes
   [ -z "$TSUB_PREVIOUS_CORE" ] || printf '%s\n' "$TSUB_PREVIOUS_CORE" >"$TSUB_STATE/core.previous.identity"
@@ -3252,12 +3302,16 @@ apply_runtime() {
   printf '%s\n' "$subscription_candidate_hash" >"$TSUB_STATE/subscription.config.hash"
   printf '%s\n' "$tunnel_candidate_hash" >"$TSUB_STATE/tunnel.config.hash"
   persist_runtime
-  push_snapshot || add_degraded_reason "首次主动推送失败"
-  emit_event succeeded "apply completed${TSUB_DEGRADED_REASON:+; degraded: $TSUB_DEGRADED_REASON}"
+  push_snapshot || i18n_degraded "首次主动推送失败" "Initial push failed"
+  apply_event_message=$(i18n_text '配置应用完成' 'Apply completed')
+  if [ -n "${TSUB_DEGRADED_REASON:-}" ]; then
+    apply_event_message="$apply_event_message; $(i18n_text '降级' 'degraded'): $TSUB_DEGRADED_REASON"
+  fi
+  emit_event succeeded "$apply_event_message"
 }
 
 rollback_runtime() {
-  [ -f "$TSUB_STATE/config.previous.json" ] || die "没有可回滚快照"
+  [ -f "$TSUB_STATE/config.previous.json" ] || i18n_die "没有可回滚快照" "No rollback snapshot is available"
   traffic_checkpoint
   service_stop
   cp "$TSUB_ETC/config.json" "$TSUB_TX/config.failed.json" 2>/dev/null || true
@@ -3275,7 +3329,7 @@ rollback_runtime() {
   firewall_hops_apply "$(cat "$TSUB_STATE/firewall.previous.hops.rules" 2>/dev/null || true)" || true
   service_start
   health_check
-  emit_event succeeded "rollback completed"
+  emit_event succeeded "$(i18n_text '回滚完成' 'Rollback completed')"
 }
 
 uninstall_runtime() {
@@ -3289,8 +3343,8 @@ uninstall_runtime() {
   rm -f "$TSUB_ETC/config.json" "$TSUB_STATE/core.pid"
   remove_maintenance
   rm -f "$TSUB_STATE/deployment-time"
-  emit_event succeeded "uninstall completed"
-  printf 'TSub Proxy 卸载成功\n'
+  emit_event succeeded "$(i18n_text '卸载完成' 'Uninstall completed')"
+  i18n_print 'TSub Proxy 卸载成功' 'TSub Proxy uninstalled successfully'
 }
 
 # module: 55-maintenance.sh
@@ -3312,7 +3366,7 @@ persist_runtime() {
     [ -z "$persist_agent_value" ] || printf '%s=%s\n' "$persist_agent_key" "$persist_agent_value" >>"$TSUB_TMP/runtime.conf"
   done
   atomic_install "$TSUB_TMP/runtime.conf" "$persistent_config" 600
-  if ! install_control_command "$runtime_target" "$persistent_config"; then add_degraded_reason "服务器控制命令安装失败，可直接运行 $runtime_target menu"; fi
+  if ! install_control_command "$runtime_target" "$persistent_config"; then i18n_degraded "服务器控制命令安装失败，可直接运行 $runtime_target menu" "Server control command installation failed; run $runtime_target menu directly"; fi
   install_maintenance "$runtime_target" "$persistent_config"
   remove_traffic_maintenance
   install_push_maintenance "$runtime_target" "$persistent_config"
@@ -3362,7 +3416,7 @@ EOF
     printf '17 4 * * * %s\n' "$maintenance_command" >>"$cron_file.new"
     crontab "$cron_file.new"
   else
-    log WARN "没有可用的定时入口，证书需要手动 update/repair"
+    i18n_log WARN "没有可用的定时入口，证书需要手动 update/repair" "No scheduler is available; certificates require manual update/repair"
   fi
 }
 
@@ -3419,8 +3473,8 @@ control_write_launcher() {
 
 install_control_command() {
   control_requested=$(kv_get control_command); control_requested=${control_requested:-tsub}
-  case "$control_requested" in ''|[!a-z]*|*[!a-z0-9_-]*) log WARN "服务器控制命令格式无效: $control_requested"; return 1 ;; esac
-  [ "${#control_requested}" -le 32 ] || { log WARN "服务器控制命令超过 32 位"; return 1; }
+  case "$control_requested" in ''|[!a-z]*|*[!a-z0-9_-]*) i18n_log WARN "服务器控制命令格式无效: $control_requested" "Invalid server control command: $control_requested"; return 1 ;; esac
+  [ "${#control_requested}" -le 32 ] || { i18n_log WARN "服务器控制命令超过 32 位" "The server control command exceeds 32 characters"; return 1; }
 
   control_use_sudo=false
   if [ "$(id -u)" -eq 0 ]; then
@@ -3448,7 +3502,7 @@ install_control_command() {
     if [ "$control_resolved_available" = true ] && [ "$control_target_available" = true ]; then break; fi
     control_index=$((control_index + 1))
   done
-  [ "$control_index" -le 999 ] || { log WARN "无法为服务器控制命令找到可用名称"; return 1; }
+  [ "$control_index" -le 999 ] || { i18n_log WARN "无法为服务器控制命令找到可用名称" "No available name could be found for the server control command"; return 1; }
 
   control_config_quoted=$(printf '%s' "$2" | sed "s/'/'\\\\''/g")
   control_runtime_quoted=$(printf '%s' "$1" | sed "s/'/'\\\\''/g")
@@ -3477,7 +3531,7 @@ EOF
         if ! grep -q '^# TSub Proxy user command path$' "$control_profile" 2>/dev/null; then
           printf '\n# TSub Proxy user command path\nexport PATH="$HOME/.local/bin:$PATH"\n' >>"$control_profile" || true
         fi
-        add_degraded_reason "控制命令目录将在重新登录后加入 PATH；当前可执行 $control_target"
+        i18n_degraded "控制命令目录将在重新登录后加入 PATH；当前可执行 $control_target" "The control command directory will be added to PATH after signing in again; run $control_target for now"
       fi
       ;;
   esac
@@ -3494,13 +3548,13 @@ remove_control_command() {
 control_menu() {
   print_runtime_basic_info
   while :; do
-    printf '\nTSub Proxy 控制菜单\n'
-    printf '1. 显示全部节点与订阅链接\n'
+    printf '\n'; i18n_print 'TSub Proxy 控制菜单' 'TSub Proxy control menu'
+    i18n_print '1. 显示全部节点与订阅链接' '1. Show all nodes and subscription links'
     control_push_available=false
-    if push_enabled; then control_push_available=true; printf '2. 立即主动推送到主控\n'; fi
-    printf '3. 卸载 TSub Proxy\n'
-    printf '0. 退出\n'
-    printf '请选择：'
+    if push_enabled; then control_push_available=true; i18n_print '2. 立即主动推送到主控' '2. Push to the controller now'; fi
+    i18n_print '3. 卸载 TSub Proxy' '3. Uninstall TSub Proxy'
+    i18n_print '0. 退出' '0. Exit'
+    i18n_text '请选择：' 'Select an option: '
     IFS= read -r control_choice || return 0
     case "$control_choice" in
       1)
@@ -3509,22 +3563,22 @@ control_menu() {
         ;;
       2)
         if [ "$control_push_available" = true ]; then
-          if push_snapshot; then printf '主动推送请求已发送。\n'; else printf '主动推送失败，请检查网络和主控状态。\n' >&2; fi
+          if push_snapshot; then i18n_print '主动推送请求已发送。' 'Push request sent.'; else i18n_print '主动推送失败，请检查网络和主控状态。' 'Push failed; check the network and controller status.' >&2; fi
         else
-          printf '无效选项。\n'
+          i18n_print '无效选项。' 'Invalid option.'
         fi
         ;;
       3)
-        printf '卸载将停止代理并清理 TSub 管理的服务、规则和控制命令。输入 Y 确认：'
+        i18n_text '卸载将停止代理并清理 TSub 管理的服务、规则和控制命令。输入 Y 确认：' 'Uninstalling stops the proxy and removes TSub-managed services, rules, and control commands. Enter Y to confirm: '
         control_confirm=''
         IFS= read -r control_confirm || true
         case "$control_confirm" in
           y|Y) uninstall_runtime; return 0 ;;
-          *) printf '已取消卸载。\n' ;;
+          *) i18n_print '已取消卸载。' 'Uninstall canceled.' ;;
         esac
         ;;
       0|q|Q) return 0 ;;
-      *) printf '无效选项。\n' ;;
+      *) i18n_print '无效选项。' 'Invalid option.' ;;
     esac
   done
 }
@@ -3560,18 +3614,18 @@ summary_number() {
 summary_traffic_backend() {
   summary_backend=$(traffic_backend 2>/dev/null || printf unavailable)
   case "$summary_backend" in
-    core-xray) printf '核心统计 · Xray' ;;
-    core-singbox) printf '核心统计 · sing-box' ;;
-    nftables|iptables) printf '端口统计 · %s' "$summary_backend" ;;
-    *) printf '统计不可用' ;;
+    core-xray) i18n_text '核心统计 · Xray' 'Core statistics · Xray' ;;
+    core-singbox) i18n_text '核心统计 · sing-box' 'Core statistics · sing-box' ;;
+    nftables|iptables) printf '%s · %s' "$(i18n_text '端口统计' 'Port statistics')" "$summary_backend" ;;
+    *) i18n_text '统计不可用' 'Statistics unavailable' ;;
   esac
 }
 
 print_runtime_basic_info() {
-  printf '\nTSub Proxy 基础信息\n'
+  printf '\n'; i18n_print 'TSub Proxy 基础信息' 'TSub Proxy basic information'
   summary_deployment_time=$(cat "$TSUB_STATE/deployment-time" 2>/dev/null || true)
-  [ -n "$summary_deployment_time" ] || summary_deployment_time='未记录（重新 Apply 后生成）'
-  printf '部署时间：%s\n' "$summary_deployment_time"
+  [ -n "$summary_deployment_time" ] || summary_deployment_time=$(i18n_text '未记录（重新 Apply 后生成）' 'Not recorded (generated after applying again)')
+  printf '%s%s\n' "$(i18n_text '部署时间：' 'Deployment time: ')" "$summary_deployment_time"
 
   summary_core=$(kv_get runtime_core); summary_core=${summary_core:-unknown}
   summary_tier=$(kv_get runtime_tier_mode)
@@ -3579,13 +3633,13 @@ print_runtime_basic_info() {
   [ -n "$summary_tier" ] || summary_tier=${TSUB_TIER:-auto}
   summary_node_count=$(awk 'NF { count++ } END { print count + 0 }' "$TSUB_STATE/nodes.txt" 2>/dev/null || printf 0)
   summary_node_count=$(summary_number "$summary_node_count")
-  printf '%s · %s · %s 个节点' "$summary_core" "$summary_tier" "$summary_node_count"
+  printf '%s · %s · %s %s' "$summary_core" "$summary_tier" "$summary_node_count" "$(i18n_text '个节点' 'nodes')"
 
-  [ "$(kv_get certificate_mode)" != self-signed ] || printf ' · 自签证书/指纹固定'
+  [ "$(kv_get certificate_mode)" != self-signed ] || printf ' · %s' "$(i18n_text '自签证书/指纹固定' 'self-signed certificate/pinning')"
   if subscription_enabled; then
-    printf ' · 服务器订阅：%s' "$(kv_get subscription_server_port)"
+    printf ' · %s%s' "$(i18n_text '服务器订阅：' 'server subscription: ')" "$(kv_get subscription_server_port)"
     if [ "$(kv_get subscription_traffic_enabled)" = true ]; then
-      printf '/流量统计 · %s' "$(summary_traffic_backend)"
+      printf '/%s · %s' "$(i18n_text '流量统计' 'traffic statistics')" "$(summary_traffic_backend)"
     fi
   fi
 
@@ -3597,19 +3651,19 @@ print_runtime_basic_info() {
   printf ' · %s/%s · %s/%sMB' "${TSUB_CONTAINER:-unknown}" "${TSUB_INIT:-none}" "$summary_rss" "${TSUB_MEMORY_MB:-0}"
   summary_control=${TSUB_CONTROL_COMMAND_ACTUAL:-}
   [ -n "$summary_control" ] || summary_control=$(kv_get control_command)
-  [ -z "$summary_control" ] || printf ' · 服务器命令：%s' "$summary_control"
+  [ -z "$summary_control" ] || printf ' · %s%s' "$(i18n_text '服务器命令：' 'server command: ')" "$summary_control"
   printf '\n'
 }
 
 print_connection_info() {
-  printf '核心：%s %s\n' "$(kv_get runtime_core)" "${TSUB_CORE_VERSION:-$(kv_get "$(kv_get runtime_core)_version")}"
+  printf '%s%s %s\n' "$(i18n_text '核心：' 'Core: ')" "$(kv_get runtime_core)" "${TSUB_CORE_VERSION:-$(kv_get "$(kv_get runtime_core)_version")}"
   if [ -s "$TSUB_STATE/nodes.txt" ]; then
-    printf '\n注意：以下节点链接包含 UUID、密码等敏感凭据，请妥善保管。\n'
-    printf '节点信息：\n\n'
+    printf '\n'; i18n_print '注意：以下节点链接包含 UUID、密码等敏感凭据，请妥善保管。' 'Caution: the following node links contain sensitive credentials such as UUIDs and passwords. Store them securely.'
+    i18n_print '节点信息：' 'Node information:'; printf '\n'
     if [ -s "$TSUB_STATE/node-details.txt" ]; then cat "$TSUB_STATE/node-details.txt"; printf '\n'
     else cat "$TSUB_STATE/nodes.txt"; fi
   else
-    printf '节点信息：当前没有可输出的节点\n'
+    i18n_print '节点信息：当前没有可输出的节点' 'Node information: no nodes are available for output'
   fi
   if subscription_enabled; then
     summary_host=$(summary_subscription_host)
@@ -3617,32 +3671,32 @@ print_connection_info() {
     if [ -n "$summary_host" ] && [ -n "$summary_token" ]; then
       if [ "$(kv_get subscription_address_mode)" = dual ]; then
         summary_ipv4=$(kv_get subscription_ipv4); summary_ipv6=$(kv_get subscription_ipv6)
-        [ -z "$summary_ipv4" ] || printf '\n服务器本地 HTTP 订阅（IPv4）：http://%s:%s/cgi-bin/%s\n' "$summary_ipv4" "$(kv_get subscription_server_port)" "$summary_token"
-        [ -z "$summary_ipv6" ] || printf '服务器本地 HTTP 订阅（IPv6）：http://[%s]:%s/cgi-bin/%s\n' "$summary_ipv6" "$(kv_get subscription_server_port)" "$summary_token"
+        [ -z "$summary_ipv4" ] || printf '\n%shttp://%s:%s/cgi-bin/%s\n' "$(i18n_text '服务器本地 HTTP 订阅（IPv4）：' 'Local server HTTP subscription (IPv4): ')" "$summary_ipv4" "$(kv_get subscription_server_port)" "$summary_token"
+        [ -z "$summary_ipv6" ] || printf '%shttp://[%s]:%s/cgi-bin/%s\n' "$(i18n_text '服务器本地 HTTP 订阅（IPv6）：' 'Local server HTTP subscription (IPv6): ')" "$summary_ipv6" "$(kv_get subscription_server_port)" "$summary_token"
       else
-        printf '\n服务器本地 HTTP 订阅：http://%s:%s/cgi-bin/%s\n' "$summary_host" "$(kv_get subscription_server_port)" "$summary_token"
+        printf '\n%shttp://%s:%s/cgi-bin/%s\n' "$(i18n_text '服务器本地 HTTP 订阅：' 'Local server HTTP subscription: ')" "$summary_host" "$(kv_get subscription_server_port)" "$summary_token"
       fi
     fi
     summary_mirror=$(summary_decode_value subscription_mirror_url_b64 2>/dev/null || true)
-    [ -z "$summary_mirror" ] || printf '主控 HTTPS 镜像订阅：%s\n' "$summary_mirror"
+    [ -z "$summary_mirror" ] || printf '%s%s\n' "$(i18n_text '主控 HTTPS 镜像订阅：' 'Controller HTTPS mirror subscription: ')" "$summary_mirror"
   else
-    printf '\n服务器订阅：未启用服务器订阅\n'
+    printf '\n'; i18n_print '服务器订阅：未启用服务器订阅' 'Server subscription: disabled'
   fi
 }
 
 print_runtime_summary() {
   summary_action=$1
   if [ "${TSUB_SUPPRESS_SENSITIVE_OUTPUT:-false}" = true ]; then
-    case "$summary_action" in update) printf 'TSub Proxy 更新成功\n' ;; repair) printf 'TSub Proxy 修复成功\n' ;; *) printf 'TSub Proxy 安装成功\n' ;; esac
+    case "$summary_action" in update) i18n_print 'TSub Proxy 更新成功' 'TSub Proxy updated successfully' ;; repair) i18n_print 'TSub Proxy 修复成功' 'TSub Proxy repaired successfully' ;; *) i18n_print 'TSub Proxy 安装成功' 'TSub Proxy installed successfully' ;; esac
     return 0
   fi
-  printf '\nTSub Proxy 安装结果\n'
+  printf '\n'; i18n_print 'TSub Proxy 安装结果' 'TSub Proxy installation result'
   print_connection_info
-  if push_enabled; then printf '主动推送：已开启（每 %s 分钟）\n' "$(push_interval_minutes)"; else printf '主动推送：未开启\n'; fi
-  printf '流量统计：%s\n' "$(traffic_backend 2>/dev/null || printf unavailable)"
-  if [ -n "${TSUB_CONTROL_COMMAND_ACTUAL:-}" ]; then printf '服务器控制命令：%s\n' "$TSUB_CONTROL_COMMAND_ACTUAL"; fi
-  [ -z "${TSUB_DEGRADED_REASON:-}" ] || printf '降级原因：%s\n' "$TSUB_DEGRADED_REASON"
-  case "$summary_action" in update) printf 'TSub Proxy 更新成功\n' ;; repair) printf 'TSub Proxy 修复成功\n' ;; *) printf 'TSub Proxy 安装成功\n' ;; esac
+  if push_enabled; then printf '%s%s %s\n' "$(i18n_text '主动推送：已开启（每 ' 'Push: enabled (every ')" "$(push_interval_minutes)" "$(i18n_text '分钟）' 'minutes)')"; else i18n_print '主动推送：未开启' 'Push: disabled'; fi
+  printf '%s%s\n' "$(i18n_text '流量统计：' 'Traffic statistics: ')" "$(traffic_backend 2>/dev/null || printf unavailable)"
+  if [ -n "${TSUB_CONTROL_COMMAND_ACTUAL:-}" ]; then printf '%s%s\n' "$(i18n_text '服务器控制命令：' 'Server control command: ')" "$TSUB_CONTROL_COMMAND_ACTUAL"; fi
+  [ -z "${TSUB_DEGRADED_REASON:-}" ] || printf '%s%s\n' "$(i18n_text '降级原因：' 'Degraded reason: ')" "$TSUB_DEGRADED_REASON"
+  case "$summary_action" in update) i18n_print 'TSub Proxy 更新成功' 'TSub Proxy updated successfully' ;; repair) i18n_print 'TSub Proxy 修复成功' 'TSub Proxy repaired successfully' ;; *) i18n_print 'TSub Proxy 安装成功' 'TSub Proxy installed successfully' ;; esac
 }
 
 # module: 90-main.sh
@@ -3687,21 +3741,21 @@ main() {
     if have crontab; then TSUB_INIT='crontab'; else TSUB_INIT='none'; fi
   fi
   case "$action" in
-    plan) plan_runtime; emit_event succeeded "plan completed" ;;
+    plan) plan_runtime; emit_event succeeded "$(i18n_text '计划检查完成' 'Plan completed')" ;;
     apply|update|repair) plan_runtime; apply_runtime; record_runtime_change_time; print_runtime_summary "$action" ;;
-    status) plan_runtime; load_installed_core; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "status collected" ;;
-    doctor) plan_runtime; load_installed_core; validate_config "$TSUB_ETC/config.json"; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "doctor completed" ;;
-    list) export_nodes; push_snapshot || die "节点同步推送失败"; emit_event succeeded "nodes exported" ;;
+    status) plan_runtime; load_installed_core; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '状态采集完成' 'Status collected')" ;;
+    doctor) plan_runtime; load_installed_core; validate_config "$TSUB_ETC/config.json"; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '诊断完成' 'Doctor completed')" ;;
+    list) export_nodes; push_snapshot || i18n_die "节点同步推送失败" "Node synchronization push failed"; emit_event succeeded "$(i18n_text '节点导出完成' 'Nodes exported')" ;;
     traffic) traffic_ensure_rules; traffic_checkpoint ;;
     push) push_snapshot ;;
     agent) run_agent_loop ;;
     agent-install) install_agent_service "$TSUB_BIN/tsub-proxy.sh" "$TSUB_ETC/runtime.conf" ;;
     edge-probe) edge_probe ;;
     menu) control_menu ;;
-    restart) plan_runtime; load_installed_core; ensure_tunnel_binary; prepare_service_identity; traffic_checkpoint; service_stop; service_start; health_check; traffic_ensure_rules; traffic_checkpoint; emit_event succeeded "restart completed" ;;
+    restart) plan_runtime; load_installed_core; ensure_tunnel_binary; prepare_service_identity; traffic_checkpoint; service_stop; service_start; health_check; traffic_ensure_rules; traffic_checkpoint; emit_event succeeded "$(i18n_text '重启完成' 'Restart completed')" ;;
     rollback) load_installed_core; rollback_runtime; record_runtime_change_time ;;
     uninstall) uninstall_runtime ;;
-    *) die "未知操作: $action" ;;
+    *) i18n_die "未知操作: $action" "Unknown operation: $action" ;;
   esac
   sanitize_runtime_log
   trim_runtime_log
