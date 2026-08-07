@@ -197,7 +197,7 @@ function clashProxyToLoonResult(proxy) {
         const congestionControl = proxy['congestion-controller'] || proxy['congestion-control'] || 'bbr';
         parts.push(`congestion-control=${congestionControl}`);
         if (proxy['udp-relay-mode']) parts.push(`udp-relay-mode=${proxy['udp-relay-mode']}`);
-        parts.push('reduce-rtt=true');
+        if (proxy['reduce-rtt'] !== undefined) parts.push(`reduce-rtt=${proxy['reduce-rtt'] ? 'true' : 'false'}`);
     } else if (type === 'wireguard') {
         parts.push(`${name} = wireguard`);
         parts.push(server);

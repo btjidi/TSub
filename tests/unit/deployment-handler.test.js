@@ -422,17 +422,19 @@ describe('TSub V2 deployment handler', () => {
       localUrl: `http://node.example.com:51250/cgi-bin/${subscriptionToken}`, pushCount: 2, trafficQuotaOverrideBytes: 500
     });
     expect(env.TSUB_KV.dump('tsub_deployments_v2')[0].capabilities.degradedReason).toBe('未找到 nftables/iptables，已跳过防火墙');
-    expect(await mirror.text()).toContain('vless://uuid@node.example.com:443?encryption=none#HK');
+    expect(await mirror.text()).toContain('vless://uuid@node.example.com:443#HK');
     const shadowrocket = await handleDeploySubscription(new Request(`https://tsub.example/api/deploy/subscriptions/${deploymentId}/${subscriptionToken}`, {
       headers: { 'User-Agent': 'Shadowrocket/2.2.68' }
     }), env, deploymentId, subscriptionToken);
     expect(shadowrocket.headers.get('X-TSub-Mode')).toBe('deployment-base64');
-    expect(atob(await shadowrocket.text())).toContain('vless://uuid@node.example.com:443?encryption=none#HK');
+    expect(atob(await shadowrocket.text())).toContain('vless://uuid@node.example.com:443#HK');
     const v2rayn = await handleDeploySubscription(new Request(`https://tsub.example/api/deploy/subscriptions/${deploymentId}/${subscriptionToken}`, {
       headers: { 'User-Agent': 'v2rayN/7.23' }
     }), env, deploymentId, subscriptionToken);
     expect(v2rayn.headers.get('X-TSub-Mode')).toBe('deployment-base64');
-    expect(atob(await v2rayn.text())).toContain('vless://uuid@node.example.com:443?encryption=none#HK');
+    const v2raynNodes = atob(await v2rayn.text());
+    expect(v2raynNodes).toContain('vless://uuid@node.example.com:443#HK');
+    expect(v2raynNodes).not.toContain('encryption=none');
     const loon = await handleDeploySubscription(new Request(`https://tsub.example/api/deploy/subscriptions/${deploymentId}/${subscriptionToken}`, {
       headers: { 'User-Agent': 'Loon/3.2.4' }
     }), env, deploymentId, subscriptionToken);
@@ -518,7 +520,8 @@ describe('TSub V2 deployment handler', () => {
     expect(loonBody).toContain('alpn=h3');
 
     const singbox = await handleDeploySubscription(new Request(`https://tsub.example/api/deploy/subscriptions/${deploymentId}/${subscriptionToken}?target=singbox`), env, deploymentId, subscriptionToken);
-    const singboxTuic = (await singbox.json()).outbounds.find(outbound => outbound.type === 'tuic');
+    const singboxConfig = await singbox.json();
+    const singboxTuic = singboxConfig.outbounds.find(outbound => outbound.type === 'tuic');
     expect(singboxTuic.tls).toMatchObject({
       insecure: false,
       server_name: 'www.cloudflare.com',
@@ -527,6 +530,14 @@ describe('TSub V2 deployment handler', () => {
     });
     expect(singbox.headers.get('X-TSub-TUIC-Pin-Status')).toBe('ready');
     expect(singbox.headers.get('X-TSub-TUIC-Pin-Filtered')).toBe('0');
+    expect(singbox.headers.get('X-TSub-Node-Total')).toBe('2');
+    expect(singbox.headers.get('X-TSub-Node-Rendered')).toBe('2');
+    expect(singbox.headers.get('X-TSub-Node-Omitted')).toBe('0');
+    expect(singboxConfig.route.default_domain_resolver).toBe('dns-ali');
+
+    const diagnostics = await handleDeploySubscription(new Request(`https://tsub.example/api/deploy/subscriptions/${deploymentId}/${subscriptionToken}?target=singbox&diagnostics=1`), env, deploymentId, subscriptionToken);
+    expect(diagnostics.headers.get('Content-Type')).toContain('application/json');
+    expect(await diagnostics.json()).toMatchObject({ target: 'singbox', total: 2, rendered: 2, omitted: 0, rawTarget: 'nodes' });
   });
 
   it('keeps trusted-certificate TUIC nodes without requiring deployment pins', async () => {

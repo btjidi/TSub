@@ -113,8 +113,7 @@ function buildProxyLine(proxy) {
         
         if (proxy['udp-relay-mode']) extras.push(`udp-relay-mode=${proxy['udp-relay-mode']}`);
         
-        // 性能优化参数
-        extras.push('reduce-rtt=true');
+        if (proxy['reduce-rtt'] !== undefined) extras.push(`reduce-rtt=${proxy['reduce-rtt'] ? 'true' : 'false'}`);
         if (proxy['fast-open']) extras.push('fast-open=true');
         
         // Loon TUIC 语法: Name = tuic, Server, Port, Password, UUID, key=value, ...

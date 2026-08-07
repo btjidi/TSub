@@ -371,11 +371,11 @@ export const messages = {
         sharedPassword: '统一密码', sharedPasswordEnabled: '启用', username: '用户名', randomPortMin: '随机端口下限', randomPortMax: '随机端口上限',
         namePrefix: '节点命名前缀', nodeNameMode: '自动节点命名', nodeGroup: '节点组', profile: '关联 Profile', sharedTransport: '统一传输', sharedTls: '统一 TLS',
         sharedOutbound: '统一出站', sharedServerName: '统一服务器名称', acmeEmail: 'ACME 邮箱', certificatePath: '证书路径', keyPath: '私钥路径',
-        resourceTier: '资源档位', coreChannel: '核心通道', coreVersion: '核心版本', agentPollInterval: 'Agent 连接频率', firewall: '管理防火墙', warpPrivateKey: 'WARP 私钥',
+        resourceTier: '资源档位', coreChannel: '核心通道', coreVersion: '核心版本', agentPollInterval: 'Agent 连接频率', firewall: '配置端口放行规则', warpPrivateKey: 'WARP 私钥',
         warpPeerKey: 'WARP Peer 公钥', tunnelHostname: '隧道域名', cloudflareApiToken: 'Cloudflare API Token', tunnelToken: '隧道 Token'
       },
       placeholders: {
-        hostname: '留空后由服务器请求来源确定', sharedUuid: '留空自动生成并共享', independentUuid: '每个 UUID 入站独立生成', sharedPassword: '留空自动生成并共享', independentPassword: '每个密码入站独立生成', autoGenerate: '留空自动生成', random: '留空随机',
+        hostname: '留空后由服务器请求来源确定', optional: '留空表示不发送 Host', sharedUuid: '留空自动生成并共享', independentUuid: '每个 UUID 入站独立生成', sharedPassword: '留空自动生成并共享', independentPassword: '每个密码入站独立生成', autoGenerate: '留空自动生成', random: '留空随机',
         subscriptionToken: '留空自动生成安全 UUID', nodeGroup: '默认使用部署名称', protocolBuiltin: '按协议使用内置值', deploymentName: '部署名称', randomPort: '随机端口', protocolRandomName: '{protocol}-随机后缀',
         inheritUuid: '留空使用统一 UUID；统一 UUID 为空时自动生成', independentInboundUuid: '留空为当前入站独立生成 UUID', inheritPassword: '留空使用统一密码；统一密码为空时自动生成', independentInboundPassword: '留空为当前入站独立生成密码', realityPrivateKey: '留空由核心生成并复用', realityPublicKey: '留空由核心生成', manualAddressPriority: '已填写公网地址，将优先使用该地址并忽略自动地址族探测。', retainOriginalSecret: '留空沿用原部署值'
       },
@@ -408,7 +408,7 @@ export const messages = {
         sharedTls: '仅应用于支持该 TLS 模式和当前传输组合的协议；固定 TLS 或无 TLS 协议保持原值。',
         sharedOutbound: '作为所有入站的默认出站；单个入站可覆盖为直连或指定的 WARP 地址族。',
         sharedServerName: '作为 TLS、Reality 和 HTTP 类传输的默认服务器名称；单个入站可覆盖。',
-        firewall: '允许 Runtime 在具备权限时开放部署所需端口；权限不足时会跳过并在操作结果中提示。',
+        firewall: '允许 Runtime 添加部署所需端口的放行规则；不会接管整机默认防火墙策略，也不会覆盖其他规则链中的拒绝策略。',
         edgeMode: '选择关闭、CF 橙云域名、临时隧道（Quick Tunnel）或固定隧道（Cloudflare Tunnel）。',
         edgeAccountId: '当前 Cloudflare 帐户的 32 位标识，不是令牌。可在帐户概览的 API 区域复制。',
         edgeZoneId: '入口域名所属 Cloudflare 区域的 32 位标识，不是令牌。请在目标域名概览的 API 区域复制。',
@@ -426,7 +426,7 @@ export const messages = {
       inbounds: {
         title: '入站协议', hint: '端口和节点名称可留空自动生成，同一协议可重复添加，最多 20 个。', protocol: '协议', port: '端口', nodeName: '节点名称', transport: '传输', outbound: '出站',
         advanced: '更多', delete: '删除入站', inherit: '继承（{value}）', inheritGlobal: '继承全局', unsupportedByCore: '（{core} 不支持）',
-        serverName: '服务器名称', uuidOverride: 'UUID 覆盖', passwordOverride: '密码覆盖', tuicPasswordOverride: 'TUIC 密码覆盖', path: '路径',
+        serverName: '服务器名称', host: '传输 Host（可选）', uuidOverride: 'UUID 覆盖', passwordOverride: '密码覆盖', tuicPasswordOverride: 'TUIC 密码覆盖', path: '路径',
         realityPrivateKey: 'Reality 私钥', realityPublicKey: 'Reality 公钥', serviceName: '服务名称', xhttpMode: 'XHTTP 模式', xhttpVersion: 'HTTP 版本', edgeMode: 'CDN 节点',
         bandwidthUp: '上传带宽', bandwidthDown: '下载带宽', udpHopPorts: 'UDP 跳跃端口', udpHopInterval: '跳跃周期（秒）'
       },
@@ -457,7 +457,7 @@ export const messages = {
       },
       risk: {
         title: '确认生成部署命令',
-        system: '脚本会下载并运行代理核心、安装或更新系统服务、占用所选端口，并在具备权限时修改防火墙。TLS 协议默认生成自签证书，导出的节点将固定实际证书 SHA-256 指纹。低内存容器会执行资源预算检查，失败时回滚。',
+        system: '脚本会下载并运行代理核心、安装或更新系统服务、占用所选端口，并在具备权限时添加端口放行规则，但不会接管整机防火墙策略。TLS 协议默认生成自签证书，导出的节点将固定实际证书 SHA-256 指纹。低内存容器会执行资源预算检查，失败时回滚。',
         subscription: '服务器本地订阅使用 HTTP，不提供 TLS；主控镜像使用 HTTPS。留空订阅 Token 时，启用统一 UUID 会复用该 UUID，关闭统一 UUID则生成独立订阅 UUID。开启流量统计时会安装独立端口计数规则。',
         confirm: '确认并生成'
       },
@@ -1922,11 +1922,11 @@ export const messages = {
         sharedPassword: 'Shared Password', sharedPasswordEnabled: 'Enabled', username: 'Username', randomPortMin: 'Random Port Minimum', randomPortMax: 'Random Port Maximum',
         namePrefix: 'Node Name Prefix', nodeNameMode: 'Automatic Node Naming', nodeGroup: 'Node Group', profile: 'Linked Profile', sharedTransport: 'Shared Transport', sharedTls: 'Shared TLS',
         sharedOutbound: 'Shared Outbound', sharedServerName: 'Shared Server Name', acmeEmail: 'ACME Email', certificatePath: 'Certificate Path', keyPath: 'Private Key Path',
-        resourceTier: 'Resource Tier', coreChannel: 'Core Channel', coreVersion: 'Core Version', agentPollInterval: 'Agent Connection Interval', firewall: 'Manage Firewall', warpPrivateKey: 'WARP Private Key',
+        resourceTier: 'Resource Tier', coreChannel: 'Core Channel', coreVersion: 'Core Version', agentPollInterval: 'Agent Connection Interval', firewall: 'Add Port Allow Rules', warpPrivateKey: 'WARP Private Key',
         warpPeerKey: 'WARP Peer Public Key', tunnelHostname: 'Tunnel Hostname', cloudflareApiToken: 'Cloudflare API Token', tunnelToken: 'Tunnel Token'
       },
       placeholders: {
-        hostname: 'Detected from the server request when empty', sharedUuid: 'Generated and shared when empty', independentUuid: 'Generate one UUID per inbound', sharedPassword: 'Generated and shared when empty', independentPassword: 'Generate one password per inbound', autoGenerate: 'Generated when empty', random: 'Random when empty',
+        hostname: 'Detected from the server request when empty', optional: 'Leave empty to omit the Host header', sharedUuid: 'Generated and shared when empty', independentUuid: 'Generate one UUID per inbound', sharedPassword: 'Generated and shared when empty', independentPassword: 'Generate one password per inbound', autoGenerate: 'Generated when empty', random: 'Random when empty',
         subscriptionToken: 'Generates a secure UUID when empty', nodeGroup: 'Uses the deployment name by default', protocolBuiltin: 'Use the protocol built-in value', deploymentName: 'deployment-name', randomPort: 'random-port', protocolRandomName: '{protocol}-random-suffix',
         inheritUuid: 'Use the shared UUID, generating it when empty', independentInboundUuid: 'Generate a UUID for this inbound when empty', inheritPassword: 'Use the shared password, generating it when empty', independentInboundPassword: 'Generate a password for this inbound when empty', realityPrivateKey: 'Generated by the core and reused when empty', realityPublicKey: 'Generated by the core when empty', manualAddressPriority: 'The entered public address takes priority and automatic address-family detection is disabled.', retainOriginalSecret: 'Leave empty to retain the existing deployment value'
       },
@@ -1959,7 +1959,7 @@ export const messages = {
         sharedTls: 'Applies only to protocols that support the selected TLS and transport combination. Protocols with fixed TLS behavior keep their native value.',
         sharedOutbound: 'Provides the default egress for all inbounds. Each inbound can override it with direct or a WARP address family.',
         sharedServerName: 'Provides the default server name for TLS, Reality, and HTTP-based transports. Each inbound can override it.',
-        firewall: 'Lets the Runtime open required deployment ports when permissions allow. Missing permissions are reported and the step is skipped.',
+        firewall: 'Lets the Runtime add allow rules for deployment ports. It does not take over the host firewall policy or override deny rules in other chains.',
         edgeMode: 'Choose disabled, an existing proxied hostname, a temporary Quick Tunnel, or a TSub-managed named Tunnel.',
         edgeAccountId: 'The 32-character identifier of the Cloudflare account. It is not a token. Copy it from the API section of the account overview.',
         edgeZoneId: 'The 32-character identifier of the Cloudflare zone containing the entry hostname. It is not a token. Copy it from the target zone overview API section.',
@@ -1977,7 +1977,7 @@ export const messages = {
       inbounds: {
         title: 'Inbound Protocols', hint: 'Empty ports and node names are generated automatically. Protocols may be repeated, up to 20 inbounds.', protocol: 'Protocol', port: 'Port', nodeName: 'Node Name', transport: 'Transport', outbound: 'Outbound',
         advanced: 'More', delete: 'Delete inbound', inherit: 'Inherit ({value})', inheritGlobal: 'Inherit global value', unsupportedByCore: ' ({core} unsupported)',
-        serverName: 'Server Name', uuidOverride: 'UUID Override', passwordOverride: 'Password Override', tuicPasswordOverride: 'TUIC Password Override', path: 'Path',
+        serverName: 'Server Name', host: 'Transport Host (optional)', uuidOverride: 'UUID Override', passwordOverride: 'Password Override', tuicPasswordOverride: 'TUIC Password Override', path: 'Path',
         realityPrivateKey: 'Reality Private Key', realityPublicKey: 'Reality Public Key', serviceName: 'Service Name', xhttpMode: 'XHTTP Mode', xhttpVersion: 'HTTP Version', edgeMode: 'CDN nodes',
         bandwidthUp: 'Upload Bandwidth', bandwidthDown: 'Download Bandwidth', udpHopPorts: 'UDP Hop Ports', udpHopInterval: 'Hop Interval (seconds)'
       },
@@ -2008,7 +2008,7 @@ export const messages = {
       },
       risk: {
         title: 'Generate Deployment Command?',
-        system: 'The script downloads and runs a proxy core, installs or updates system services, binds the selected ports, and modifies the firewall when permitted. TLS protocols use self-signed certificates by default, and exported nodes pin the actual certificate SHA-256 fingerprint. Low-memory containers are checked against the resource budget and rolled back on failure.',
+        system: 'The script downloads and runs a proxy core, installs or updates system services, binds the selected ports, and adds port allow rules when permitted without taking over the host firewall policy. TLS protocols use self-signed certificates by default, and exported nodes pin the actual certificate SHA-256 fingerprint. Low-memory containers are checked against the resource budget and rolled back on failure.',
         subscription: 'The local server subscription uses HTTP without TLS; the controller mirror uses HTTPS. An empty token reuses the shared UUID when enabled, or generates an independent subscription UUID when shared UUID is disabled. Enabling traffic counters installs isolated port counter rules.',
         confirm: 'Confirm and Generate'
       },

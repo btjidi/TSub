@@ -137,7 +137,7 @@ function parseVlessUrl(url) {
         if (network === 'xhttp') {
             const xhttpOpts = {};
             const path = params.get('xhttp-path') || params.get('path');
-            const host = params.get('xhttp-host') || params.get('host') || params.get('sni');
+            const host = params.get('xhttp-host') || params.get('host');
             if (path) xhttpOpts.path = path;
             if (host) {
                 xhttpOpts.host = host;
@@ -388,8 +388,8 @@ function parseVmessUrl(url) {
         // gRPC 配置
         if (network === 'grpc') {
             const grpcOpts = {};
-            if (config.path) grpcOpts['grpc-service-name'] = config.path; // vmess json sometimes use path for serviceName
-            if (config.host) grpcOpts['grpc-service-name'] = config.host; 
+            const serviceName = config.serviceName || config.service_name || config.path;
+            if (serviceName) grpcOpts['grpc-service-name'] = serviceName;
             if (Object.keys(grpcOpts).length > 0) {
                 proxy['grpc-opts'] = grpcOpts;
             }
@@ -436,6 +436,7 @@ function parseVmessUrl(url) {
         }
         if (config.pcs) proxy.pinnedPeerCertSha256 = String(config.pcs);
         if (config.spki) proxy.certificatePublicKeySha256 = String(config.spki);
+        if (config.allowInsecure === true || config.allowInsecure === 1 || config.insecure === true || config.insecure === 1) proxy['skip-cert-verify'] = true;
 
         // UDP
         // proxy.udp = true;
@@ -656,7 +657,7 @@ function parseHysteria2Url(url) {
         }
 
         // Skip cert verify
-        if (params.get('insecure') === '1' || params.get('allowInsecure') === '1') {
+        if (params.get('insecure') === '1' || params.get('allowInsecure') === '1' || params.get('allow_insecure') === '1') {
             proxy['skip-cert-verify'] = true;
         }
         const pinnedPeerCertSha256 = params.get('pinSHA256')
@@ -680,9 +681,14 @@ function parseHysteria2Url(url) {
             }
         }
 
-        if (params.get('ports')) proxy.ports = params.get('ports');
-        if (params.get('up')) proxy.up = params.get('up');
-        if (params.get('down')) proxy.down = params.get('down');
+        const ports = params.get('ports') || params.get('mport');
+        const up = params.get('up') || params.get('upmbps');
+        const down = params.get('down') || params.get('downmbps');
+        const hopInterval = params.get('hopInterval') || params.get('hop_interval') || params.get('hop-interval');
+        if (ports) proxy.ports = ports;
+        if (up) proxy.up = up;
+        if (down) proxy.down = down;
+        if (hopInterval) proxy['hop-interval'] = hopInterval;
         const fastOpen = params.get('fast_open') || params.get('fast-open');
         if (fastOpen === '1' || fastOpen === 'true') {
             proxy['fast-open'] = true;
@@ -1157,6 +1163,17 @@ function parseHttpsUrl(url) {
     }
 }
 
+function parseNaiveUrl(url) {
+    const proxy = parseHttpsUrl(url.replace(/^naive\+https:/i, 'https:'));
+    if (!proxy) return null;
+    proxy.type = 'naive';
+    if (proxy.name.startsWith('HTTPS-')) proxy.name = `Naive-${proxy.name.slice(6)}`;
+    const params = parseQueryParams(url);
+    if (params.has('padding')) proxy.padding = params.get('padding') === 'true' || params.get('padding') === '1';
+    if (params.get('extra-headers')) proxy['extra-headers'] = params.get('extra-headers');
+    return proxy;
+}
+
 /**
  * 将 SOCKS5 URL 转换为 Clash 代理对象
  * @param {string} url - SOCKS5 URL
@@ -1347,6 +1364,8 @@ export function urlToClashProxy(url) {
         return parseWireguardUrl(url);
     } else if (lowerUrl.startsWith('anytls://')) {
         return parseAnytlsUrl(url);
+    } else if (lowerUrl.startsWith('naive+https://')) {
+        return parseNaiveUrl(url);
     } else if (lowerUrl.startsWith('https://')) {
         return parseHttpsUrl(url);
     } else if (lowerUrl.startsWith('socks5://')) {

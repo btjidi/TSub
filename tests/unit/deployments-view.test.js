@@ -107,7 +107,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="reality-private-key"]').element.value).toBe('private-reality-key');
     expect(wrapper.get('[data-testid="reality-public-key"]').element.value).toBe('public-reality-key');
-    expect(wrapper.text()).not.toContain('NaiveProxy');
+    expect(wrapper.text()).toContain('NaiveProxy');
     expect(wrapper.get('[data-testid="generate-global-uuid"]').classes()).toContain('absolute');
     expect(wrapper.get('[data-testid="generate-inbound-uuid"]').classes()).toContain('absolute');
     expect(wrapper.get('[data-testid="generate-subscription-token"]').classes()).toContain('absolute');
@@ -498,6 +498,31 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.get('#inbound-server-name-0').element.value).toBe('www.cloudflare.com');
     expect(wrapper.get('#inbound-server-name-1').element.value).toBe('');
     expect(wrapper.get('#inbound-server-name-1').attributes('placeholder')).toBe('tsub.local');
+  });
+
+  it('edits transport Host independently from TLS SNI', async () => {
+    createDeployment.mockResolvedValue({ data: { deployment: { id: 'deploy-host' }, command: 'curl command', wgetCommand: 'wget command', expiresAt: '' } });
+    wrapper = mountView();
+    await flushPromises();
+    await wrapper.find('input[placeholder="HK Edge"]').setValue('Host Split');
+    await wrapper.get('[data-testid="inbound-protocol"]').setValue('vmess');
+    await flushPromises();
+    await wrapper.get('[data-testid="inbound-transport-0"]').setValue('ws');
+    await flushPromises();
+    await wrapper.get('[data-testid="inbound-tls-mode-0"]').setValue('tls');
+    await wrapper.get('#inbound-server-name-0').setValue('tls.example.invalid');
+    await wrapper.get('[data-testid="inbound-host-0"]').setValue('transport.example.invalid');
+    await wrapper.get('#inbound-server-name-0').setValue('changed.example.invalid');
+    expect(wrapper.get('[data-testid="inbound-host-0"]').element.value).toBe('transport.example.invalid');
+
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    document.querySelector('[data-testid="deployment-risk-panel"] button:last-child').click();
+    await flushPromises();
+    expect(createDeployment.mock.calls[0][0].config.inbounds[0]).toMatchObject({
+      tls: { serverName: 'changed.example.invalid' },
+      transportOptions: { host: 'transport.example.invalid' }
+    });
   });
 
   it('removes Reality when VLESS switches to WebSocket', async () => {

@@ -141,10 +141,15 @@ describe('schemaVersion 2 compiler', () => {
     expect(() => normalizeV2Config({ inbounds: [...inbounds, inbound({ port: 51251 })] })).toThrow(/1-20/);
   });
 
-  it('requires imported WARP credentials and compiles an in-core WireGuard outbound', () => {
+  it('requires imported WARP credentials and compiles a WireGuard endpoint', () => {
     expect(() => normalizeV2Config({ inbounds: [inbound({ outbound: 'warp-v4' })] })).toThrow(/WARP/);
     const config = normalizeV2Config({ inbounds: [inbound({ outbound: 'warp-v4' })], runtime: { core: 'sing-box' }, warp: { privateKey: 'private', peerPublicKey: 'public', ipv4: '172.16.0.2/32' } });
-    expect(compileCoreConfig(config).outbounds.find(item => item.tag === 'warp-v4').type).toBe('wireguard');
+    const compiled = compileCoreConfig(config);
+    expect(compiled.outbounds.find(item => item.tag === 'warp-v4')).toBeUndefined();
+    expect(compiled.endpoints.find(item => item.tag === 'warp-v4')).toMatchObject({
+      type: 'wireguard', address: ['172.16.0.2/32'],
+      peers: [{ allowed_ips: ['0.0.0.0/0'] }]
+    });
   });
 
   it('keeps NaiveProxy isolated and enforces protocol TLS dependencies', () => {
@@ -391,8 +396,24 @@ describe('schemaVersion 2 compiler', () => {
     const vmess = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(urls[2].slice('vmess://'.length)), character => character.charCodeAt(0))));
     expect(vmess.pcs).toBe('__TSUB_CERT_PIN_SHA256__');
     expect(vmess.spki).toBe('__TSUB_CERT_SPKI_SHA256__');
-    expect(urls.join('\n')).not.toMatch(/(?:allowInsecure|insecure)=1/);
+    expect(urls.join('\n')).toMatch(/(?:allowInsecure|insecure)=1/);
+    expect(vmess).toMatchObject({ allowInsecure: true, insecure: true });
     expect(() => resolveBootstrapConfig(base, '')).toThrow(/公网地址/);
+  });
+
+  it('keeps transport Host independent from TLS SNI and preserves explicit empty Host', () => {
+    const config = normalizeV2Config({
+      inbounds: [inbound({ transport: 'ws', tls: { mode: 'tls', serverName: 'tls.example', certificatePath: '/cert', keyPath: '/key' }, transportOptions: { path: '/ws', host: '' } })],
+      runtime: { core: 'xray' }
+    });
+    expect(config.inbounds[0]).toMatchObject({ tls: { serverName: 'tls.example' }, transportOptions: { host: '' } });
+    expect(compileCoreConfig(config).inbounds[0].streamSettings.wsSettings.headers).toEqual({});
+  });
+
+  it('rejects Hysteria2 hop ranges that overlap reserved or other hop ports', () => {
+    const hy2 = (portValue, udpHopPorts) => inbound({ protocol: 'hysteria2', port: portValue, credentials: { password: 'secret' }, tls: { mode: 'tls', serverName: 'hy2.example', certificatePath: '/cert', keyPath: '/key' }, transportOptions: { udpHopPorts } });
+    expect(() => normalizeV2Config({ inbounds: [hy2(51231, '51240-51250'), inbound({ protocol: 'tuic', port: 51245, credentials: { uuid: '79411d85-b0dc-4cd2-b46c-01789a18c650', password: 'secret' }, tls: { mode: 'tls', serverName: 'tuic.example', certificatePath: '/cert', keyPath: '/key' } })] })).toThrow(/跳跃端口.*冲突/);
+    expect(() => normalizeV2Config({ inbounds: [hy2(51231, '52000-52010'), hy2(51232, '52005-52015')] })).toThrow(/跳跃端口.*冲突/);
   });
 
   it('compiles direct and CDN nodes in stable order with Cloudflare TLS metadata', () => {

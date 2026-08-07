@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
-  "runtimeVersion": "2.4.16",
+  "runtimeVersion": "2.4.17",
   "runtime": {
     "path": "/proxy/v2/tsub-proxy.sh",
-    "sha256": "8500e08dc96d9656a868d9078c3d75350f20f8f4ac83ae89cddc551866d650ef",
+    "sha256": "6b9ad95843856184386114aef8fde55b2937ea1dbe3d284694a94152ac7a958b",
     "bytes": 175871
   },
   "providers": {

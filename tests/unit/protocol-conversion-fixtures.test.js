@@ -655,8 +655,13 @@ proxies:
             for (const part of fixture.requiredParts) {
                 expect(url).toContain(part);
             }
-            expect(urlToClashProxy(url)).toBeNull();
-            expect(urlsToClashProxies([url])).toEqual([]);
+            if (fixture.proxy.type === 'naive') {
+                expect(urlToClashProxy(url)).toMatchObject({ type: 'naive', server: 'naive.example.com', username: 'user', password: 'p@ss:word' });
+                expect(urlsToClashProxies([url])).toHaveLength(1);
+            } else {
+                expect(urlToClashProxy(url)).toBeNull();
+                expect(urlsToClashProxies([url])).toEqual([]);
+            }
         }
     });
 });

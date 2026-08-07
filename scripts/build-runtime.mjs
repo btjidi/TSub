@@ -4,7 +4,7 @@ import path from 'node:path';
 import { PROTOCOL_CAPABILITIES } from '../shared/deployment-capabilities.js';
 
 const root = process.cwd();
-const runtimeVersion = '2.4.16';
+const runtimeVersion = '2.4.17';
 const modulesDir = path.join(root, 'runtime', 'v2', 'modules');
 const outputDir = path.join(root, 'public', 'proxy', 'v2');
 const generatedDir = path.join(root, 'functions', 'generated');

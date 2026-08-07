@@ -37,7 +37,10 @@ describe('Loon 内置生成器', () => {
         expect(result).toContain('alpn=h3');
         expect(result).toContain('congestion-control=bbr');
         expect(result).toContain('udp-relay-mode=native');
-        expect(result).toContain('reduce-rtt=true');
+        expect(result).not.toContain('reduce-rtt=');
+
+        const explicit = generateBuiltinLoonConfig(tuic.replace('allow_insecure=1', 'allow_insecure=1&reduce_rtt=1'));
+        expect(explicit).toContain('reduce-rtt=true');
     });
 
     it('应将部署 HY2 证书指纹转换为 Loon 可用的证书选项', () => {

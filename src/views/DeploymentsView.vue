@@ -37,7 +37,7 @@ const remoteUpdate = ref(false);
 const reinstallMode = computed(() => deploymentMode.value === 'update' && targetDeployment.value
   && targetDeployment.value.reinstallable === true);
 const submitLabel = computed(() => remoteUpdate.value ? t('deployments.submit.remoteUpdate') : t(`deployments.submit.${reinstallMode.value ? 'reinstall' : deploymentMode.value}`));
-const visibleProtocols = PROTOCOL_OPTIONS.filter(item => item.value !== 'naive');
+const visibleProtocols = PROTOCOL_OPTIONS;
 const PREFERRED_DOMAIN_PRESETS = Object.freeze([
   { key: 'visa', address: 'www.visa.cn' },
   { key: 'mfaUkraine', address: 'mfa.gov.ua' },
@@ -92,7 +92,8 @@ const builtinProtocolDefaults = {
   tuic: { transport: 'quic', outbound: 'direct', tlsMode: 'tls', serverName: 'tsub.local', path: '/', serviceName: 'tsub' },
   anytls: { transport: 'tcp', outbound: 'direct', tlsMode: 'tls', serverName: 'tsub.local', path: '/', serviceName: 'tsub' },
   shadowsocks: { transport: 'tcp', outbound: 'direct', tlsMode: 'none', serverName: '', path: '/', serviceName: 'tsub' },
-  socks5: { transport: 'tcp', outbound: 'direct', tlsMode: 'none', serverName: '', path: '/', serviceName: 'tsub' }
+  socks5: { transport: 'tcp', outbound: 'direct', tlsMode: 'none', serverName: '', path: '/', serviceName: 'tsub' },
+  naive: { transport: 'https', outbound: 'direct', tlsMode: 'tls', serverName: 'tsub.local', path: '/', serviceName: 'tsub' }
 };
 
 const blankGlobal = () => ({
@@ -110,7 +111,7 @@ const blankGlobal = () => ({
 
 const newInbound = () => ({
   id: `inbound-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, protocol: 'vless', port: '', expanded: false,
-  name: '', transport: '', outbound: '', tlsMode: '', serverName: '', uuid: '', username: '', password: '', path: '', serviceName: '',
+  name: '', transport: '', outbound: '', tlsMode: '', serverName: '', host: '', uuid: '', username: '', password: '', path: '', serviceName: '',
   certificatePath: '', keyPath: '', realityPrivateKey: '', realityPublicKey: '', shortId: '',
   xhttpMode: 'auto', xhttpVersion: 'auto', bandwidthUp: '', bandwidthDown: '', udpHopPorts: '', udpHopInterval: '', edgeMode: 'direct'
 });
@@ -850,7 +851,9 @@ function hydrateDeploymentTemplate(payload, mode) {
     transport: item.transport || '', outbound: item.outbound || '',
     tlsMode: item.tls?.mode || '', serverName: item.tls?.serverName || '',
     uuid: '', username: item.credentials?.username || '', password: '',
-    path: item.transportOptions?.path || '', serviceName: item.transportOptions?.serviceName || '',
+    path: item.transportOptions?.path || '',
+    host: Object.prototype.hasOwnProperty.call(item.transportOptions || {}, 'host') ? (item.transportOptions.host || '') : (item.tls?.serverName || ''),
+    serviceName: item.transportOptions?.serviceName || '',
     certificatePath: item.tls?.certificatePath || '', keyPath: item.tls?.keyPath || '',
     realityPrivateKey: '', realityPublicKey: item.tls?.realityPublicKey || '', shortId: item.tls?.shortId || '',
     xhttpMode: item.transportOptions?.xhttpMode || 'auto', xhttpVersion: item.transportOptions?.xhttpVersion || 'auto',
@@ -1015,7 +1018,7 @@ function sparseInbound(item, index) {
   const transportOptions = {};
   if (item.path) transportOptions.path = item.path;
   if (item.serviceName) transportOptions.serviceName = item.serviceName;
-  if (item.serverName) transportOptions.host = item.serverName;
+  if (['ws', 'xhttp'].includes(effective(item, 'transport'))) transportOptions.host = item.host || '';
   if (effective(item, 'transport') === 'xhttp') {
     transportOptions.xhttpMode = item.xhttpMode || 'auto';
     transportOptions.xhttpVersion = item.xhttpVersion || 'auto';
@@ -1567,6 +1570,7 @@ onBeforeUnmount(() => {
               <label v-else-if="inbound.protocol !== 'shadowsocks'" class="text-sm sm:col-span-2">{{ t('deployments.inbounds.passwordOverride') }}<SecretInput v-model="inbound.password" class="mt-1" autocomplete="new-password" :placeholder="passwordPlaceholder()" allow-generate input-testid="inbound-password" toggle-testid="toggle-inbound-password" generate-testid="generate-inbound-password" @generate="generatePassword(inbound)" /></label>
               <label v-if="inbound.protocol === 'tuic'" class="text-sm sm:col-span-2">{{ t('deployments.inbounds.tuicPasswordOverride') }}<SecretInput v-model="inbound.password" class="mt-1" autocomplete="new-password" :placeholder="passwordPlaceholder()" allow-generate input-testid="inbound-password" toggle-testid="toggle-inbound-password" generate-testid="generate-inbound-password" @generate="generatePassword(inbound)" /></label>
               <label v-if="['ws','xhttp'].includes(effective(inbound, 'transport'))" class="text-sm sm:col-span-2">{{ t('deployments.inbounds.path') }}<input v-model="inbound.path" class="mt-1 w-full border bg-transparent px-2 py-2" :placeholder="effective(inbound, 'path')" /></label>
+              <label v-if="['ws','xhttp'].includes(effective(inbound, 'transport'))" class="text-sm sm:col-span-2">{{ t('deployments.inbounds.host') }}<input v-model="inbound.host" :data-testid="`inbound-host-${index}`" class="mt-1 w-full border bg-transparent px-2 py-2" :placeholder="t('deployments.placeholders.optional')" /></label>
               <label v-if="effective(inbound, 'transport') === 'grpc'" class="text-sm sm:col-span-2">{{ t('deployments.inbounds.serviceName') }}<input v-model="inbound.serviceName" class="mt-1 w-full border bg-transparent px-2 py-2" :placeholder="effective(inbound, 'serviceName')" /></label>
               <template v-if="effective(inbound, 'transport') === 'xhttp'"><label class="text-sm">{{ t('deployments.inbounds.xhttpMode') }}<select v-model="inbound.xhttpMode" class="mt-1 w-full border bg-transparent px-2 py-2"><option value="auto">Auto</option><option value="packet-up">packet-up</option><option value="stream-up">stream-up</option><option value="stream-one">stream-one</option></select></label><label class="text-sm" :for="`inbound-xhttp-version-${index}`">{{ t('deployments.inbounds.xhttpVersion') }}<select :id="`inbound-xhttp-version-${index}`" v-model="inbound.xhttpVersion" class="mt-1 w-full border bg-transparent px-2 py-2" @change="updateTransport(inbound)"><option value="auto">Auto</option><option value="h2">HTTP/2</option><option value="h3">HTTP/3</option></select></label></template>
               <template v-if="inbound.protocol === 'hysteria2'"><label class="text-sm">{{ t('deployments.inbounds.bandwidthUp') }}<input v-model="inbound.bandwidthUp" class="mt-1 w-full border bg-transparent px-2 py-2" placeholder="100Mbps" /></label><label class="text-sm">{{ t('deployments.inbounds.bandwidthDown') }}<input v-model="inbound.bandwidthDown" class="mt-1 w-full border bg-transparent px-2 py-2" placeholder="100Mbps" /></label><label class="text-sm sm:col-span-2">{{ t('deployments.inbounds.udpHopPorts') }}<input v-model="inbound.udpHopPorts" class="mt-1 w-full border bg-transparent px-2 py-2" placeholder="20000-30000" /></label><label v-if="inbound.udpHopPorts" class="text-sm">{{ t('deployments.inbounds.udpHopInterval') }}<input v-model="inbound.udpHopInterval" type="number" min="5" max="300" class="mt-1 w-full border bg-transparent px-2 py-2" placeholder="30" /></label></template>

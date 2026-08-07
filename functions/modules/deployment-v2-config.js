@@ -334,7 +334,8 @@ export function resolveV2Config(raw = {}, systemDefaults = {}, context = {}) {
       },
       transportOptions: {
         ...transportOptions, path: transportOptions.path || protocolDefaults.path,
-        host: transportOptions.host || serverName, serviceName: transportOptions.serviceName || protocolDefaults.serviceName,
+        host: Object.prototype.hasOwnProperty.call(transportOptions, 'host') ? transportOptions.host : serverName,
+        serviceName: transportOptions.serviceName || protocolDefaults.serviceName,
         xhttpMode: transportOptions.xhttpMode || 'auto', xhttpVersion: transportOptions.xhttpVersion || 'auto',
         bandwidthUp: transportOptions.bandwidthUp || '', bandwidthDown: transportOptions.bandwidthDown || '',
         udpHopPorts: transportOptions.udpHopPorts || '', udpHopInterval: transportOptions.udpHopInterval || ''
@@ -473,6 +474,29 @@ function normalizeInbound(raw, index) {
     },
     credentials
   };
+}
+
+function parsePortIntervals(value) {
+  if (!value) return [];
+  return String(value).split(',').map(segment => {
+    const [startText, endText = startText] = segment.split('-');
+    return { start: Number(startText), end: Number(endText) };
+  });
+}
+
+function assertNoHysteriaPortConflicts(inbounds, reservedPorts) {
+  const occupied = [...reservedPorts].map(value => ({ start: value, end: value, label: `端口 ${value}` }));
+  for (const inbound of inbounds) {
+    if (inbound.protocol !== 'hysteria2') continue;
+    for (const range of parsePortIntervals(inbound.transportOptions.udpHopPorts)) {
+      for (const other of occupied) {
+        if (range.start <= other.end && other.start <= range.end) {
+          throw new Error(`Hysteria2 跳跃端口 ${range.start === range.end ? range.start : `${range.start}-${range.end}`} 与${other.label}冲突`);
+        }
+      }
+      occupied.push({ ...range, label: `其他 Hysteria2 跳跃端口 ${range.start === range.end ? range.start : `${range.start}-${range.end}`}` });
+    }
+  }
 }
 
 function normalizeEdgeAddress(value) {
@@ -614,9 +638,7 @@ export function normalizeV2Config(raw = {}) {
   if (certificate.mode === 'self-signed' && tlsInbounds.length) {
     const certificateServerName = tlsInbounds[0].tls.serverName;
     for (const item of tlsInbounds) {
-      const previousServerName = item.tls.serverName;
       item.tls.serverName = certificateServerName;
-      if (item.transportOptions.host === previousServerName) item.transportOptions.host = certificateServerName;
       item.tls.certificatePath = `__TSUB_CERT_DIR__/${certificateServerName}.crt`;
       item.tls.keyPath = `__TSUB_CERT_DIR__/${certificateServerName}.key`;
       item.tls.insecure = true;
@@ -643,6 +665,10 @@ export function normalizeV2Config(raw = {}) {
   if (trafficApiPort !== null && (ports.has(trafficApiPort) || trafficApiPort === subscriptionServerPort)) throw new Error(`统计接口端口 ${trafficApiPort} 与已有端口重复`);
   const trafficApiSecret = trafficEnabled ? text(raw.subscription?.server?.traffic?.apiSecret, 128) : '';
   if (trafficEnabled && !/^[A-Za-z0-9_-]{43}$/.test(trafficApiSecret)) throw new Error('统计接口凭证格式无效');
+  const reservedPorts = new Set(ports);
+  if (subscriptionServerPort !== null) reservedPorts.add(subscriptionServerPort);
+  if (trafficApiPort !== null) reservedPorts.add(trafficApiPort);
+  assertNoHysteriaPortConflicts(inbounds, reservedPorts);
   const edge = normalizeEdge(raw.edge || {}, inbounds, pushEnabled);
   const edgeTunnels = edge.mode === 'quick'
     ? [{ type: 'quick', hostname: edge.hostname, token: '' }]
@@ -792,21 +818,28 @@ function compileSingBox(config) {
     return result;
   });
   const outbounds = [{ type: 'direct', tag: 'direct' }];
+  const endpoints = [];
   for (const tag of new Set(config.inbounds.map(item => item.outbound).filter(item => item !== 'direct'))) {
     const automatic = config.warp.provisioning === 'auto';
     const ipv4 = automatic ? '__TSUB_WARP_IPV4__' : config.warp.ipv4;
     const ipv6 = automatic ? '__TSUB_WARP_IPV6__' : config.warp.ipv6;
     const addresses = tag === 'warp-v4' ? [ipv4] : tag === 'warp-v6' ? [ipv6] : [ipv4, ipv6].filter(Boolean);
-    outbounds.push({
-      type: 'wireguard', tag, local_address: addresses,
+    const allowedIps = tag === 'warp-v4' ? ['0.0.0.0/0'] : tag === 'warp-v6' ? ['::/0'] : ['0.0.0.0/0', '::/0'];
+    endpoints.push({
+      type: 'wireguard', tag, system: false, address: addresses,
       private_key: automatic ? '__TSUB_WARP_PRIVATE_KEY__' : config.warp.privateKey,
-      peer_public_key: automatic ? '__TSUB_WARP_PEER_PUBLIC_KEY__' : config.warp.peerPublicKey,
-      server: automatic ? '__TSUB_WARP_ENDPOINT__' : config.warp.endpoint,
-      server_port: automatic ? '__TSUB_WARP_PORT__' : config.warp.port,
-      reserved: automatic ? '__TSUB_WARP_RESERVED__' : config.warp.reserved
+      peers: [{
+        address: automatic ? '__TSUB_WARP_ENDPOINT__' : config.warp.endpoint,
+        port: automatic ? '__TSUB_WARP_PORT__' : config.warp.port,
+        public_key: automatic ? '__TSUB_WARP_PEER_PUBLIC_KEY__' : config.warp.peerPublicKey,
+        allowed_ips: allowedIps,
+        persistent_keepalive_interval: 30,
+        reserved: automatic ? '__TSUB_WARP_RESERVED__' : config.warp.reserved
+      }]
     });
   }
   const result = { log: { level: 'warn', timestamp: true }, inbounds, outbounds, route: { rules: config.inbounds.filter(item => item.outbound !== 'direct').map(item => ({ inbound: [item.id], outbound: item.outbound })) } };
+  if (endpoints.length) result.endpoints = endpoints;
   if (config.subscription.server.traffic.enabled) {
     result.experimental = {
       clash_api: {
@@ -837,14 +870,18 @@ function compileInboundNode(config, item, entry, edge = false) {
     const transportHost = edge ? edgeHostname : item.transportOptions.host;
     if (item.protocol === 'vmess') {
       const pinned = !edge && config.certificate.mode === 'self-signed' && item.tls.mode === 'tls';
-      const payload = { v: '2', ps: decodeURIComponent(name), add: rawHost, port: String(portValue), id: item.credentials.uuid, aid: '0', scy: config.runtime.core === 'sing-box' ? 'none' : 'auto', net: item.transport, type: 'none', host: transportHost, path: item.transport === 'grpc' ? item.transportOptions.serviceName : item.transportOptions.path, tls: tlsMode === 'tls' ? 'tls' : '', sni: tlsServerName, pcs: pinned ? '__TSUB_CERT_PIN_SHA256__' : undefined, spki: pinned ? '__TSUB_CERT_SPKI_SHA256__' : undefined };
+      const payload = { v: '2', ps: decodeURIComponent(name), add: rawHost, port: String(portValue), id: item.credentials.uuid, aid: '0', scy: config.runtime.core === 'sing-box' ? 'none' : 'auto', net: item.transport, type: 'none', host: transportHost, path: item.transport === 'grpc' ? item.transportOptions.serviceName : item.transportOptions.path, tls: tlsMode === 'tls' ? 'tls' : '', sni: tlsServerName, allowInsecure: pinned || item.tls.insecure ? true : undefined, insecure: pinned || item.tls.insecure ? true : undefined, pcs: pinned ? '__TSUB_CERT_PIN_SHA256__' : undefined, spki: pinned ? '__TSUB_CERT_SPKI_SHA256__' : undefined };
       return `vmess://${base64Text(JSON.stringify(payload))}`;
     }
     if (item.protocol === 'shadowsocks') {
       const userInfo = base64Text(`${item.credentials.method || '2022-blake3-aes-128-gcm'}:${item.credentials.password}`).replace(/=+$/g, '').replace(/\+/g, '-').replace(/\//g, '_');
       return `ss://${userInfo}@${host}:${portValue}#${name}`;
     }
-    if (item.protocol === 'naive') return `naive+https://${encodeURIComponent(item.credentials.username || 'tsub')}:${encodeURIComponent(item.credentials.password)}@${host}:${portValue}#${name}`;
+    if (item.protocol === 'naive') {
+      const naiveAuthority = item.tls.serverName || rawHost;
+      const naiveHost = naiveAuthority.includes(':') ? `[${naiveAuthority}]` : naiveAuthority;
+      return `naive+https://${encodeURIComponent(item.credentials.username || 'tsub')}:${encodeURIComponent(item.credentials.password)}@${naiveHost}:${portValue}#${name}`;
+    }
     if (item.protocol === 'socks5') return `socks5://${encodeURIComponent(item.credentials.username || 'tsub')}:${encodeURIComponent(item.credentials.password)}@${host}:${portValue}#${name}`;
     const query = new URLSearchParams();
     if (['vless', 'trojan'].includes(item.protocol)) query.set('type', item.transport);
@@ -853,15 +890,9 @@ function compileInboundNode(config, item, entry, edge = false) {
     if (!edge && config.certificate.mode === 'self-signed' && item.tls.mode === 'tls') {
       query.set(item.protocol === 'hysteria2' ? 'pinSHA256' : 'pcs', '__TSUB_CERT_PIN_SHA256__');
       query.set('spki', '__TSUB_CERT_SPKI_SHA256__');
-      if (item.protocol === 'tuic') {
-        query.set('insecure', '1');
-        query.set('allowInsecure', '1');
-        query.set('allow_insecure', '1');
-      }
-      if (item.protocol === 'anytls') {
-        query.set('insecure', '1');
-        query.set('allowInsecure', '1');
-      }
+      query.set('insecure', '1');
+      query.set('allowInsecure', '1');
+      query.set('allow_insecure', '1');
     } else if (!edge && item.tls.insecure) {
       query.set('insecure', '1');
       query.set('allowInsecure', '1');
@@ -880,6 +911,7 @@ function compileInboundNode(config, item, entry, edge = false) {
       if (item.transportOptions.bandwidthUp) query.set('upmbps', bandwidthToMbps(item.transportOptions.bandwidthUp));
       if (item.transportOptions.bandwidthDown) query.set('downmbps', bandwidthToMbps(item.transportOptions.bandwidthDown));
       if (item.transportOptions.udpHopPorts) query.set('mport', item.transportOptions.udpHopPorts);
+      if (item.transportOptions.udpHopInterval) query.set('hopInterval', String(item.transportOptions.udpHopInterval));
     }
     if (item.protocol === 'tuic') {
       query.set('alpn', 'h3');

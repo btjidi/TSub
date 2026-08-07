@@ -15,7 +15,7 @@ import { checkCloudflareEdgePermissions, cleanupManagedTunnel, ensureManagedTunn
 import { deriveEdgeProbe, publicEdgeProbeResult } from '../services/edge-probe-service.js';
 import { invalidateCaches } from '../services/node-cache-service.js';
 import { DEFAULT_SETTINGS, KV_KEY_SETTINGS } from './config.js';
-import { transformBuiltinSubscription } from './subscription/transformer-factory.js';
+import { transformBuiltinSubscriptionDetailed } from './subscription/transformer-factory.js';
 import { determineTargetFormat, isMetaCore } from './subscription/user-agent-utils.js';
 
 const LEGACY_DEPLOYMENTS_KEY = 'tsub_deployments_v1';
@@ -1380,29 +1380,60 @@ export async function handleDeploySubscription(request, env, deploymentId, subsc
   if (['raw', 'plain'].includes(targetFormat)) targetFormat = 'nodes';
   const pinStatus = tuicCertificatePinStatus(config, cached.nodes);
   const filteredTuicCount = pinStatus === 'missing' ? cached.nodes.filter(isTuicNode).length : 0;
-  const clientNodes = (pinStatus === 'missing' ? cached.nodes.filter(node => !isTuicNode(node)) : cached.nodes)
-    .map(normalizeDeploymentClientNodeUrl);
-  const nodeList = `${clientNodes.join('\n')}${clientNodes.length ? '\n' : ''}`;
-  let responseBody = nodeList;
+  const sourceNodes = pinStatus === 'missing' ? cached.nodes.filter(node => !isTuicNode(node)) : cached.nodes;
+  const rawNodeList = `${sourceNodes.join('\n')}${sourceNodes.length ? '\n' : ''}`;
+  const conversionNodeList = `${sourceNodes.map(normalizeDeploymentClientNodeUrl).join('\n')}${sourceNodes.length ? '\n' : ''}`;
+  let responseBody = rawNodeList;
   let contentType = 'text/plain; charset=utf-8';
+  let conversionDiagnostics = { target: targetFormat, total: sourceNodes.length, rendered: sourceNodes.length, omitted: 0, items: [], warnings: [], rawTarget: 'nodes' };
   if (targetFormat === 'base64') {
-    responseBody = base64Utf8(nodeList);
+    responseBody = base64Utf8(rawNodeList);
   } else if (targetFormat !== 'nodes') {
-    const transformed = transformBuiltinSubscription(nodeList, targetFormat, {
+    const transformed = transformBuiltinSubscriptionDetailed(conversionNodeList, targetFormat, {
       enableUdp: true,
       isMeta: isMetaCore(userAgent, requestUrl.searchParams)
     });
-    if (transformed) {
-      responseBody = transformed;
+    conversionDiagnostics = transformed.diagnostics;
+    if (transformed.content) {
+      responseBody = transformed.content;
       if (targetFormat === 'singbox' || targetFormat === 'sing-box') contentType = 'application/json; charset=utf-8';
       else if (targetFormat === 'clash') contentType = 'text/yaml; charset=utf-8';
     } else {
       targetFormat = 'nodes';
+      responseBody = rawNodeList;
+      conversionDiagnostics = { target: 'nodes', total: sourceNodes.length, rendered: sourceNodes.length, omitted: 0, items: [], warnings: [], rawTarget: 'nodes' };
     }
+  }
+  if (filteredTuicCount) {
+    const pinItems = cached.nodes.filter(isTuicNode).map(node => {
+      let name = 'TUIC';
+      try { name = decodeURIComponent(new URL(String(node)).hash.slice(1)) || name; } catch {}
+      return { name, protocol: 'tuic', transport: 'quic', reason: 'missing-certificate-pin' };
+    });
+    conversionDiagnostics = {
+      ...conversionDiagnostics,
+      total: conversionDiagnostics.total + filteredTuicCount,
+      omitted: conversionDiagnostics.omitted + filteredTuicCount,
+      items: [...pinItems, ...conversionDiagnostics.items]
+    };
+  }
+  if (requestUrl.searchParams.get('diagnostics') === '1') {
+    return new Response(request.method === 'HEAD' ? null : JSON.stringify(conversionDiagnostics), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }
+    });
   }
   const headers = new Headers({ 'Content-Type': contentType, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-TSub-Mode': `deployment-${targetFormat}` });
   headers.set('X-TSub-TUIC-Pin-Status', pinStatus);
   headers.set('X-TSub-TUIC-Pin-Filtered', String(filteredTuicCount));
+  headers.set('X-TSub-Node-Total', String(conversionDiagnostics.total));
+  headers.set('X-TSub-Node-Rendered', String(conversionDiagnostics.rendered));
+  headers.set('X-TSub-Node-Omitted', String(conversionDiagnostics.omitted));
+  const warningCounts = [...conversionDiagnostics.items, ...conversionDiagnostics.warnings].reduce((result, item) => {
+    result[item.reason] = (result[item.reason] || 0) + 1;
+    return result;
+  }, {});
+  headers.set('X-TSub-Conversion-Warnings', Object.entries(warningCounts).map(([reason, count]) => `${reason}=${count}`).join(','));
   if (server.traffic.enabled && hasTrafficUsage(cached.userInfo)) {
     const effectiveTotal = resolveEffectiveTrafficTotal(source, cached.userInfo);
     headers.set('Subscription-Userinfo', `upload=${safeInteger(cached.userInfo.upload) || 0}; download=${safeInteger(cached.userInfo.download) || 0}; total=${effectiveTotal}; expire=0`);
