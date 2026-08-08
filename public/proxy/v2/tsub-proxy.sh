@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='2.4.20'
+TSUB_RUNTIME_VERSION='2.4.22'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -128,9 +128,58 @@ sha256_file() {
 download_file() {
   download_url=$1
   download_target=$2
-  if have curl; then curl -fL --retry 2 --connect-timeout 15 --max-time 600 -o "$download_target" "$download_url"
-  elif have wget; then wget -O "$download_target" "$download_url"
-  else i18n_die "必须预装 curl 或 wget" "curl or wget must be installed"; fi
+  download_max_attempts=${TSUB_DOWNLOAD_MAX_ATTEMPTS:-64}
+  download_retry_delay=${TSUB_DOWNLOAD_RETRY_DELAY_SECONDS:-1}
+  download_attempt_timeout=${TSUB_DOWNLOAD_ATTEMPT_TIMEOUT_SECONDS:-600}
+  case "$download_max_attempts" in ''|0|*[!0-9]*) download_max_attempts=64 ;; esac
+  case "$download_retry_delay" in ''|*[!0-9]*) download_retry_delay=1 ;; esac
+  case "$download_attempt_timeout" in ''|0|*[!0-9]*) download_attempt_timeout=600 ;; esac
+  download_attempt=1
+  download_resume=true
+
+  while [ "$download_attempt" -le "$download_max_attempts" ]; do
+    download_existing=0
+    if [ -f "$download_target" ]; then
+      download_existing=$(wc -c <"$download_target" 2>/dev/null | tr -d ' ')
+      case "$download_existing" in ''|*[!0-9]*) download_existing=0 ;; esac
+    fi
+
+    if have curl; then
+      if [ "$download_resume" = true ] && [ "$download_existing" -gt 0 ]; then
+        if curl -fL --connect-timeout 15 --max-time "$download_attempt_timeout" -C - -o "$download_target" "$download_url"; then return 0; else download_status=$?; fi
+      else
+        if curl -fL --connect-timeout 15 --max-time "$download_attempt_timeout" -o "$download_target" "$download_url"; then return 0; else download_status=$?; fi
+      fi
+      case "$download_status" in
+        33)
+          # The origin rejected Range. Restart future attempts instead of appending incompatible data.
+          rm -f "$download_target"
+          download_resume=false
+          ;;
+        5|6|7|18|28|35|52|55|56|92) ;;
+        *) return "$download_status" ;;
+      esac
+    elif have wget; then
+      if wget -c -T 15 -t 1 -O "$download_target" "$download_url"; then return 0; else download_status=$?; fi
+    else
+      i18n_die "必须预装 curl 或 wget" "curl or wget must be installed"
+    fi
+
+    [ "$download_attempt" -lt "$download_max_attempts" ] || return "$download_status"
+    download_received=0
+    if [ -f "$download_target" ]; then
+      download_received=$(wc -c <"$download_target" 2>/dev/null | tr -d ' ')
+      case "$download_received" in ''|*[!0-9]*) download_received=0 ;; esac
+    fi
+    if [ "$download_resume" = true ] && [ "$download_received" -gt 0 ]; then
+      i18n_print "下载连接中断，已接收 $download_received 字节；将从断点继续（$download_attempt/$download_max_attempts）。" "The download was interrupted after $download_received bytes; resuming from that point ($download_attempt/$download_max_attempts)."
+    else
+      i18n_print "下载连接中断；正在重试（$download_attempt/$download_max_attempts）。" "The download was interrupted; retrying ($download_attempt/$download_max_attempts)."
+    fi
+    [ "$download_retry_delay" -eq 0 ] || sleep "$download_retry_delay"
+    download_attempt=$((download_attempt + 1))
+  done
+  return 1
 }
 
 atomic_install() {
@@ -1098,6 +1147,7 @@ build_tunnel_launcher() {
   build_quick_tunnel_monitor
   build_tunnel_supervisor
   launcher="$TSUB_TMP/start-tunnels.sh"
+  tunnel_runtime_conf="${TSUB_ETC:-/etc/tsub}/runtime.conf"
   printf '#!/bin/sh\nset -eu\numask 077\n' >"$launcher"
   count=$(kv_get tunnel_count); count=${count:-0}; index=1
   while [ "$index" -le "$count" ]; do
@@ -1116,10 +1166,10 @@ build_tunnel_launcher() {
       callback=$(kv_get quick_tunnel_callback_url); deployment=$(kv_get deployment_id)
       token_file="$TSUB_STATE/quick-tunnel.token"; nodes_file="$TSUB_STATE/nodes.txt"; hostname_file="$TSUB_STATE/quick-tunnel.hostname"
     fi
-    printf 'nohup %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s >/dev/null 2>&1 &\nprintf "%%s\\n" "$!" >%s\n' \
+    printf 'nohup %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s >/dev/null 2>&1 &\nprintf "%%s\\n" "$!" >%s\n' \
       "$TSUB_STATE/tunnel-supervisor.sh" "$mode" "$index" "$TSUB_TUNNEL_BIN" "$target_scheme" "$target_port" \
       "$callback" "$deployment" "$token_file" "$nodes_file" "$hostname_file" "$TSUB_STATE/tunnel-$index.pid" \
-      "$TSUB_STATE/tunnel-$index.log" "$TSUB_STATE/quick-tunnel-monitor-$index.pid" "$TSUB_STATE/quick-tunnel-monitor.sh" \
+      "$TSUB_STATE/tunnel-$index.log" "$TSUB_STATE/quick-tunnel-monitor-$index.pid" "$TSUB_STATE/quick-tunnel-monitor.sh" "$tunnel_runtime_conf" \
       "$TSUB_STATE/tunnel-supervisor-$index.pid" >>"$launcher"
     index=$((index + 1))
   done
@@ -1132,7 +1182,7 @@ build_tunnel_supervisor() {
 #!/bin/sh
 set -eu
 mode=$1; index=$2; tunnel_bin=$3; target_scheme=$4; target_port=$5; callback=$6; deployment=$7
-token_file=$8; nodes_file=$9; hostname_file=${10}; tunnel_pid_file=${11}; tunnel_log=${12}; monitor_pid_file=${13}; monitor_script=${14}
+token_file=$8; nodes_file=$9; hostname_file=${10}; tunnel_pid_file=${11}; tunnel_log=${12}; monitor_pid_file=${13}; monitor_script=${14}; runtime_conf=${15}
 stopping=false; tunnel_pid=''; monitor_pid=''
 cleanup_tunnel_children() {
   case "$monitor_pid" in ''|*[!0-9]*) ;; *) kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true ;; esac
@@ -1156,7 +1206,7 @@ while [ "$stopping" = false ]; do
   printf '%s\n' "$tunnel_pid" >"$tunnel_pid_file"; chmod 600 "$tunnel_pid_file"
   monitor_pid=''
   if [ "$mode" = quick ]; then
-    "$monitor_script" "$index" "$callback" "$deployment" "$tunnel_pid_file" "$tunnel_log" "$token_file" "$nodes_file" "$hostname_file" &
+    "$monitor_script" "$index" "$callback" "$deployment" "$tunnel_pid_file" "$tunnel_log" "$token_file" "$nodes_file" "$hostname_file" "$runtime_conf" &
     monitor_pid=$!; printf '%s\n' "$monitor_pid" >"$monitor_pid_file"; chmod 600 "$monitor_pid_file"
   fi
   wait "$tunnel_pid" 2>/dev/null || true
@@ -1175,7 +1225,7 @@ build_quick_tunnel_monitor() {
   cat >"$monitor" <<'EOF'
 #!/bin/sh
 set -eu
-index=$1; callback=$2; deployment=$3; tunnel_pid_file=$4; tunnel_log=$5; token_file=$6; nodes_file=$7; hostname_file=$8
+index=$1; callback=$2; deployment=$3; tunnel_pid_file=$4; tunnel_log=$5; token_file=$6; nodes_file=$7; hostname_file=$8; runtime_conf=$9
 nodes_checksum_file="${hostname_file}.nodes.cksum"
 attempt=0
 while [ "$attempt" -lt 120 ]; do
@@ -1191,7 +1241,11 @@ while [ "$attempt" -lt 120 ]; do
     if [ "$hostname" != "$previous" ] || [ -z "$current_nodes_checksum" ] || [ "$current_nodes_checksum" != "$reported_nodes_checksum" ]; then
       token=$(cat "$token_file")
       response="${nodes_file}.quick.$$"
-      payload=$(printf '{"deploymentId":"%s","hostname":"%s"}' "$deployment" "$hostname")
+      callback_config_revision=$(sed -n 's/^config_revision=//p' "$runtime_conf" 2>/dev/null | sed -n '1p')
+      callback_push_generation=$(sed -n 's/^push_generation=//p' "$runtime_conf" 2>/dev/null | sed -n '1p')
+      case "$callback_config_revision" in ''|*[!0-9]*) callback_config_revision=0 ;; esac
+      payload=$(printf '{"deploymentId":"%s","hostname":"%s","configRevision":%s,"pushGeneration":"%s"}' \
+        "$deployment" "$hostname" "$callback_config_revision" "$callback_push_generation")
       sent=false
       if command -v curl >/dev/null 2>&1; then
         curl -fsS --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -H 'Accept: text/plain' --data "$payload" -o "$response" "$callback" >/dev/null 2>&1 && sent=true
@@ -2155,6 +2209,32 @@ agent_report() {
   fi
   agent_event="$TSUB_TMP/agent-event.json"
   agent_resources="\"nodeCount\":$agent_node_count"
+  agent_subscription_fields=''
+  if [ "$agent_status" = succeeded ] && subscription_enabled 2>/dev/null && subscription_running 2>/dev/null && [ -r "$agent_nodes_file" ]; then
+    agent_nodes_json_file="$TSUB_TMP/agent-nodes.json"
+    printf '[' >"$agent_nodes_json_file"
+    agent_node_separator=''
+    while IFS= read -r agent_node; do
+      [ -n "$agent_node" ] || continue
+      agent_node_json=$(json_escape "$agent_node")
+      printf '%s"%s"' "$agent_node_separator" "$agent_node_json" >>"$agent_nodes_json_file"
+      agent_node_separator=,
+    done <"$agent_nodes_file"
+    printf ']' >>"$agent_nodes_json_file"
+    agent_nodes_json_size=$(wc -c <"$agent_nodes_json_file" | tr -d ' ')
+    case "$agent_nodes_json_size" in ''|*[!0-9]*) agent_nodes_json_size=999999 ;; esac
+    if [ "$agent_nodes_json_size" -le 196608 ]; then
+      agent_server_address=$(kv_get push_server_address)
+      [ -n "$agent_server_address" ] || agent_server_address=$(kv_get subscription_hostname)
+      agent_subscription_port=$(kv_get subscription_server_port)
+      agent_config_revision=$(kv_get config_revision)
+      case "$agent_subscription_port" in ''|*[!0-9]*) agent_subscription_port=0 ;; esac
+      case "$agent_config_revision" in ''|*[!0-9]*) agent_config_revision=0 ;; esac
+      agent_subscription_fields=$(printf ',"subscriptionReady":true,"subscriptionNodeCount":%s,"subscriptionNodes":%s,"serverAddress":"%s","subscriptionPort":%s,"pushGeneration":"%s","configRevision":%s' \
+        "$agent_node_count" "$(cat "$agent_nodes_json_file")" "$(json_escape "$agent_server_address")" \
+        "$agent_subscription_port" "$(json_escape "$(kv_get push_generation)")" "$agent_config_revision")
+    fi
+  fi
   if [ "$agent_stage" = edge-probe ] && [ -r "$TSUB_TMP/edge-probe.result" ]; then
     agent_probe_dns=$(agent_value dns "$TSUB_TMP/edge-probe.result"); agent_probe_tcp=$(agent_value tcp "$TSUB_TMP/edge-probe.result")
     agent_probe_tls=$(agent_value tls "$TSUB_TMP/edge-probe.result"); agent_probe_sni=$(agent_value hostSni "$TSUB_TMP/edge-probe.result")
@@ -2167,8 +2247,8 @@ agent_report() {
     [ "$agent_probe_ws" = true ] || agent_probe_ws=false
     agent_resources="$agent_resources,\"edgeProbe\":{\"ok\":$agent_probe_ws,\"checks\":{\"dns\":$agent_probe_dns,\"tcp\":$agent_probe_tcp,\"tls\":$agent_probe_tls,\"hostSni\":$agent_probe_sni,\"websocket101\":$agent_probe_ws},\"latencyMs\":$agent_probe_latency}"
   fi
-  printf '{"status":"%s","stage":"%s","message":"%s","hostname":"%s","resources":{%s}}\n' \
-    "$agent_status" "$agent_stage" "$agent_message_json" "$agent_hostname_json" "$agent_resources" >"$agent_event"
+  printf '{"status":"%s","stage":"%s","message":"%s","hostname":"%s","resources":{%s}%s}\n' \
+    "$agent_status" "$agent_stage" "$agent_message_json" "$agent_hostname_json" "$agent_resources" "$agent_subscription_fields" >"$agent_event"
   curl -fsS --connect-timeout 10 --max-time 30 -X POST \
     -H "Authorization: Bearer $TSUB_AGENT_TOKEN" -H "X-TSub-Lease: $agent_lease" \
     -H 'Content-Type: application/json' --data-binary "@$agent_event" \

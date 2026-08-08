@@ -45,6 +45,7 @@ build_tunnel_launcher() {
   build_quick_tunnel_monitor
   build_tunnel_supervisor
   launcher="$TSUB_TMP/start-tunnels.sh"
+  tunnel_runtime_conf="${TSUB_ETC:-/etc/tsub}/runtime.conf"
   printf '#!/bin/sh\nset -eu\numask 077\n' >"$launcher"
   count=$(kv_get tunnel_count); count=${count:-0}; index=1
   while [ "$index" -le "$count" ]; do
@@ -63,10 +64,10 @@ build_tunnel_launcher() {
       callback=$(kv_get quick_tunnel_callback_url); deployment=$(kv_get deployment_id)
       token_file="$TSUB_STATE/quick-tunnel.token"; nodes_file="$TSUB_STATE/nodes.txt"; hostname_file="$TSUB_STATE/quick-tunnel.hostname"
     fi
-    printf 'nohup %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s >/dev/null 2>&1 &\nprintf "%%s\\n" "$!" >%s\n' \
+    printf 'nohup %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s >/dev/null 2>&1 &\nprintf "%%s\\n" "$!" >%s\n' \
       "$TSUB_STATE/tunnel-supervisor.sh" "$mode" "$index" "$TSUB_TUNNEL_BIN" "$target_scheme" "$target_port" \
       "$callback" "$deployment" "$token_file" "$nodes_file" "$hostname_file" "$TSUB_STATE/tunnel-$index.pid" \
-      "$TSUB_STATE/tunnel-$index.log" "$TSUB_STATE/quick-tunnel-monitor-$index.pid" "$TSUB_STATE/quick-tunnel-monitor.sh" \
+      "$TSUB_STATE/tunnel-$index.log" "$TSUB_STATE/quick-tunnel-monitor-$index.pid" "$TSUB_STATE/quick-tunnel-monitor.sh" "$tunnel_runtime_conf" \
       "$TSUB_STATE/tunnel-supervisor-$index.pid" >>"$launcher"
     index=$((index + 1))
   done
@@ -79,7 +80,7 @@ build_tunnel_supervisor() {
 #!/bin/sh
 set -eu
 mode=$1; index=$2; tunnel_bin=$3; target_scheme=$4; target_port=$5; callback=$6; deployment=$7
-token_file=$8; nodes_file=$9; hostname_file=${10}; tunnel_pid_file=${11}; tunnel_log=${12}; monitor_pid_file=${13}; monitor_script=${14}
+token_file=$8; nodes_file=$9; hostname_file=${10}; tunnel_pid_file=${11}; tunnel_log=${12}; monitor_pid_file=${13}; monitor_script=${14}; runtime_conf=${15}
 stopping=false; tunnel_pid=''; monitor_pid=''
 cleanup_tunnel_children() {
   case "$monitor_pid" in ''|*[!0-9]*) ;; *) kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true ;; esac
@@ -103,7 +104,7 @@ while [ "$stopping" = false ]; do
   printf '%s\n' "$tunnel_pid" >"$tunnel_pid_file"; chmod 600 "$tunnel_pid_file"
   monitor_pid=''
   if [ "$mode" = quick ]; then
-    "$monitor_script" "$index" "$callback" "$deployment" "$tunnel_pid_file" "$tunnel_log" "$token_file" "$nodes_file" "$hostname_file" &
+    "$monitor_script" "$index" "$callback" "$deployment" "$tunnel_pid_file" "$tunnel_log" "$token_file" "$nodes_file" "$hostname_file" "$runtime_conf" &
     monitor_pid=$!; printf '%s\n' "$monitor_pid" >"$monitor_pid_file"; chmod 600 "$monitor_pid_file"
   fi
   wait "$tunnel_pid" 2>/dev/null || true
@@ -122,7 +123,7 @@ build_quick_tunnel_monitor() {
   cat >"$monitor" <<'EOF'
 #!/bin/sh
 set -eu
-index=$1; callback=$2; deployment=$3; tunnel_pid_file=$4; tunnel_log=$5; token_file=$6; nodes_file=$7; hostname_file=$8
+index=$1; callback=$2; deployment=$3; tunnel_pid_file=$4; tunnel_log=$5; token_file=$6; nodes_file=$7; hostname_file=$8; runtime_conf=$9
 nodes_checksum_file="${hostname_file}.nodes.cksum"
 attempt=0
 while [ "$attempt" -lt 120 ]; do
@@ -138,7 +139,11 @@ while [ "$attempt" -lt 120 ]; do
     if [ "$hostname" != "$previous" ] || [ -z "$current_nodes_checksum" ] || [ "$current_nodes_checksum" != "$reported_nodes_checksum" ]; then
       token=$(cat "$token_file")
       response="${nodes_file}.quick.$$"
-      payload=$(printf '{"deploymentId":"%s","hostname":"%s"}' "$deployment" "$hostname")
+      callback_config_revision=$(sed -n 's/^config_revision=//p' "$runtime_conf" 2>/dev/null | sed -n '1p')
+      callback_push_generation=$(sed -n 's/^push_generation=//p' "$runtime_conf" 2>/dev/null | sed -n '1p')
+      case "$callback_config_revision" in ''|*[!0-9]*) callback_config_revision=0 ;; esac
+      payload=$(printf '{"deploymentId":"%s","hostname":"%s","configRevision":%s,"pushGeneration":"%s"}' \
+        "$deployment" "$hostname" "$callback_config_revision" "$callback_push_generation")
       sent=false
       if command -v curl >/dev/null 2>&1; then
         curl -fsS --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -H 'Accept: text/plain' --data "$payload" -o "$response" "$callback" >/dev/null 2>&1 && sent=true

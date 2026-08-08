@@ -66,6 +66,32 @@ agent_report() {
   fi
   agent_event="$TSUB_TMP/agent-event.json"
   agent_resources="\"nodeCount\":$agent_node_count"
+  agent_subscription_fields=''
+  if [ "$agent_status" = succeeded ] && subscription_enabled 2>/dev/null && subscription_running 2>/dev/null && [ -r "$agent_nodes_file" ]; then
+    agent_nodes_json_file="$TSUB_TMP/agent-nodes.json"
+    printf '[' >"$agent_nodes_json_file"
+    agent_node_separator=''
+    while IFS= read -r agent_node; do
+      [ -n "$agent_node" ] || continue
+      agent_node_json=$(json_escape "$agent_node")
+      printf '%s"%s"' "$agent_node_separator" "$agent_node_json" >>"$agent_nodes_json_file"
+      agent_node_separator=,
+    done <"$agent_nodes_file"
+    printf ']' >>"$agent_nodes_json_file"
+    agent_nodes_json_size=$(wc -c <"$agent_nodes_json_file" | tr -d ' ')
+    case "$agent_nodes_json_size" in ''|*[!0-9]*) agent_nodes_json_size=999999 ;; esac
+    if [ "$agent_nodes_json_size" -le 196608 ]; then
+      agent_server_address=$(kv_get push_server_address)
+      [ -n "$agent_server_address" ] || agent_server_address=$(kv_get subscription_hostname)
+      agent_subscription_port=$(kv_get subscription_server_port)
+      agent_config_revision=$(kv_get config_revision)
+      case "$agent_subscription_port" in ''|*[!0-9]*) agent_subscription_port=0 ;; esac
+      case "$agent_config_revision" in ''|*[!0-9]*) agent_config_revision=0 ;; esac
+      agent_subscription_fields=$(printf ',"subscriptionReady":true,"subscriptionNodeCount":%s,"subscriptionNodes":%s,"serverAddress":"%s","subscriptionPort":%s,"pushGeneration":"%s","configRevision":%s' \
+        "$agent_node_count" "$(cat "$agent_nodes_json_file")" "$(json_escape "$agent_server_address")" \
+        "$agent_subscription_port" "$(json_escape "$(kv_get push_generation)")" "$agent_config_revision")
+    fi
+  fi
   if [ "$agent_stage" = edge-probe ] && [ -r "$TSUB_TMP/edge-probe.result" ]; then
     agent_probe_dns=$(agent_value dns "$TSUB_TMP/edge-probe.result"); agent_probe_tcp=$(agent_value tcp "$TSUB_TMP/edge-probe.result")
     agent_probe_tls=$(agent_value tls "$TSUB_TMP/edge-probe.result"); agent_probe_sni=$(agent_value hostSni "$TSUB_TMP/edge-probe.result")
@@ -78,8 +104,8 @@ agent_report() {
     [ "$agent_probe_ws" = true ] || agent_probe_ws=false
     agent_resources="$agent_resources,\"edgeProbe\":{\"ok\":$agent_probe_ws,\"checks\":{\"dns\":$agent_probe_dns,\"tcp\":$agent_probe_tcp,\"tls\":$agent_probe_tls,\"hostSni\":$agent_probe_sni,\"websocket101\":$agent_probe_ws},\"latencyMs\":$agent_probe_latency}"
   fi
-  printf '{"status":"%s","stage":"%s","message":"%s","hostname":"%s","resources":{%s}}\n' \
-    "$agent_status" "$agent_stage" "$agent_message_json" "$agent_hostname_json" "$agent_resources" >"$agent_event"
+  printf '{"status":"%s","stage":"%s","message":"%s","hostname":"%s","resources":{%s}%s}\n' \
+    "$agent_status" "$agent_stage" "$agent_message_json" "$agent_hostname_json" "$agent_resources" "$agent_subscription_fields" >"$agent_event"
   curl -fsS --connect-timeout 10 --max-time 30 -X POST \
     -H "Authorization: Bearer $TSUB_AGENT_TOKEN" -H "X-TSub-Lease: $agent_lease" \
     -H 'Content-Type: application/json' --data-binary "@$agent_event" \

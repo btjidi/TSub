@@ -7,6 +7,7 @@ import {
   handleDeployBootstrap, handleDeployEvents, handleDeployPush, handleDeploymentsRequest
 } from '../../functions/modules/deployment-handler.js';
 import { SettingsCache } from '../../functions/storage-adapter.js';
+import { nodeFingerprint } from '../../functions/modules/utils/node-fingerprint.js';
 
 const SCHEMA = `
 CREATE TABLE subscriptions (id TEXT PRIMARY KEY, data TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -98,7 +99,7 @@ describe('TSub deployment handler with D1', () => {
       const pushGeneration = script.match(/^push_generation=(.+)$/m)?.[1];
       await database.prepare('INSERT INTO settings (key, value) VALUES (?, ?), (?, ?)')
         .bind('node_cache_profile_profile-d1', JSON.stringify({ nodes: 'stale-profile' }), 'node_cache_token_auto', JSON.stringify({ nodes: 'stale-main' })).run();
-      const pushBody = sequence => `pushGeneration=${pushGeneration}\nsequence=${sequence}\nupload=1\ndownload=2\ntrafficBackend=core-singbox\nserverAddress=d1.example\nsubscriptionPort=51250\nsubscriptionReady=true\nsubscriptionNodeCount=1\nnode=vless://uuid@d1.example:443#D1`;
+      const pushBody = (sequence, node = 'vless://uuid@d1.example:443#D1') => `pushGeneration=${pushGeneration}\nsequence=${sequence}\nupload=1\ndownload=2\ntrafficBackend=core-singbox\nserverAddress=d1.example\nsubscriptionPort=51250\nsubscriptionReady=true\nsubscriptionNodeCount=1\nnode=${node}`;
       const sendPush = body => handleDeployPush(new Request(`https://tsub.example/api/deploy/push/${createdBody.data.deployment.id}`, {
         method: 'POST', headers: { Authorization: `Bearer ${atob(pushTokenEncoded)}` }, body
       }), env, createdBody.data.deployment.id);
@@ -116,12 +117,25 @@ describe('TSub deployment handler with D1', () => {
       expect(JSON.parse((await database.prepare('SELECT data FROM deployments WHERE id = ?').bind(createdBody.data.deployment.id).first()).data)).toMatchObject({ nodeCount: 1, pushCount: 1 });
       expect((await sendPush(pushBody(1))).status).toBe(200);
       expect((await sendPush(`${pushBody(1)}\ndegradedReason=changed`)).status).toBe(409);
-      expect((await sendPush(pushBody(3))).status).toBe(200);
+      const selectedProfile = JSON.parse((await database.prepare('SELECT data FROM profiles WHERE id = ?').bind('profile-d1').first()).data);
+      selectedProfile.subscriptions = [{
+        id: nodes[0].id,
+        nodeSelection: { mode: 'include', fingerprints: [await nodeFingerprint('vless://uuid@d1.example:443#D1')] }
+      }];
+      await database.prepare('UPDATE profiles SET data = ? WHERE id = ?').bind(JSON.stringify(selectedProfile), 'profile-d1').run();
+      const changedNode = 'vless://uuid@d1.example:8443?security=tls#D1';
+      expect((await sendPush(pushBody(3, changedNode))).status).toBe(200);
+      const migratedProfile = JSON.parse((await database.prepare('SELECT data FROM profiles WHERE id = ?').bind('profile-d1').first()).data);
+      expect(migratedProfile.subscriptions[0].nodeSelection).toEqual({
+        mode: 'include',
+        fingerprints: [await nodeFingerprint(changedNode)],
+        identities: [{ protocol: 'vless', name: 'D1' }]
+      });
       const stalePush = await sendPush(pushBody(2));
       expect(stalePush.status).toBe(409);
       expect(await stalePush.json()).toMatchObject({ code: 'STALE_PUSH_SEQUENCE', data: { expectedSequence: 4 } });
       const profileRow = await database.prepare('SELECT data FROM profiles WHERE id = ?').bind('profile-d1').first();
-      expect(JSON.parse(profileRow.data)).toMatchObject({ manualNodes: [], subscriptions: [nodes[0].id] });
+      expect(JSON.parse(profileRow.data)).toMatchObject({ manualNodes: [], subscriptions: [{ id: nodes[0].id }] });
 
       const agentTokenEncoded = script.match(/^agent_token_b64=([A-Za-z0-9+/=]+)$/m)?.[1];
       const agentToken = agentTokenEncoded ? atob(agentTokenEncoded) : '';
@@ -186,15 +200,26 @@ describe('TSub deployment handler with D1', () => {
       const remoteNodes = atob(compiled.match(/^nodes_b64=([^\r\n]*)$/m)?.[1] || '');
       expect(remoteNodes).toContain('@203.0.113.10:');
       expect(remoteNodes).toContain('trojan://');
+      const remoteNodeList = remoteNodes.trim().split('\n').filter(Boolean);
+      const remotePushGeneration = compiled.match(/^push_generation=(.+)$/m)?.[1];
       const eventResponse = await handleDeployAgentCommandEvents(agentRequest(`commands/${claimed.id}/events`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-TSub-Lease': claimed.leaseId },
-        body: JSON.stringify({ status: 'succeeded', stage: 'update', message: 'configuration applied' })
+        body: JSON.stringify({
+          status: 'succeeded', stage: 'update', message: 'configuration applied',
+          subscriptionReady: true, subscriptionNodeCount: remoteNodeList.length, subscriptionNodes: remoteNodeList,
+          serverAddress: '203.0.113.10', subscriptionPort: 51250,
+          pushGeneration: remotePushGeneration, configRevision: template.configRevision + 1
+        })
       }), env, claimed.id);
       expect(eventResponse.status).toBe(200);
       const applied = JSON.parse((await database.prepare('SELECT data FROM deployments WHERE id = ?').bind(createdBody.data.deployment.id).first()).data);
       expect(applied).toMatchObject({ status: 'succeeded', configRevision: template.configRevision + 1 });
       expect(applied).not.toHaveProperty('pendingReason');
       expect(applied).not.toHaveProperty('pendingOperationId');
+      const agentSnapshot = JSON.parse((await database.prepare('SELECT data FROM deployment_snapshots WHERE deployment_id = ?')
+        .bind(createdBody.data.deployment.id).first()).data);
+      expect(agentSnapshot.nodes).toEqual(remoteNodeList);
+      expect(agentSnapshot.source).toBe('tsub-deployment-agent');
 
       const probeResponse = await handleDeploymentsRequest(jsonRequest(`/deployments/${createdBody.data.deployment.id}/edge-probes`, 'POST', {
         inboundId: remoteConfig.inbounds[0].id, endpointId: 'preferred-ip', configRevision: applied.configRevision, runner: 'auto'

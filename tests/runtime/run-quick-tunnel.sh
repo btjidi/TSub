@@ -27,6 +27,8 @@ cloudflared_amd64_binary_sha256=$cloudflared_hash
 push_token_b64=cXVpY2stdGVzdC10b2tlbg==
 quick_tunnel_callback_url=https://controller.example/api/deploy/edge/quick
 deployment_id=deploy-quick
+config_revision=7
+push_generation=quick-generation
 EOF
 download_file() { cp "$1" "$2"; }
 ensure_tunnel_binary
@@ -46,27 +48,40 @@ output=''
 previous=''
 for argument in "$@"; do
   [ "$previous" != -o ] || output=$argument
+  [ "$previous" != --data ] || printf '%s\n' "$argument" >"$QUICK_PAYLOAD_FILE"
   previous=$argument
 done
-printf '%s\n' 'vless://test@example.com:443?security=tls#quick' >"$output"
+cat >"$output" <<'NODES'
+vless://test@example.com:443?security=tls#quick
+vmess://synthetic-vmess
+hysteria2://synthetic@example.com:51234
+tuic://synthetic@example.com:51235
+socks5://synthetic@example.com:51236
+NODES
 EOF
 chmod 755 "$TEST_TMP/fake-bin/curl"
+QUICK_PAYLOAD_FILE="$TEST_TMP/quick-payload.json"; export QUICK_PAYLOAD_FILE
 sleep 60 & primary_tunnel_pid=$!
 printf '%s\n' "$primary_tunnel_pid" >"$TSUB_STATE/tunnel-1.pid"
 printf '%s\n' 'INF route https://valid-quick.trycloudflare.com ready' >"$TSUB_STATE/tunnel-1.log"
 PATH="$TEST_TMP/fake-bin:$PATH" "$TSUB_STATE/quick-tunnel-monitor.sh" 1 \
   'https://controller.example/api/deploy/edge/quick' deploy-quick "$TSUB_STATE/tunnel-1.pid" "$TSUB_STATE/tunnel-1.log" \
-  "$TSUB_STATE/quick-tunnel.token" "$TSUB_STATE/nodes.txt" "$TSUB_STATE/quick-tunnel.hostname" &
+  "$TSUB_STATE/quick-tunnel.token" "$TSUB_STATE/nodes.txt" "$TSUB_STATE/quick-tunnel.hostname" "$TSUB_CONFIG" &
 monitor_pid=$!
 attempt=0
 while [ ! -s "$TSUB_STATE/quick-tunnel.hostname" ] && [ "$attempt" -lt 20 ]; do attempt=$((attempt + 1)); sleep 1; done
 [ "$(cat "$TSUB_STATE/quick-tunnel.hostname")" = valid-quick.trycloudflare.com ]
+grep -q '"configRevision":7' "$QUICK_PAYLOAD_FILE"
+grep -q '"pushGeneration":"quick-generation"' "$QUICK_PAYLOAD_FILE"
 grep -q '^vless://' "$TSUB_STATE/nodes.txt"
+[ "$(awk 'NF { count++ } END { print count + 0 }' "$TSUB_STATE/nodes.txt")" = 5 ]
+for protocol in vless vmess hysteria2 tuic socks5; do grep -q "^${protocol}://" "$TSUB_STATE/nodes.txt"; done
 
 printf '%s\n' 'stale direct node' >"$TSUB_STATE/nodes.txt"
 attempt=0
 while ! grep -q '^vless://' "$TSUB_STATE/nodes.txt" && [ "$attempt" -lt 20 ]; do attempt=$((attempt + 1)); sleep 1; done
 grep -q '^vless://' "$TSUB_STATE/nodes.txt"
+[ "$(awk 'NF { count++ } END { print count + 0 }' "$TSUB_STATE/nodes.txt")" = 5 ]
 [ -s "$TSUB_STATE/quick-tunnel.hostname.nodes.cksum" ]
 kill "$monitor_pid" 2>/dev/null || true
 wait "$monitor_pid" 2>/dev/null || true

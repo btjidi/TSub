@@ -74,4 +74,49 @@ describe('handleProfileMode preview transforms', () => {
     expect(result.nodes[0].name).toBe('Renamed Node');
     expect(result.nodes[0].url).toContain('#Renamed%20Node');
   });
+
+  it('keeps an explicit empty include selection empty', async () => {
+    createAdapter.mockReturnValue({
+      getProfileById: vi.fn().mockResolvedValue({
+        id: 'profile-1', enabled: true,
+        subscriptions: [{ id: 'sub-1', nodeSelection: { mode: 'include', fingerprints: [], identities: [] } }],
+        manualNodes: []
+      }),
+      getSubscriptionsByIds: vi.fn().mockResolvedValue([{ id: 'sub-1', enabled: true, url: 'https://example.com/sub', name: 'Test' }]),
+      get: vi.fn().mockResolvedValue({ defaultOperators: [] })
+    });
+    fetchSubscriptionNodes.mockResolvedValue({
+      success: true,
+      nodes: [{ name: 'Current', url: 'vless://uuid@example.com:443#Current', protocol: 'vless' }]
+    });
+
+    const { handleProfileMode } = await import('../../functions/modules/subscription/profile-handler.js');
+    const result = await handleProfileMode(new Request('https://example.com/api/subscription_nodes'), {}, 'profile-1', 'TSub-Test/1.0');
+    expect(result.nodes).toEqual([]);
+    expect(result.totalCount).toBe(0);
+  });
+
+  it('matches a changed node URL by a stored unique protocol and name identity', async () => {
+    createAdapter.mockReturnValue({
+      getProfileById: vi.fn().mockResolvedValue({
+        id: 'profile-1', enabled: true,
+        subscriptions: [{
+          id: 'sub-1',
+          nodeSelection: { mode: 'include', fingerprints: [], identities: [{ protocol: 'vless', name: 'Stable Node' }] }
+        }],
+        manualNodes: []
+      }),
+      getSubscriptionsByIds: vi.fn().mockResolvedValue([{ id: 'sub-1', enabled: true, url: 'https://example.com/sub', name: 'Test' }]),
+      get: vi.fn().mockResolvedValue({ defaultOperators: [] })
+    });
+    const changedUrl = 'vless://uuid@new.example.com:8443?security=tls#Stable%20Node';
+    fetchSubscriptionNodes.mockResolvedValue({
+      success: true,
+      nodes: [{ name: 'Stable Node', url: changedUrl, protocol: 'vless' }]
+    });
+
+    const { handleProfileMode } = await import('../../functions/modules/subscription/profile-handler.js');
+    const result = await handleProfileMode(new Request('https://example.com/api/subscription_nodes'), {}, 'profile-1', 'TSub-Test/1.0');
+    expect(result.nodes.map(node => node.url)).toEqual([changedUrl]);
+  });
 });

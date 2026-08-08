@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterNodesBySelection, nodeFingerprint } from '../../functions/modules/utils/node-fingerprint.js';
+import { filterNodesBySelection, nodeFingerprint, nodeSelectionIdentity, reconcileNodeSelection } from '../../functions/modules/utils/node-fingerprint.js';
 
 describe('Profile node selection fingerprints', () => {
   it('ignores display-name changes and filters explicit subsets', async () => {
@@ -14,5 +14,62 @@ describe('Profile node selection fingerprints', () => {
   it('ignores VMess ps while preserving credential identity', async () => {
     const make = ps => `vmess://${btoa(JSON.stringify({ v: '2', ps, add: 'example.com', port: '443', id: 'uuid' }))}`;
     expect(await nodeFingerprint(make('Old'))).toBe(await nodeFingerprint(make('New')));
+  });
+
+  it('migrates a changed URL by unique protocol and node name', async () => {
+    const previous = 'vless://uuid@192.0.2.1:443?security=tls#Tokyo';
+    const current = 'vless://uuid@example.com:8443?security=tls&fp=chrome#Tokyo';
+    const selection = { mode: 'include', fingerprints: [await nodeFingerprint(previous)], identities: [] };
+    const result = await reconcileNodeSelection(selection, [current], { previousNodes: [previous] });
+    expect(result.matchedCount).toBe(1);
+    expect(result.nodeSelection.fingerprints).toEqual([await nodeFingerprint(current)]);
+    expect(result.nodeSelection.identities).toEqual([{ protocol: 'vless', name: 'Tokyo' }]);
+    expect(await filterNodesBySelection([current], result.nodeSelection)).toEqual([current]);
+  });
+
+  it('keeps a completely unmatched include selection empty', async () => {
+    const previous = 'trojan://secret@example.com:443#Old';
+    const current = 'trojan://secret@example.net:443#New';
+    const result = await reconcileNodeSelection(
+      { mode: 'include', fingerprints: [await nodeFingerprint(previous)], identities: [] },
+      [current],
+      { previousNodes: [previous] }
+    );
+    expect(result.nodeSelection).toEqual({ mode: 'include', fingerprints: [], identities: [] });
+    expect(await filterNodesBySelection([current], result.nodeSelection)).toEqual([]);
+  });
+
+  it('does not migrate ambiguous nodes with the same protocol and name', async () => {
+    const previous = 'vless://uuid@192.0.2.1:443#Shared';
+    const current = ['vless://uuid@example.com:443#Shared', 'vless://uuid@example.net:443#Shared'];
+    const result = await reconcileNodeSelection(
+      { mode: 'include', fingerprints: [await nodeFingerprint(previous)], identities: [] },
+      current,
+      { previousNodes: [previous] }
+    );
+    expect(result.matchedCount).toBe(0);
+  });
+
+  it('preserves an unmatched identity for an intermediate Quick Tunnel snapshot', async () => {
+    const previous = 'vless://uuid@old.trycloudflare.com:443#CDN';
+    const selection = { mode: 'include', fingerprints: [await nodeFingerprint(previous)], identities: [] };
+    const intermediate = await reconcileNodeSelection(selection, [], {
+      previousNodes: [previous],
+      preserveUnmatchedIdentities: true
+    });
+    expect(intermediate.nodeSelection).toEqual({
+      mode: 'include',
+      fingerprints: [],
+      identities: [{ protocol: 'vless', name: 'CDN' }]
+    });
+    const finalNode = 'vless://uuid@new.trycloudflare.com:443#CDN';
+    const final = await reconcileNodeSelection(intermediate.nodeSelection, [finalNode]);
+    expect(final.nodeSelection.fingerprints).toEqual([await nodeFingerprint(finalNode)]);
+  });
+
+  it('normalizes VMess protocol and Unicode display names for identities', () => {
+    const json = JSON.stringify({ v: '2', ps: '  Te\u0301st  ', add: 'example.com', port: '443', id: 'uuid' });
+    const payload = btoa(String.fromCharCode(...new TextEncoder().encode(json)));
+    expect(nodeSelectionIdentity(`vmess://${payload}`)).toEqual({ protocol: 'vmess', name: 'T\u00e9st' });
   });
 });

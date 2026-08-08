@@ -274,7 +274,7 @@ export async function authorizeAgentCommand(request, env, storage, commandId) {
   return command ? { ...auth, command } : { error: { status: 409, code: 'invalid_command_lease' } };
 }
 
-export async function reportAgentCommand(request, env, storage, commandId, payload = {}) {
+export async function reportAgentCommand(request, env, storage, commandId, payload = {}, hooks = {}) {
   const auth = await authorizeAgentCommand(request, env, storage, commandId);
   if (auth.error) return auth;
   const allowed = new Set(['running', 'succeeded', 'failed']);
@@ -295,6 +295,13 @@ export async function reportAgentCommand(request, env, storage, commandId, paylo
     at: nowIso(), status, stage: String(payload.stage || auth.command.action).slice(0, 64),
     message: String(payload.message || '').slice(-500), resources: payload.resources && typeof payload.resources === 'object' ? payload.resources : {}
   };
+  if (status === 'succeeded' && typeof hooks.beforeSuccess === 'function') {
+    try {
+      await hooks.beforeSuccess({ auth, operation, event, payload });
+    } catch (error) {
+      return { error: { status: error?.status || 409, code: error?.code || 'subscription_snapshot_sync_failed' } };
+    }
+  }
   let hostname = safeHostname(payload.hostname || operation.hostname);
   if (!hostname) {
     const heartbeat = await storage.db.prepare('SELECT data FROM deployment_heartbeats WHERE deployment_id = ?')

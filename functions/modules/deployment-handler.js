@@ -17,6 +17,7 @@ import { invalidateCaches } from '../services/node-cache-service.js';
 import { DEFAULT_SETTINGS, KV_KEY_SETTINGS } from './config.js';
 import { transformBuiltinSubscriptionDetailed } from './subscription/transformer-factory.js';
 import { determineTargetFormat, isMetaCore } from './subscription/user-agent-utils.js';
+import { reconcileNodeSelection } from './utils/node-fingerprint.js';
 
 const LEGACY_DEPLOYMENTS_KEY = 'tsub_deployments_v1';
 const BOOTSTRAP_TOKEN_PREFIX = 'tsub_bootstrap_token_v2:';
@@ -498,19 +499,52 @@ function isDeploymentSource(item, deploymentId) {
     && ['tsub-deployment', 'tsub-deployment-subscription', 'tsub-deployment-push', 'tsub-deployment-snapshot'].includes(item.source.kind);
 }
 
-async function updateDeploymentProfile(storage, deployment, airportId, manualIds = []) {
-  if (!deployment.profileId) return;
+async function prepareDeploymentProfiles(storage, deployment, airportId, manualIds = [], options = {}) {
   const profiles = typeof storage.getAllProfiles === 'function' ? await storage.getAllProfiles() : await readCollection(storage, 'tsub_profiles_v1');
-  const profile = profiles.find(item => item.id === deployment.profileId || item.customId === deployment.profileId);
-  if (!profile) return;
   const manualSet = new Set(manualIds);
-  profile.manualNodes = (Array.isArray(profile.manualNodes) ? profile.manualNodes : []).filter(id => !manualSet.has(id));
-  const subscriptions = Array.isArray(profile.subscriptions) ? profile.subscriptions : [];
-  if (!subscriptions.some(item => (typeof item === 'object' ? item?.id : item) === airportId)) subscriptions.push(airportId);
-  profile.subscriptions = subscriptions;
-  profile.updatedAt = nowIso();
-  if (isRowStorage(storage) && storage.putProfile) await storage.putProfile(profile);
-  else await storage.put('tsub_profiles_v1', profiles);
+  const changedProfiles = [];
+  for (const profile of profiles) {
+    const before = JSON.stringify(profile);
+    const isDeploymentProfile = Boolean(deployment.profileId) && (profile.id === deployment.profileId || profile.customId === deployment.profileId);
+    if (isDeploymentProfile) {
+      profile.manualNodes = (Array.isArray(profile.manualNodes) ? profile.manualNodes : []).filter(id => !manualSet.has(id));
+      const subscriptions = Array.isArray(profile.subscriptions) ? profile.subscriptions : [];
+      if (!subscriptions.some(item => (typeof item === 'object' ? item?.id : item) === airportId)) subscriptions.push(airportId);
+      profile.subscriptions = subscriptions;
+    }
+    if (Array.isArray(profile.subscriptions) && (options.currentNodes || options.previousNodes)) {
+      const nextSubscriptions = [];
+      for (const entry of profile.subscriptions) {
+        const id = typeof entry === 'object' ? entry?.id : entry;
+        if (id !== airportId || !entry?.nodeSelection) {
+          nextSubscriptions.push(entry);
+          continue;
+        }
+        const reconciled = await reconcileNodeSelection(entry.nodeSelection, options.currentNodes || [], {
+          previousNodes: options.previousNodes || [],
+          preserveUnmatchedIdentities: options.preserveUnmatchedIdentities === true
+        });
+        nextSubscriptions.push({ ...entry, nodeSelection: reconciled.nodeSelection });
+      }
+      profile.subscriptions = nextSubscriptions;
+    }
+    if (JSON.stringify(profile) !== before) {
+      profile.updatedAt = nowIso();
+      changedProfiles.push(profile);
+    }
+  }
+  return { profiles, changedProfiles };
+}
+
+async function persistPreparedProfiles(storage, prepared) {
+  if (!prepared?.changedProfiles?.length) return;
+  if (isRowStorage(storage) && storage.putProfile) await Promise.all(prepared.changedProfiles.map(profile => storage.putProfile(profile)));
+  else await storage.put('tsub_profiles_v1', prepared.profiles);
+}
+
+async function updateDeploymentProfile(storage, deployment, airportId, manualIds = []) {
+  const prepared = await prepareDeploymentProfiles(storage, deployment, airportId, manualIds);
+  await persistPreparedProfiles(storage, prepared);
 }
 
 function profileReferencesSubscription(profile, subscriptionId) {
@@ -541,7 +575,7 @@ async function invalidateDeploymentOutputCaches(storage, deployment, subscriptio
   }
 }
 
-async function upsertDeploymentSubscription(storage, deployment, config, nodeCount, cachedNodeUrls = [], origin = '', reenable = true, persist = true) {
+async function upsertDeploymentSubscription(storage, deployment, config, nodeCount, cachedNodeUrls = [], origin = '', reenable = true, persist = true, returnDetails = false) {
   const current = typeof storage.getAllSubscriptions === 'function' ? await storage.getAllSubscriptions() : await readCollection(storage, 'tsub_subscriptions_v1');
   const airportId = `tsub_airport_${deployment.id}`;
   const previous = current.find(item => item.id === airportId);
@@ -552,8 +586,8 @@ async function upsertDeploymentSubscription(storage, deployment, config, nodeCou
     item.updatedAt = timestamp;
     item.lastError = 'Deployment switched to server subscription';
   }
-  const host = deployment.resolvedHostname || config.subscription.hostname;
-  const detected = deployment.resolvedAddresses || config.subscription.resolvedAddresses || {};
+  const host = explicitSubscriptionAddress(config) || deployment.resolvedHostname;
+  const detected = explicitSubscriptionAddress(config) ? {} : (deployment.resolvedAddresses || config.subscription.resolvedAddresses || {});
   const formatHttpHost = value => String(value || '').includes(':') && !String(value || '').startsWith('[') ? `[${value}]` : value;
   const server = config.subscription.server;
   const pushEnabled = server.pushEnabled !== false;
@@ -583,7 +617,7 @@ async function upsertDeploymentSubscription(storage, deployment, config, nodeCou
     pushHistory: normalizePushHistory(previous?.pushHistory || [], deployment.pushHistory || [], previous?.lastPushAt),
     source: { kind: sourceKind, deploymentId: deployment.id, schemaVersion: 2, mode: sourceMode }
   };
-  if (!persist) return airport;
+  if (!persist) return returnDetails ? { airport, manualNodes, current } : airport;
   if (isRowStorage(storage) && storage.putSubscription) {
     await Promise.all([...manualNodes.map(item => storage.putSubscription(item)), storage.putSubscription(airport)]);
   } else {
@@ -600,6 +634,101 @@ async function upsertDeploymentSubscription(storage, deployment, config, nodeCou
   }
   await updateDeploymentProfile(storage, deployment, airportId, manualNodes.map(item => item.id));
   return airport;
+}
+
+async function readDeploymentSnapshotCache(storage, deploymentId, cacheKey) {
+  let cache = await storage.get(cacheKey);
+  let row = null;
+  if (isRowStorage(storage) && storage.db) {
+    row = await storage.db.prepare(`SELECT push_generation, sequence, snapshot_hash, data
+      FROM deployment_snapshots WHERE deployment_id = ?`).bind(deploymentId).first();
+    if (row?.data) {
+      try { cache = JSON.parse(row.data); } catch { /* keep the generic cache fallback */ }
+    }
+  }
+  return { cache: cache && typeof cache === 'object' ? cache : {}, row };
+}
+
+async function commitDeploymentSubscriptionSnapshot(storage, deployment, config, nodeUrls, origin = '', sourceLabel = 'tsub-deployment-callback') {
+  const normalized = normalizeCallbackNodes(nodeUrls);
+  if (!normalized.accepted.length) return { updated: false, accepted: 0, rejected: normalized.rejected.length };
+  applyDeploymentAddressState(deployment, config);
+  const timestamp = nowIso();
+  const details = await upsertDeploymentSubscription(
+    storage, deployment, config, normalized.accepted.length, normalized.accepted, origin, true, false, true
+  );
+  const { airport, manualNodes, current } = details;
+  const cacheKey = buildSubscriptionNodeCacheKey(airport);
+  const previous = await readDeploymentSnapshotCache(storage, deployment.id, cacheKey);
+  const preserveUnmatchedIdentities = config.edge?.mode === 'quick' && sourceLabel !== 'tsub-deployment-quick-tunnel';
+  const preparedProfiles = await prepareDeploymentProfiles(storage, deployment, airport.id, manualNodes.map(item => item.id), {
+    previousNodes: Array.isArray(previous.cache.nodes) ? previous.cache.nodes : [],
+    currentNodes: normalized.accepted,
+    preserveUnmatchedIdentities
+  });
+  const configuredGeneration = String(config.subscription?.server?.pushGeneration || '');
+  const effectiveSourceLabel = config.subscription?.server?.pushEnabled === false
+    ? 'tsub-deployment-snapshot'
+    : sourceLabel;
+  const previousGeneration = String(previous.row?.push_generation || previous.cache.pushGeneration || '');
+  const generationChanged = configuredGeneration && previousGeneration && configuredGeneration !== previousGeneration;
+  const snapshotHash = await sha256(normalized.accepted.join('\n'));
+  const cacheData = {
+    ...previous.cache,
+    nodes: normalized.accepted,
+    nodeCount: normalized.accepted.length,
+    updatedAt: timestamp,
+    source: effectiveSourceLabel,
+    pushGeneration: configuredGeneration || previousGeneration,
+    sequence: generationChanged ? 0 : Number(previous.row?.sequence ?? previous.cache.sequence ?? 0),
+    snapshotHash: generationChanged ? snapshotHash : String(previous.row?.snapshot_hash || previous.cache.snapshotHash || snapshotHash)
+  };
+  airport.nodeCount = normalized.accepted.length;
+  airport.updatedAt = timestamp;
+  airport.lastUpdate = timestamp;
+  airport.serverAddress = applyDeploymentAddressState(deployment, config);
+  deployment.nodeCount = normalized.accepted.length;
+  deployment.lastSyncAt = timestamp;
+  deployment.subscriptionSourceDisabled = false;
+  deployment.subscriptionId = airport.id;
+  deployment.updatedAt = timestamp;
+
+  if (isRowStorage(storage) && storage.db) {
+    if (typeof storage.db.batch !== 'function') throw new Error('Transactional batch support is required for deployment snapshots');
+    const statements = [
+      ...manualNodes.map(item => storage.db.prepare(`INSERT INTO subscriptions (id, data, created_at, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`).bind(item.id, JSON.stringify(item))),
+      storage.db.prepare(`INSERT INTO subscriptions (id, data, created_at, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`).bind(airport.id, JSON.stringify(airport)),
+      storage.db.prepare(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`).bind(cacheKey, JSON.stringify(cacheData)),
+      storage.db.prepare(`INSERT INTO deployment_snapshots
+        (deployment_id, push_generation, sequence, snapshot_hash, data, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(deployment_id) DO UPDATE SET push_generation = excluded.push_generation,
+        sequence = excluded.sequence, snapshot_hash = excluded.snapshot_hash, data = excluded.data, updated_at = CURRENT_TIMESTAMP`)
+        .bind(deployment.id, cacheData.pushGeneration, cacheData.sequence, cacheData.snapshotHash, JSON.stringify(cacheData)),
+      storage.db.prepare(`UPDATE deployments SET data = ?, status = ?, config_revision = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND config_revision = ?`).bind(
+        JSON.stringify(deployment), deployment.status || '', deployment.configRevision || 1,
+        deployment.id, deployment.configRevision || 1
+      ),
+      ...preparedProfiles.changedProfiles.map(profile => storage.db.prepare(`INSERT INTO profiles (id, data, created_at, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`).bind(profile.id, JSON.stringify(profile)))
+    ];
+    await storage.db.batch(statements);
+  } else {
+    const replaceIds = new Set([airport.id, ...manualNodes.map(item => item.id)]);
+    await storage.put('tsub_subscriptions_v1', [...current.filter(item => !replaceIds.has(item.id)), ...manualNodes, airport]);
+    await storage.put(cacheKey, cacheData);
+    await writeDeployment(storage, deployment);
+    await persistPreparedProfiles(storage, preparedProfiles);
+  }
+  await invalidateDeploymentOutputCaches(storage, deployment, airport.id);
+  return { updated: true, accepted: normalized.accepted.length, rejected: normalized.rejected.length, airport, cacheData };
 }
 
 async function disableDeploymentNodes(storage, deploymentId) {
@@ -1012,9 +1141,8 @@ export async function handleDeployBootstrap(request, env) {
   auth.operation.status = 'running'; auth.operation.bootstrapAt = nowIso();
   auth.operation.expiresAt = new Date(Date.now() + CALLBACK_TTL_MS).toISOString(); auth.operation.updatedAt = auth.operation.bootstrapAt;
   auth.deployment.status = 'running'; auth.deployment.updatedAt = auth.operation.updatedAt;
-  auth.deployment.resolvedHostname = config.subscription.hostname;
-  auth.deployment.resolvedAddresses = config.subscription.resolvedAddresses || {};
-  auth.deployment.pushServerAddress = config.subscription.server.pushServerAddress || '';
+  auth.deployment.resolvedAddresses = explicitSubscriptionAddress(config) ? {} : (config.subscription.resolvedAddresses || {});
+  applyDeploymentAddressState(auth.deployment, config, config.subscription.server.pushServerAddress || '');
   let agentToken = auth.tokenRecord.agentToken || '';
   if (!agentToken && ['apply', 'update', 'reinstall', 'repair'].includes(auth.operation.action)) {
     const capabilities = await getPlatformCapabilities(env);
@@ -1043,6 +1171,17 @@ export async function handleCloudflareEdgePermissionCheck(request) {
   }
 }
 
+function resolveQuickTunnelNodeConfig(config, deployment) {
+  const requiresDirectAddress = config.inbounds.some(inbound => inbound.edgeMode !== 'only');
+  if (!requiresDirectAddress || config.subscription.hostname) return config;
+  const detectedAddresses = {
+    ...(config.subscription.resolvedAddresses || {}),
+    ...(deployment.resolvedAddresses || {})
+  };
+  const fallbackAddress = deployment.pushServerAddress || deployment.resolvedHostname || '';
+  return resolveBootstrapConfig(config, fallbackAddress, detectedAddresses);
+}
+
 export async function handleDeployQuickTunnelCallback(request, env) {
   if (request.method !== 'POST') return createErrorResponse('Method Not Allowed', 405);
   const bearer = parseBearer(request);
@@ -1059,6 +1198,13 @@ export async function handleDeployQuickTunnelCallback(request, env) {
     if (config.edge?.mode !== 'quick' || !config.subscription?.server?.pushEnabled || await sha256(bearer) !== await sha256(config.subscription.server.pushToken)) {
       return createErrorResponse('Unauthorized', 401);
     }
+    const callbackRevision = Number(body?.configRevision);
+    if (Number.isSafeInteger(callbackRevision) && callbackRevision !== Number(deployment.configRevision || 1)) {
+      return createErrorResponse('Quick Tunnel configuration revision mismatch', 409);
+    }
+    if (body?.pushGeneration && String(body.pushGeneration) !== String(config.subscription.server.pushGeneration || '')) {
+      return createErrorResponse('Quick Tunnel push generation mismatch', 409);
+    }
     if (config.edge.hostname !== hostname) {
       config.edge.hostname = hostname;
       if (config.tunnels?.[0]?.type === 'quick') config.tunnels[0].hostname = hostname;
@@ -1066,15 +1212,23 @@ export async function handleDeployQuickTunnelCallback(request, env) {
       deployment.configSummary = summarizeConfig(publicV2Config(config));
       deployment.edgeHostname = hostname;
     }
-    const nodes = compileNodeUrls(config, { edgeHostname: hostname });
-    deployment.nodeCount = (await replaceDeploymentNodes(storage, deployment, nodes)).length;
-    deployment.updatedAt = nowIso();
-    await writeDeployment(storage, deployment);
+    const nodeConfig = resolveQuickTunnelNodeConfig(config, deployment);
+    const nodes = compileNodeUrls(nodeConfig, { edgeHostname: hostname });
+    if (config.subscription?.server?.enabled) {
+      await commitDeploymentSubscriptionSnapshot(storage, deployment, config, nodes, request.url, 'tsub-deployment-quick-tunnel');
+    } else {
+      applyDeploymentAddressState(deployment, config);
+      deployment.nodeCount = (await replaceDeploymentNodes(storage, deployment, nodes)).length;
+      deployment.updatedAt = nowIso();
+      await writeDeployment(storage, deployment);
+      await invalidateDeploymentOutputCaches(storage, deployment, `tsub_airport_${deployment.id}`);
+    }
     if (String(request.headers.get('Accept') || '').includes('text/plain')) {
       return new Response(`${nodes.join('\n')}\n`, { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
     }
     return createJsonResponse({ success: true, data: { hostname, nodes } }, 200, { 'Cache-Control': 'no-store' });
-  } catch {
+  } catch (error) {
+    console.warn('[DeploymentQuickTunnel] Snapshot update failed:', error?.message || error);
     return createErrorResponse('Quick Tunnel update failed', 503);
   }
 }
@@ -1126,6 +1280,35 @@ function clearRecoveredPushDegradation(value) {
     .map(item => item.trim())
     .filter(item => item && item !== '首次主动推送失败')
     .join('; ');
+}
+
+function normalizedServerAddress(value) {
+  return String(value || '').replace(/^\[|\]$/g, '').trim();
+}
+
+function explicitSubscriptionAddress(config) {
+  const detected = config?.subscription?.resolvedAddresses || {};
+  if (detected.ipv4 || detected.ipv6) return '';
+  return normalizedServerAddress(config?.subscription?.hostname);
+}
+
+function applyDeploymentAddressState(deployment, config, reportedAddress = '') {
+  const explicitAddress = explicitSubscriptionAddress(config);
+  if (explicitAddress) {
+    deployment.resolvedHostname = explicitAddress;
+    deployment.resolvedAddresses = {};
+    deployment.pushServerAddress = explicitAddress;
+    return explicitAddress;
+  }
+  const detected = deployment.resolvedAddresses || config?.subscription?.resolvedAddresses || {};
+  const mode = config?.subscription?.server?.pushAddressMode || config?.subscription?.addressMode || 'auto';
+  const selected = mode === 'ipv6' ? detected.ipv6 : mode === 'ipv4' ? detected.ipv4 : (detected.ipv4 || detected.ipv6);
+  const address = normalizedServerAddress(reportedAddress || selected || deployment.pushServerAddress || deployment.resolvedHostname);
+  if (address) {
+    deployment.resolvedHostname = address;
+    deployment.pushServerAddress = address;
+  }
+  return address;
 }
 
 export async function handleDeployEvents(request, env) {
@@ -1193,12 +1376,17 @@ export async function handleDeployEvents(request, env) {
       const config = await decryptDeploymentConfig(auth.deployment.encryptedConfig, env);
       const subscriptionNodeCount = Math.max(0, Math.min(MAX_NODES, Number(payload.subscriptionNodeCount || 0) || 0));
       if (!config.subscription?.server?.enabled) return createErrorResponse('Unexpected subscription event', 400);
-      const airport = await upsertDeploymentSubscription(auth.storage, auth.deployment, config, subscriptionNodeCount, cacheNodes.accepted, request.url, true);
-      auth.deployment.subscriptionSourceDisabled = false;
-      auth.deployment.subscriptionId = airport.id;
-      auth.deployment.nodeCount = airport.nodeCount;
-      auth.deployment.lastSyncAt = timestamp;
-      auth.deployment.capabilities.tuicCertificatePinStatus = tuicCertificatePinStatus(config, cacheNodes.accepted);
+      const snapshot = await commitDeploymentSubscriptionSnapshot(
+        auth.storage, auth.deployment, config, cacheNodes.accepted, request.url, 'tsub-deployment-callback'
+      );
+      if (snapshot.updated) {
+        auth.deployment.nodeCount = snapshot.accepted;
+        auth.deployment.lastSyncAt = timestamp;
+        auth.deployment.capabilities.tuicCertificatePinStatus = tuicCertificatePinStatus(config, cacheNodes.accepted);
+        auth.deployment.capabilities.degradedReason = clearRecoveredPushDegradation(auth.deployment.capabilities.degradedReason);
+      } else if (subscriptionNodeCount > 0) {
+        auth.deployment.capabilities.degradedReason = [auth.deployment.capabilities.degradedReason, '等待节点同步'].filter(Boolean).join('; ');
+      }
     } else if (nodes.accepted.length) {
       const config = await decryptDeploymentConfig(auth.deployment.encryptedConfig, env);
       auth.deployment.nodeCount = (await replaceDeploymentNodes(auth.storage, auth.deployment, nodes.accepted)).length;
@@ -1237,7 +1425,7 @@ function safeInteger(value, maximum = Number.MAX_SAFE_INTEGER) {
   return Number.isSafeInteger(number) && number >= 0 && number <= maximum ? number : null;
 }
 
-async function commitPushRows(storage, cacheKey, cacheData, source, deployment, generation, sequence, snapshotHash) {
+async function commitPushRows(storage, cacheKey, cacheData, source, deployment, generation, sequence, snapshotHash, preparedProfiles = null) {
   const condition = `EXISTS (SELECT 1 FROM deployment_snapshots WHERE deployment_id = ? AND push_generation = ? AND sequence = ? AND snapshot_hash = ?)`;
   const conditionValues = [deployment.id, generation, sequence, snapshotHash];
   const statements = [storage.db.prepare(`INSERT INTO deployment_snapshots
@@ -1256,7 +1444,11 @@ async function commitPushRows(storage, cacheKey, cacheData, source, deployment, 
     ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP WHERE ${condition}`)
     .bind(source.id, JSON.stringify(source), ...conditionValues, ...conditionValues),
   storage.db.prepare(`UPDATE deployments SET data = ?, status = ?, config_revision = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND ${condition}`).bind(JSON.stringify(deployment), deployment.status || '', deployment.configRevision || 1, deployment.id, ...conditionValues)];
+    WHERE id = ? AND ${condition}`).bind(JSON.stringify(deployment), deployment.status || '', deployment.configRevision || 1, deployment.id, ...conditionValues),
+  ...(preparedProfiles?.changedProfiles || []).map(profile => storage.db.prepare(`INSERT INTO profiles (id, data, created_at, updated_at)
+    SELECT ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP WHERE ${condition}
+    ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP WHERE ${condition}`)
+    .bind(profile.id, JSON.stringify(profile), ...conditionValues, ...conditionValues))];
   if (typeof storage.db.batch !== 'function') throw new Error('Transactional batch support is required for row-level push storage');
   await storage.db.batch(statements);
   const current = await storage.db.prepare('SELECT push_generation, sequence, snapshot_hash FROM deployment_snapshots WHERE deployment_id = ?').bind(deployment.id).first();
@@ -1308,11 +1500,12 @@ export async function handleDeployPush(request, env, deploymentId) {
   const download = safeInteger(payload.download);
   const trafficBackend = normalizeTrafficBackend(payload.trafficBackend);
   if (sequence === null || sequence < 1 || upload === null || download === null || !trafficBackend) return createErrorResponse('Invalid push counters', 400);
-  const expectedServerAddress = String(deployment.pushServerAddress || deployment.resolvedHostname || config.subscription.hostname || '').replace(/^\[|\]$/g, '').trim();
-  const serverAddress = String(payload.serverAddress || expectedServerAddress).replace(/^\[|\]$/g, '').trim();
+  const explicitAddress = explicitSubscriptionAddress(config);
+  const expectedServerAddress = explicitAddress || normalizedServerAddress(deployment.pushServerAddress || deployment.resolvedHostname);
+  const serverAddress = normalizedServerAddress(payload.serverAddress || expectedServerAddress);
   const subscriptionPort = payload.subscriptionPort === undefined ? server.port : safeInteger(payload.subscriptionPort);
-  const detectedPushAddresses = [deployment.resolvedAddresses?.ipv4, deployment.resolvedAddresses?.ipv6].filter(Boolean);
-  const allowedPushAddresses = server.pushAddressMode === 'auto' && detectedPushAddresses.length
+  const detectedPushAddresses = explicitAddress ? [] : [deployment.resolvedAddresses?.ipv4, deployment.resolvedAddresses?.ipv6].filter(Boolean);
+  const allowedPushAddresses = !explicitAddress && server.pushAddressMode === 'auto' && detectedPushAddresses.length
     ? new Set(detectedPushAddresses)
     : new Set([expectedServerAddress]);
   if (!serverAddress || !allowedPushAddresses.has(serverAddress)) return createErrorResponse('Push server address mismatch', 409);
@@ -1368,8 +1561,7 @@ export async function handleDeployPush(request, env, deploymentId) {
   source.pushHistory = pushHistory;
   deployment.nodeCount = nodes.accepted.length;
   deployment.lastSyncAt = timestamp;
-  deployment.resolvedHostname = serverAddress;
-  deployment.pushServerAddress = serverAddress;
+  applyDeploymentAddressState(deployment, config, serverAddress);
   deployment.pushCount = pushCount;
   deployment.pushHistory = pushHistory;
   deployment.capabilities = {
@@ -1382,15 +1574,20 @@ export async function handleDeployPush(request, env, deploymentId) {
     degradedReason: clearRecoveredPushDegradation(deployment.capabilities?.degradedReason)
   };
   deployment.updatedAt = timestamp;
+  const preparedProfiles = await prepareDeploymentProfiles(storage, deployment, source.id, [], {
+    previousNodes: Array.isArray(previousCache?.nodes) ? previousCache.nodes : [],
+    currentNodes: nodes.accepted,
+    preserveUnmatchedIdentities: false
+  });
   if (isRowStorage(storage) && storage.db) {
-    const claim = await commitPushRows(storage, cacheKey, cacheData, source, deployment, server.pushGeneration, sequence, snapshotHash);
+    const claim = await commitPushRows(storage, cacheKey, cacheData, source, deployment, server.pushGeneration, sequence, snapshotHash, preparedProfiles);
     if (claim.conflict) return createErrorResponse('Push sequence conflict', 409);
     if (claim.stale) return createErrorResponse('Stale push sequence', 409);
-    await updateDeploymentProfile(storage, deployment, source.id);
   } else {
     await storage.put(cacheKey, cacheData);
     await updateStoredSubscription(storage, source);
     await writeDeployment(storage, deployment);
+    await persistPreparedProfiles(storage, preparedProfiles);
   }
   await invalidateDeploymentOutputCaches(storage, deployment, source.id);
   return createJsonResponse({ success: true, data: { accepted: nodes.accepted.length, rejected: nodes.rejected.length, sequence } });
@@ -1562,10 +1759,52 @@ export async function handleDeployAgentTransferClaim(request, env) {
 
 export async function handleDeployAgentCommandEvents(request, env, commandId) {
   if (request.method !== 'POST') return createErrorResponse('Method Not Allowed', 405);
+  const length = Number(request.headers.get('Content-Length') || 0);
+  if (length > MAX_CALLBACK_BYTES) return createErrorResponse('Agent event payload too large', 413);
   let payload = {};
-  try { payload = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
+  try { payload = await readJsonWithLimit(request, MAX_CALLBACK_BYTES); }
+  catch (error) { return createErrorResponse(error?.message || 'Invalid JSON', error?.status || 400); }
   const storage = await getStorage(env);
-  const result = await reportAgentCommand(request, env, storage, commandId, payload);
+  const result = await reportAgentCommand(request, env, storage, commandId, payload, {
+    beforeSuccess: async ({ auth }) => {
+      if (!['apply', 'update', 'reinstall', 'list'].includes(auth.command.action)) return;
+      const deployment = await findDeployment(storage, auth.agent.deployment_id);
+      if (!deployment) throw Object.assign(new Error('Deployment not found'), { status: 404, code: 'deployment_not_found' });
+      const config = await decryptDeploymentConfig(deployment.encryptedConfig, env);
+      if (!config.subscription?.server?.enabled) return;
+      const reportedRevision = Number(payload.configRevision);
+      if (Number.isSafeInteger(reportedRevision) && reportedRevision !== Number(deployment.configRevision || 1)) {
+        throw Object.assign(new Error('Agent configuration revision mismatch'), { status: 409, code: 'config_revision_mismatch' });
+      }
+      if (payload.pushGeneration && String(payload.pushGeneration) !== String(config.subscription.server.pushGeneration || '')) {
+        throw Object.assign(new Error('Agent push generation mismatch'), { status: 409, code: 'push_generation_mismatch' });
+      }
+      const reportedNodes = Array.isArray(payload.subscriptionNodes) ? payload.subscriptionNodes : [];
+      const normalized = normalizeCallbackNodes(reportedNodes);
+      if (payload.subscriptionReady !== true || !normalized.accepted.length) {
+        const reason = '等待节点同步';
+        const previousReason = String(deployment.capabilities?.degradedReason || '');
+        deployment.capabilities = {
+          ...(deployment.capabilities || {}),
+          degradedReason: previousReason.split(';').map(item => item.trim()).includes(reason)
+            ? previousReason
+            : [previousReason, reason].filter(Boolean).join('; ')
+        };
+        await writeDeployment(storage, deployment);
+        return;
+      }
+      applyDeploymentAddressState(deployment, config, payload.serverAddress);
+      deployment.capabilities = {
+        ...(deployment.capabilities || {}),
+        tuicCertificatePinStatus: tuicCertificatePinStatus(config, normalized.accepted),
+        degradedReason: String(deployment.capabilities?.degradedReason || '')
+          .split(';').map(item => item.trim()).filter(item => item && item !== '等待节点同步').join('; ')
+      };
+      await commitDeploymentSubscriptionSnapshot(
+        storage, deployment, config, normalized.accepted, request.url, 'tsub-deployment-agent'
+      );
+    }
+  });
   return result.error ? agentError(result.error) : createJsonResponse({ success: true, data: result }, 200, { 'Cache-Control': 'no-store' });
 }
 
@@ -1920,6 +2159,7 @@ export async function handleDeploymentsRequest(request, env, path) {
       try {
         if (action === 'update' && body.config) {
           const { currentRevision, nextDeployment } = await prepareDeploymentUpdate(storage, deployment, body, env, operation.id);
+          operation.configRevision = nextDeployment.configRevision;
           let nextConfig = await decryptDeploymentConfig(nextDeployment.encryptedConfig, env);
           let rollbackManagedResources = null; let finalizeManagedResources = null;
           if (nextConfig.edge?.mode === 'managed') {

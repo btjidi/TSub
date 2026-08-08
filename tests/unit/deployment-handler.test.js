@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handleDeployAddressProbe, handleDeployBootstrap, handleDeployEvents, handleDeployPrepare, handleDeployPush, handleDeployQuickTunnelCallback, handleDeployRunScript, handleDeploySubscription, handleDeploymentDefaultsRequest, handleDeploymentsRequest, normalizeDeploymentClientNodeUrl } from '../../functions/modules/deployment-handler.js';
-import { decryptDeploymentConfig } from '../../functions/modules/deployment-crypto.js';
+import { decryptDeploymentConfig, encryptDeploymentConfig } from '../../functions/modules/deployment-crypto.js';
 
 function createKv(initial = {}) {
   const values = new Map(Object.entries(initial).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]));
@@ -155,6 +155,177 @@ describe('TSub V2 deployment handler', () => {
     expect(updated.nodeCount).toBe(1);
   });
 
+  it('keeps auto-detected direct nodes when a Quick Tunnel hostname becomes available', async () => {
+    const env = createEnv();
+    const quick = config({
+      runtime: { tier: 'auto', core: 'sing-box', channel: 'stable' },
+      inbounds: [
+        {
+          id: 'quick-vless', name: 'Quick VLESS', protocol: 'vless', port: 51232, transport: 'ws', edgeMode: 'only', outbound: 'direct',
+          credentials: { uuid: '79411d85-b0dc-4cd2-b46c-01789a18c650' }, tls: { mode: 'none', serverName: '' }, transportOptions: { path: '/quick', host: '' }
+        },
+        {
+          id: 'direct-vmess', name: 'Direct VMess', protocol: 'vmess', port: 51233, transport: 'ws', edgeMode: 'direct', outbound: 'direct',
+          credentials: { uuid: '8b950176-f41d-4bd8-91ef-c7047ef4bbc6' }, tls: { mode: 'none', serverName: '' }, transportOptions: { path: '/vmess', host: '' }
+        },
+        {
+          id: 'direct-hy2', name: 'Direct HY2', protocol: 'hysteria2', port: 51234, transport: 'hysteria', edgeMode: 'direct', outbound: 'direct',
+          credentials: { password: 'synthetic-hy2-password' }, tls: { mode: 'tls', serverName: 'www.example.com' }, transportOptions: {}
+        },
+        {
+          id: 'direct-tuic', name: 'Direct TUIC', protocol: 'tuic', port: 51235, transport: 'quic', edgeMode: 'direct', outbound: 'direct',
+          credentials: { uuid: 'eb233e16-2f3f-42bd-91af-cfb93faf9fa9', password: 'synthetic-tuic-password' }, tls: { mode: 'tls', serverName: 'www.example.com' }, transportOptions: {}
+        },
+        {
+          id: 'direct-socks', name: 'Direct SOCKS', protocol: 'socks5', port: 51236, transport: 'tcp', edgeMode: 'direct', outbound: 'direct',
+          credentials: { username: 'synthetic-user', password: 'synthetic-socks-password' }, tls: { mode: 'none', serverName: '' }, transportOptions: {}
+        }
+      ],
+      certificate: { mode: 'self-signed' },
+      edge: { mode: 'quick', quickInboundId: 'quick-vless', endpoints: [] },
+      subscription: { hostname: '', addressMode: 'auto', namePrefix: 'Quick Auto', server: { enabled: true, pushEnabled: true } }
+    });
+    const created = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Quick Auto', config: quick }), env, '/deployments');
+    const createdBody = await created.json();
+    const bootstrapToken = bearerFromCommand(createdBody.data.command);
+    const operationId = createdBody.data.operation.id;
+    const deploymentId = createdBody.data.deployment.id;
+    const probe = new Request(`https://tsub.example/api/deploy/address/${operationId}`, {
+      method: 'POST', headers: { Authorization: `Bearer ${bootstrapToken}`, 'CF-Connecting-IP': '198.51.100.42' }
+    });
+    Object.defineProperty(probe, 'cf', { value: {} });
+    expect((await handleDeployAddressProbe(probe, env, operationId)).status).toBe(200);
+    const bootstrap = await handleDeployBootstrap(new Request('https://tsub.example/api/deploy/bootstrap', { headers: { Authorization: `Bearer ${bootstrapToken}` } }), env);
+    const script = await bootstrap.text();
+    const pushToken = atob(configValue(script, 'push_token_b64'));
+    const callback = await handleDeployQuickTunnelCallback(new Request('https://tsub.example/api/deploy/edge/quick', {
+      method: 'POST', headers: { Authorization: `Bearer ${pushToken}`, 'Content-Type': 'application/json', Accept: 'text/plain' },
+      body: JSON.stringify({ deploymentId, hostname: 'auto-five.trycloudflare.com' })
+    }), env);
+    expect(callback.status).toBe(200);
+    const nodes = (await callback.text()).trim().split('\n');
+    expect(nodes).toHaveLength(5);
+    expect(nodes.map(node => node.slice(0, node.indexOf('://')))).toEqual(['vless', 'vmess', 'hysteria2', 'tuic', 'socks5']);
+    expect(nodes[0]).toContain('@auto-five.trycloudflare.com:443');
+    expect(JSON.parse(atob(nodes[1].slice('vmess://'.length))).add).toBe('198.51.100.42');
+    for (const node of nodes.slice(2)) expect(node).toContain('198.51.100.42');
+    const stored = env.TSUB_KV.dump('tsub_deployments_v2')[0];
+    const storedConfig = await decryptDeploymentConfig(stored.encryptedConfig, env);
+    expect(storedConfig.subscription.hostname).toBe('');
+    expect(stored.nodeCount).toBe(5);
+    const sourceId = `tsub_airport_${deploymentId}`;
+    expect(env.TSUB_KV.dump('tsub_subscriptions_v1')[0]).toMatchObject({ id: sourceId, nodeCount: 5 });
+    expect(env.TSUB_KV.dump(`node_cache_subscription_${encodeURIComponent(sourceId)}`)).toMatchObject({
+      nodes, nodeCount: 5, source: 'tsub-deployment-quick-tunnel'
+    });
+    const staleCallback = await handleDeployQuickTunnelCallback(new Request('https://tsub.example/api/deploy/edge/quick', {
+      method: 'POST', headers: { Authorization: `Bearer ${pushToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deploymentId, hostname: 'stale.trycloudflare.com', configRevision: stored.configRevision - 1 })
+    }), env);
+    expect(staleCallback.status).toBe(409);
+  });
+
+  it('restores dual-stack direct nodes without requiring an address for edge-only configurations', async () => {
+    const env = createEnv();
+    const quick = config({
+      defaults: { deployment: { addressMode: 'dual' } },
+      inbounds: [
+        {
+          id: 'quick-only', protocol: 'vless', port: 8443, transport: 'ws', edgeMode: 'only', outbound: 'direct',
+          credentials: { uuid: '79411d85-b0dc-4cd2-b46c-01789a18c650' }, tls: { mode: 'none', serverName: '' }, transportOptions: { path: '/quick', host: '' }
+        },
+        {
+          id: 'dual-direct', protocol: 'vmess', port: 51233, transport: 'ws', edgeMode: 'direct', outbound: 'direct',
+          credentials: { uuid: '8b950176-f41d-4bd8-91ef-c7047ef4bbc6' }, tls: { mode: 'none', serverName: '' }, transportOptions: { path: '/dual', host: '' }
+        }
+      ],
+      edge: { mode: 'quick', quickInboundId: 'quick-only', endpoints: [] },
+      certificate: { mode: 'self-signed' },
+      subscription: { hostname: '', addressMode: 'dual', namePrefix: 'Quick Dual', server: { enabled: true, pushEnabled: true } }
+    });
+    const created = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Quick Dual', config: quick }), env, '/deployments');
+    const body = await created.json();
+    const bootstrapToken = bearerFromCommand(body.data.command);
+    const operationId = body.data.operation.id;
+    for (const address of ['198.51.100.43', '2001:db8::43']) {
+      const probe = new Request(`https://tsub.example/api/deploy/address/${operationId}`, {
+        method: 'POST', headers: { Authorization: `Bearer ${bootstrapToken}`, 'CF-Connecting-IP': address }
+      });
+      Object.defineProperty(probe, 'cf', { value: {} });
+      expect((await handleDeployAddressProbe(probe, env, operationId)).status).toBe(200);
+    }
+    const bootstrap = await handleDeployBootstrap(new Request('https://tsub.example/api/deploy/bootstrap', { headers: { Authorization: `Bearer ${bootstrapToken}` } }), env);
+    const pushToken = atob(configValue(await bootstrap.text(), 'push_token_b64'));
+    const callback = await handleDeployQuickTunnelCallback(new Request('https://tsub.example/api/deploy/edge/quick', {
+      method: 'POST', headers: { Authorization: `Bearer ${pushToken}`, 'Content-Type': 'application/json', Accept: 'text/plain' },
+      body: JSON.stringify({ deploymentId: body.data.deployment.id, hostname: 'dual.trycloudflare.com' })
+    }), env);
+    expect(callback.status).toBe(200);
+    const nodes = (await callback.text()).trim().split('\n');
+    expect(nodes).toHaveLength(3);
+    expect(JSON.parse(atob(nodes[1].slice('vmess://'.length))).add).toBe('198.51.100.43');
+    expect(JSON.parse(atob(nodes[2].slice('vmess://'.length))).add).toBe('2001:db8::43');
+
+    const stored = env.TSUB_KV.dump('tsub_deployments_v2')[0];
+    const storedConfig = await decryptDeploymentConfig(stored.encryptedConfig, env);
+    storedConfig.inbounds = storedConfig.inbounds.filter(inbound => inbound.edgeMode === 'only');
+    storedConfig.subscription.addressMode = 'auto';
+    storedConfig.subscription.hostname = '';
+    stored.encryptedConfig = await encryptDeploymentConfig(storedConfig, env);
+    stored.resolvedAddresses = {};
+    stored.resolvedHostname = '';
+    stored.pushServerAddress = '';
+    await env.TSUB_KV.put('tsub_deployments_v2', JSON.stringify([stored]));
+    const edgeOnly = await handleDeployQuickTunnelCallback(new Request('https://tsub.example/api/deploy/edge/quick', {
+      method: 'POST', headers: { Authorization: `Bearer ${pushToken}`, 'Content-Type': 'application/json', Accept: 'text/plain' },
+      body: JSON.stringify({ deploymentId: stored.id, hostname: 'edge-only.trycloudflare.com' })
+    }), env);
+    expect(edgeOnly.status).toBe(200);
+    expect((await edgeOnly.text()).trim().split('\n')).toHaveLength(1);
+  });
+
+  it('does not replace Quick Tunnel nodes when a required direct address is unavailable', async () => {
+    const env = createEnv();
+    const quick = config({
+      inbounds: [
+        {
+          id: 'quick-only', protocol: 'vless', port: 8443, transport: 'ws', edgeMode: 'only', outbound: 'direct',
+          credentials: { uuid: '79411d85-b0dc-4cd2-b46c-01789a18c650' }, tls: { mode: 'none', serverName: '' }, transportOptions: { path: '/quick', host: '' }
+        },
+        {
+          id: 'direct-vmess', protocol: 'vmess', port: 51233, transport: 'ws', edgeMode: 'direct', outbound: 'direct',
+          credentials: { uuid: '8b950176-f41d-4bd8-91ef-c7047ef4bbc6' }, tls: { mode: 'none', serverName: '' }, transportOptions: { path: '/direct', host: '' }
+        }
+      ],
+      edge: { mode: 'quick', quickInboundId: 'quick-only', endpoints: [] },
+      certificate: { mode: 'self-signed' },
+      subscription: { hostname: 'initial.example.com', namePrefix: 'Quick Missing', server: { enabled: true, pushEnabled: true } }
+    });
+    const result = await createAndBootstrap(env, quick);
+    const pushToken = atob(configValue(result.script, 'push_token_b64'));
+    const deploymentId = result.body.data.deployment.id;
+    const first = await handleDeployQuickTunnelCallback(new Request('https://tsub.example/api/deploy/edge/quick', {
+      method: 'POST', headers: { Authorization: `Bearer ${pushToken}`, 'Content-Type': 'application/json', Accept: 'text/plain' },
+      body: JSON.stringify({ deploymentId, hostname: 'initial.trycloudflare.com' })
+    }), env);
+    expect(first.status).toBe(200);
+    const before = env.TSUB_KV.dump('tsub_deployments_v2')[0];
+    const beforeCount = before.nodeCount;
+    const savedConfig = await decryptDeploymentConfig(before.encryptedConfig, env);
+    savedConfig.subscription.hostname = '';
+    before.encryptedConfig = await encryptDeploymentConfig(savedConfig, env);
+    before.resolvedAddresses = {};
+    before.resolvedHostname = '';
+    before.pushServerAddress = '';
+    await env.TSUB_KV.put('tsub_deployments_v2', JSON.stringify([before]));
+    const missing = await handleDeployQuickTunnelCallback(new Request('https://tsub.example/api/deploy/edge/quick', {
+      method: 'POST', headers: { Authorization: `Bearer ${pushToken}`, 'Content-Type': 'application/json', Accept: 'text/plain' },
+      body: JSON.stringify({ deploymentId, hostname: 'missing.trycloudflare.com' })
+    }), env);
+    expect(missing.status).toBe(503);
+    expect(env.TSUB_KV.dump('tsub_deployments_v2')[0].nodeCount).toBe(beforeCount);
+  });
+
   it('records trusted IPv4 and IPv6 probes before producing a dual-stack bootstrap', async () => {
     const env = createEnv();
     const created = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', {
@@ -303,7 +474,7 @@ describe('TSub V2 deployment handler', () => {
     const sources = env.TSUB_KV.dump('tsub_subscriptions_v1');
     expect(sources).toHaveLength(1);
     expect(sources[0]).toMatchObject({
-      enabled: true, enableNodeCache: true, nodeCount: 2,
+      enabled: true, enableNodeCache: true, nodeCount: 1,
       source: { kind: 'tsub-deployment-push', deploymentId: result.body.data.deployment.id }
     });
     expect(sources[0].url).toMatch(new RegExp(`^https://tsub\\.example/api/deploy/subscriptions/${result.body.data.deployment.id}/[0-9a-f-]{36}$`));
@@ -395,6 +566,9 @@ describe('TSub V2 deployment handler', () => {
     const subscriptionToken = atob(configValue(result.script, 'subscription_server_token_b64'));
     const storedDeployments = env.TSUB_KV.dump('tsub_deployments_v2');
     storedDeployments[0].capabilities = { degradedReason: '未找到 nftables/iptables，已跳过防火墙; 首次主动推送失败' };
+    storedDeployments[0].resolvedHostname = '104.28.194.104';
+    storedDeployments[0].resolvedAddresses = { ipv4: '104.28.194.104' };
+    storedDeployments[0].pushServerAddress = '104.28.194.104';
     await env.TSUB_KV.put('tsub_deployments_v2', JSON.stringify(storedDeployments));
     const profiles = env.TSUB_KV.dump('tsub_profiles_v1');
     profiles[0].customId = 'main-profile';
@@ -422,6 +596,9 @@ describe('TSub V2 deployment handler', () => {
       localUrl: `http://node.example.com:51250/cgi-bin/${subscriptionToken}`, pushCount: 2, trafficQuotaOverrideBytes: 500
     });
     expect(env.TSUB_KV.dump('tsub_deployments_v2')[0].capabilities.degradedReason).toBe('未找到 nftables/iptables，已跳过防火墙');
+    expect(env.TSUB_KV.dump('tsub_deployments_v2')[0]).toMatchObject({
+      resolvedHostname: 'node.example.com', resolvedAddresses: {}, pushServerAddress: 'node.example.com'
+    });
     expect(await mirror.text()).toContain('vless://uuid@node.example.com:443#HK');
     const shadowrocket = await handleDeploySubscription(new Request(`https://tsub.example/api/deploy/subscriptions/${deploymentId}/${subscriptionToken}`, {
       headers: { 'User-Agent': 'Shadowrocket/2.2.68' }

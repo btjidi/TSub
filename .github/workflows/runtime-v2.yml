@@ -72,6 +72,7 @@ jobs:
         run: |
           sh tests/runtime/run-swap-detection.sh
           sh tests/runtime/run-operation-lock.sh
+          sh tests/runtime/run-download-resume.sh
       - name: Agent and controller transfer
         run: |
           sh tests/runtime/run-agent-heartbeat-log.sh

@@ -35,6 +35,11 @@ agent_controller_url=https://controller.example/api/deploy/agent
 agent_deployment_id=deployment-test
 agent_token_b64=dGVzdC10b2tlbg==
 agent_poll_interval_seconds=180
+subscription_server_enabled=true
+subscription_server_port=51238
+subscription_hostname=node.example.com
+push_server_address=node.example.com
+push_generation=agent-generation
 EOF
 cp "$TEST_TMP/core" "$TSUB_BIN/sing-box-1.13.15-amd64-$binary_sha"
 chmod 700 "$TSUB_BIN/sing-box-1.13.15-amd64-$binary_sha"
@@ -49,6 +54,9 @@ TSUB_OS_VERSION=13
 TSUB_OS_PRETTY='Debian GNU/Linux 13 (trixie)'
 TSUB_AGENT_TOKEN=test-token
 TSUB_AGENT_URL=https://controller.example/api/deploy/agent
+subscription_enabled() { return 0; }
+subscription_running() { return 0; }
+printf '%s\n' 'vless://identifier@node.example.com:443?security=tls#agent-node' >"$TSUB_STATE/nodes.txt"
 TSUB_SWAP_REPORTED=true
 TSUB_SWAP_TOTAL_MB=512
 TSUB_SWAP_FREE_MB=384
@@ -95,7 +103,12 @@ grep -q '"cgroupSwapLimitMb":256' "$TEST_TMP/payload.json"
 agent_report command-test lease-test succeeded repair 'command completed'
 grep -q '"message":"command completed"' "$TEST_TMP/event-payload.json"
 grep -q '"hostname":"test-server"' "$TEST_TMP/event-payload.json"
-grep -q '"nodeCount":0' "$TEST_TMP/event-payload.json"
+grep -q '"nodeCount":1' "$TEST_TMP/event-payload.json"
+grep -q '"subscriptionReady":true' "$TEST_TMP/event-payload.json"
+grep -q '"subscriptionNodeCount":1' "$TEST_TMP/event-payload.json"
+grep -q '"serverAddress":"node.example.com"' "$TEST_TMP/event-payload.json"
+grep -q '"pushGeneration":"agent-generation"' "$TEST_TMP/event-payload.json"
+grep -q '"configRevision":7' "$TEST_TMP/event-payload.json"
 
 printf '%s\n' 'safe diagnostic' 'vless://private@example.com:443' >"$TEST_TMP/failure.log"
 [ "$(agent_failure_summary "$TEST_TMP/failure.log")" = '[REDACTED_URL]' ]

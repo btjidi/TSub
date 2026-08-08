@@ -125,9 +125,58 @@ sha256_file() {
 download_file() {
   download_url=$1
   download_target=$2
-  if have curl; then curl -fL --retry 2 --connect-timeout 15 --max-time 600 -o "$download_target" "$download_url"
-  elif have wget; then wget -O "$download_target" "$download_url"
-  else i18n_die "必须预装 curl 或 wget" "curl or wget must be installed"; fi
+  download_max_attempts=${TSUB_DOWNLOAD_MAX_ATTEMPTS:-64}
+  download_retry_delay=${TSUB_DOWNLOAD_RETRY_DELAY_SECONDS:-1}
+  download_attempt_timeout=${TSUB_DOWNLOAD_ATTEMPT_TIMEOUT_SECONDS:-600}
+  case "$download_max_attempts" in ''|0|*[!0-9]*) download_max_attempts=64 ;; esac
+  case "$download_retry_delay" in ''|*[!0-9]*) download_retry_delay=1 ;; esac
+  case "$download_attempt_timeout" in ''|0|*[!0-9]*) download_attempt_timeout=600 ;; esac
+  download_attempt=1
+  download_resume=true
+
+  while [ "$download_attempt" -le "$download_max_attempts" ]; do
+    download_existing=0
+    if [ -f "$download_target" ]; then
+      download_existing=$(wc -c <"$download_target" 2>/dev/null | tr -d ' ')
+      case "$download_existing" in ''|*[!0-9]*) download_existing=0 ;; esac
+    fi
+
+    if have curl; then
+      if [ "$download_resume" = true ] && [ "$download_existing" -gt 0 ]; then
+        if curl -fL --connect-timeout 15 --max-time "$download_attempt_timeout" -C - -o "$download_target" "$download_url"; then return 0; else download_status=$?; fi
+      else
+        if curl -fL --connect-timeout 15 --max-time "$download_attempt_timeout" -o "$download_target" "$download_url"; then return 0; else download_status=$?; fi
+      fi
+      case "$download_status" in
+        33)
+          # The origin rejected Range. Restart future attempts instead of appending incompatible data.
+          rm -f "$download_target"
+          download_resume=false
+          ;;
+        5|6|7|18|28|35|52|55|56|92) ;;
+        *) return "$download_status" ;;
+      esac
+    elif have wget; then
+      if wget -c -T 15 -t 1 -O "$download_target" "$download_url"; then return 0; else download_status=$?; fi
+    else
+      i18n_die "必须预装 curl 或 wget" "curl or wget must be installed"
+    fi
+
+    [ "$download_attempt" -lt "$download_max_attempts" ] || return "$download_status"
+    download_received=0
+    if [ -f "$download_target" ]; then
+      download_received=$(wc -c <"$download_target" 2>/dev/null | tr -d ' ')
+      case "$download_received" in ''|*[!0-9]*) download_received=0 ;; esac
+    fi
+    if [ "$download_resume" = true ] && [ "$download_received" -gt 0 ]; then
+      i18n_print "下载连接中断，已接收 $download_received 字节；将从断点继续（$download_attempt/$download_max_attempts）。" "The download was interrupted after $download_received bytes; resuming from that point ($download_attempt/$download_max_attempts)."
+    else
+      i18n_print "下载连接中断；正在重试（$download_attempt/$download_max_attempts）。" "The download was interrupted; retrying ($download_attempt/$download_max_attempts)."
+    fi
+    [ "$download_retry_delay" -eq 0 ] || sleep "$download_retry_delay"
+    download_attempt=$((download_attempt + 1))
+  done
+  return 1
 }
 
 atomic_install() {

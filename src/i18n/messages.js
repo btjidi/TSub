@@ -204,6 +204,8 @@ export const messages = {
       retry: '重试',
       noSourceNodes: '该订阅源暂无节点',
       selectedNodes: '已选 {count} 个节点',
+      checkingSelectedNodes: '正在核对节点...',
+      invalidNodeSelection: '原选择已失效，请重新选择节点。',
       noMatchedNodes: '没有找到匹配的节点。',
       noAvailableNodes: '没有可用的手动节点'
     },
@@ -1758,6 +1760,8 @@ export const messages = {
       retry: 'Retry',
       noSourceNodes: 'No nodes in this source',
       selectedNodes: '{count} nodes selected',
+      checkingSelectedNodes: 'Checking nodes...',
+      invalidNodeSelection: 'The previous selection is no longer valid. Select the nodes again.',
       noMatchedNodes: 'No matching nodes.',
       noAvailableNodes: 'No nodes available'
     },
