@@ -156,10 +156,32 @@ for (const viewport of [
       expect(sharedServerNameBox.y).toBeGreaterThan(sharedTransportBox.y + sharedTransportBox.height);
     }
     expect(Number.parseFloat(await page.getByTestId('global-shared-transport').evaluate(element => getComputedStyle(element).paddingRight))).toBeGreaterThanOrEqual(32);
-    await page.getByTestId('global-shared-transport').dispatchEvent('pointerdown');
+    await page.getByTestId('global-shared-transport').click();
     await expect(page.getByTestId('global-shared-transport-shell').getByTestId('deployment-select-chevron')).toHaveClass(/rotate-180/);
-    await page.getByTestId('global-shared-transport').dispatchEvent('change');
+    const selectMenu = page.getByTestId('deployment-select-menu');
+    await expect(selectMenu).toBeVisible();
+    await expect(selectMenu.getByRole('option')).toHaveCount(5);
+    const [selectMenuBox, selectMenuStyle] = await Promise.all([
+      selectMenu.boundingBox(),
+      selectMenu.evaluate(element => {
+        const style = getComputedStyle(element);
+        return { backgroundColor: style.backgroundColor, borderRadius: style.borderRadius, boxShadow: style.boxShadow };
+      })
+    ]);
+    expect(selectMenuBox.x).toBeGreaterThanOrEqual(8);
+    expect(selectMenuBox.x + selectMenuBox.width).toBeLessThanOrEqual(viewport.width - 8);
+    if (viewport.width < 1024) {
+      expect(selectMenuBox.y).toBeGreaterThanOrEqual(64);
+      expect(selectMenuBox.y + selectMenuBox.height).toBeLessThanOrEqual(viewport.height - 80);
+    }
+    expect(Number.parseFloat(selectMenuStyle.borderRadius)).toBeGreaterThanOrEqual(8);
+    expect(selectMenuStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    expect(selectMenuStyle.boxShadow).not.toBe('none');
+    await selectMenu.getByRole('option', { name: 'WebSocket', exact: true }).click();
+    await expect(page.getByTestId('global-shared-transport')).toHaveValue('ws');
     await expect(page.getByTestId('global-shared-transport-shell').getByTestId('deployment-select-chevron')).not.toHaveClass(/rotate-180/);
+    await expect(selectMenu).toHaveCount(0);
+    await page.getByTestId('global-shared-transport').selectOption('');
     if (viewport.width >= 1024) {
       const protocolBox = await page.getByTestId('inbound-protocol').boundingBox();
       const portBox = await page.getByTestId('inbound-port').boundingBox();
@@ -396,6 +418,16 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
     await remoteTrigger.click();
     const remoteUpdateButton = page.getByTestId('remote-update-config');
     await expect(remoteUpdateButton).toBeVisible();
+    const [remoteTriggerBox, remoteMenuBox] = await Promise.all([
+      remoteTrigger.boundingBox(),
+      page.getByTestId('deployment-remote-menu').boundingBox()
+    ]);
+    expect(remoteMenuBox.x).toBeGreaterThanOrEqual(8);
+    expect(remoteMenuBox.x + remoteMenuBox.width).toBeLessThanOrEqual(viewport.width - 8);
+    const leftAligned = Math.abs(remoteMenuBox.x - remoteTriggerBox.x) <= 2;
+    const rightAligned = Math.abs((remoteMenuBox.x + remoteMenuBox.width) - (remoteTriggerBox.x + remoteTriggerBox.width)) <= 2;
+    expect(leftAligned || rightAligned).toBe(true);
+    if (viewport.width >= 640) expect(rightAligned).toBe(true);
     const remoteButtons = remoteUpdateButton.locator('..').getByRole('button');
     await expect(remoteButtons.first()).toHaveText('更新配置');
     await remoteUpdateButton.click();

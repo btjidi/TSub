@@ -1304,6 +1304,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     const remoteMenu = wrapper.get('[data-testid="deployment-remote-trigger"]');
     await remoteMenu.trigger('click');
     expect(remoteMenu.element.parentElement.hasAttribute('open')).toBe(true);
+    expect(wrapper.get('[data-testid="deployment-remote-menu"]').classes()).toEqual(expect.arrayContaining(['left-auto', 'right-0', 'z-[60]']));
     document.body.click();
     await flushPromises();
     expect(remoteMenu.element.parentElement.hasAttribute('open')).toBe(false);
