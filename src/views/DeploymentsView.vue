@@ -58,7 +58,6 @@ const pendingTemplateRemote = ref(false);
 const pendingTemplateAction = ref('update');
 const loading = ref(false);
 const defaultsLoading = ref(false);
-const globalOpen = ref(false);
 const runtimeOpen = ref(false);
 const warpSettingsRef = ref(null);
 const edgePermissionLoading = ref(false);
@@ -504,13 +503,11 @@ function updateCore() {
 }
 async function updateOutbound(inbound) {
   if (!effective(inbound, 'outbound').startsWith('warp')) return;
-  globalOpen.value = true;
   await nextTick();
   warpSettingsRef.value?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
 }
 function updateCertificateMode() {
-  if (global.certificate.mode !== 'self-signed') globalOpen.value = true;
-  else syncSelfSignedTlsServerNames();
+  if (global.certificate.mode === 'self-signed') syncSelfSignedTlsServerNames();
 }
 function addInbound() {
   if (form.inbounds.length >= 20) return toast.showToast(t('deployments.errors.maxInbounds'), 'warning');
@@ -546,7 +543,6 @@ function edgeReasonText(inbound) {
 async function focusControl(id, inbound = null) {
   if (inbound) inbound.expanded = true;
   if (['deployment-resource-tier', 'deployment-core-channel', 'agent-poll-interval', 'control-command-input', 'node-name-mode', 'global-profile', 'global-firewall-mode'].includes(id)) runtimeOpen.value = true;
-  if (['global-acme-email', 'global-certificate-api-token'].includes(id)) globalOpen.value = true;
   await nextTick();
   const element = document.getElementById(id);
   element?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
@@ -711,7 +707,6 @@ async function useCloudflareDnsCertificate() {
   if (!global.certificate.apiToken && global.edge.cloudflare.apiToken && global.edge.cloudflare.apiToken !== '********') {
     global.certificate.apiToken = global.edge.cloudflare.apiToken;
   }
-  globalOpen.value = true;
   await nextTick();
   await focusControl('global-acme-email');
 }
@@ -800,7 +795,6 @@ function hydrateGlobal(value) {
   next.protocolDefaults = clone(value?.protocolDefaults || {});
   replaceReactive(global, next);
   form.hostname = next.deployment.hostname || '';
-  globalOpen.value = next.certificate.mode !== 'self-signed';
   runtimeOpen.value = false;
 }
 
@@ -879,7 +873,6 @@ function hydrateDeploymentTemplate(payload, mode) {
   preparedUpdateTargetId.value = mode === 'update' ? (deployment.id || '') : '';
   templateConfigRevision.value = Number(payload.configRevision || deployment.configRevision || 1);
   retainedSecrets.value = payload.retainedSecrets === true;
-  globalOpen.value = next.certificate.mode !== 'self-signed';
   runtimeOpen.value = false;
   activeTab.value = 'generator';
 }
@@ -1480,12 +1473,19 @@ onBeforeUnmount(() => {
 
           <section data-testid="deployment-global-settings" class="deployment-surface order-3 overflow-hidden">
             <div class="space-y-3 p-3 sm:p-4">
-              <div class="flex items-center justify-between gap-3"><h2 class="text-sm font-semibold">{{ t('deployments.globalConfig') }}</h2><button type="button" data-testid="deployment-global-toggle" class="deploy-btn-neutral flex min-h-9 items-center gap-1 border px-3 text-sm" :aria-expanded="globalOpen" @click="globalOpen = !globalOpen"><span>{{ t('deployments.moreSettings') }}</span><svg data-testid="deployment-global-toggle-icon" aria-hidden="true" class="h-4 w-4 shrink-0 transition-transform" :class="globalOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg></button></div>
+              <h2 class="text-sm font-semibold">{{ t('deployments.globalConfig') }}</h2>
               <div data-testid="deployment-core-settings" class="grid grid-cols-2 gap-2.5 sm:gap-3">
                 <div class="min-w-0 text-sm"><DeploymentHelpLabel for-id="global-runtime-core" :label="t('deployments.fields.core')" :help="t('deployments.help.core')" :open="deploymentInfoPopoverKey === generatorHelpKey('core')" test-id="global-core-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('core'), value)" /><select id="global-runtime-core" v-model="global.runtime.core" data-testid="global-runtime-core" class="mt-1 w-full border bg-transparent px-2 py-2" @change="updateCore"><option value="auto">{{ t('deployments.options.autoCore') }}</option><option value="xray">Xray</option><option value="sing-box">sing-box</option></select></div>
                 <div class="min-w-0 text-sm"><DeploymentHelpLabel for-id="global-certificate-mode" :label="t('deployments.fields.certificateMode')" :help="t('deployments.help.certificateMode')" :open="deploymentInfoPopoverKey === generatorHelpKey('certificate-mode')" test-id="certificate-mode-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('certificate-mode'), value)" /><select id="global-certificate-mode" v-model="global.certificate.mode" data-testid="global-certificate-mode" class="mt-1 w-full border bg-transparent px-2 py-2" @change="updateCertificateMode"><option value="self-signed">{{ t('deployments.options.selfSigned') }}</option><option value="existing">{{ t('deployments.options.existingCertificate') }}</option><option value="acme-http01">ACME HTTP-01</option><option value="cloudflare-dns01">Cloudflare DNS-01</option></select></div>
               </div>
-              <div class="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
+              <div v-if="global.certificate.mode !== 'self-signed'" data-testid="deployment-certificate-settings" class="grid gap-2.5 border-t pt-3 sm:grid-cols-2 sm:gap-3">
+                <label v-if="['acme-http01','cloudflare-dns01'].includes(global.certificate.mode)" class="text-sm" for="global-acme-email">{{ t('deployments.fields.acmeEmail') }}<input id="global-acme-email" v-model="global.certificate.email" type="email" class="mt-1 w-full border bg-transparent px-2 py-2" /></label>
+                <label v-if="global.certificate.mode === 'cloudflare-dns01'" class="text-sm" for="global-certificate-api-token">{{ t('deployments.fields.cloudflareApiToken') }}<SecretInput v-model="global.certificate.apiToken" class="mt-1" input-id="global-certificate-api-token" :placeholder="retainedSecrets ? t('deployments.placeholders.retainOriginalSecret') : ''" /></label>
+                <label v-if="global.certificate.mode === 'existing'" class="text-sm">{{ t('deployments.fields.certificatePath') }}<input v-model="global.certificate.certificatePath" data-testid="global-certificate-path" class="mt-1 w-full border bg-transparent px-2 py-2" /></label>
+                <label v-if="global.certificate.mode === 'existing'" class="text-sm">{{ t('deployments.fields.keyPath') }}<SecretInput v-model="global.certificate.keyPath" class="mt-1" input-testid="global-certificate-key-path" /></label>
+              </div>
+              <div data-testid="deployment-shared-credentials" class="grid gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
+                <label class="text-sm sm:col-span-2 lg:col-span-1">{{ t('deployments.fields.username') }}<input v-model="global.credentials.username" data-testid="global-username" class="mt-1 w-full border bg-transparent px-2 py-2" /></label>
                 <div class="min-w-0 text-sm"><div class="flex items-center justify-between gap-2"><DeploymentHelpLabel for-id="global-uuid" :label="t('deployments.fields.sharedUuid')" :help="t('deployments.help.sharedUuid')" :open="deploymentInfoPopoverKey === generatorHelpKey('shared-uuid')" test-id="shared-uuid-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('shared-uuid'), value)" /><label class="flex shrink-0 items-center gap-1.5 text-xs text-gray-500"><input v-model="global.credentials.sharedUuidEnabled" data-testid="shared-uuid-enabled" type="checkbox" />{{ t('deployments.fields.sharedUuidEnabled') }}</label></div><div class="relative mt-1"><input id="global-uuid" v-model="global.credentials.uuid" data-testid="global-uuid" type="text" autocomplete="off" class="w-full border bg-transparent py-2 pl-2 pr-16 font-mono disabled:cursor-not-allowed disabled:opacity-50" :disabled="!global.credentials.sharedUuidEnabled" :placeholder="retainedSecrets ? t('deployments.placeholders.retainOriginalSecret') : (global.credentials.sharedUuidEnabled ? t('deployments.placeholders.sharedUuid') : t('deployments.placeholders.independentUuid'))" /><button data-testid="generate-global-uuid" type="button" class="absolute inset-y-px right-px border-0 border-l bg-gray-50 px-3 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-900 dark:hover:bg-white/10" :disabled="!global.credentials.sharedUuidEnabled" :title="t('deployments.generateUuid')" @click="generateUuid(global.credentials)">{{ t('deployments.generate') }}</button></div></div>
                 <div class="min-w-0 text-sm"><div class="flex items-center justify-between gap-2"><DeploymentHelpLabel for-id="global-password" :label="t('deployments.fields.sharedPassword')" :help="t('deployments.help.sharedPassword')" :open="deploymentInfoPopoverKey === generatorHelpKey('shared-password')" test-id="shared-password-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('shared-password'), value)" /><label class="flex shrink-0 items-center gap-1.5 text-xs text-gray-500"><input v-model="global.credentials.sharedPasswordEnabled" data-testid="shared-password-enabled" type="checkbox" />{{ t('deployments.fields.sharedPasswordEnabled') }}</label></div><SecretInput v-model="global.credentials.password" class="mt-1" autocomplete="new-password" :disabled="!global.credentials.sharedPasswordEnabled" :placeholder="retainedSecrets ? t('deployments.placeholders.retainOriginalSecret') : (global.credentials.sharedPasswordEnabled ? t('deployments.placeholders.sharedPassword') : t('deployments.placeholders.independentPassword'))" allow-generate input-id="global-password" input-testid="global-password" toggle-testid="toggle-global-password" generate-testid="generate-global-password" @generate="generatePassword(global.credentials)" /></div>
               </div>
@@ -1495,19 +1495,6 @@ onBeforeUnmount(() => {
                 <div class="min-w-0 text-sm"><DeploymentHelpLabel for-id="global-shared-outbound" :label="t('deployments.fields.sharedOutbound')" :help="t('deployments.help.sharedOutbound')" :open="deploymentInfoPopoverKey === generatorHelpKey('shared-outbound')" test-id="shared-outbound-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('shared-outbound'), value)" /><select id="global-shared-outbound" v-model="global.common.outbound" data-testid="global-shared-outbound" class="mt-1 w-full border bg-transparent px-2 py-2"><option value="">{{ t('deployments.options.protocolDefault') }}</option><option v-for="([value,label]) in OUTBOUND_OPTIONS" :key="value" :value="value">{{ label.startsWith('deployments.') ? t(label) : label }}</option></select></div>
                 <div class="col-span-2 min-w-0 text-sm sm:col-span-1"><DeploymentHelpLabel for-id="global-shared-server-name" :label="t('deployments.fields.sharedServerName')" :help="t('deployments.help.sharedServerName')" :open="deploymentInfoPopoverKey === generatorHelpKey('shared-server-name')" test-id="shared-server-name-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('shared-server-name'), value)" /><input id="global-shared-server-name" v-model="global.common.serverName" class="mt-1 w-full border bg-transparent px-2 py-2" :placeholder="t('deployments.placeholders.protocolBuiltin')" @input="updateSharedServerName" /></div>
               </div>
-            </div>
-            <div v-if="globalOpen" data-testid="deployment-global-advanced" class="space-y-3 border-t p-3 sm:space-y-4 sm:p-4 dark:border-white/10">
-              <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <label class="text-sm">{{ t('deployments.fields.username') }}<input v-model="global.credentials.username" class="mt-1 w-full border bg-transparent px-2 py-2" /></label>
-              </div>
-
-              <div class="grid gap-3 border-t pt-4 sm:grid-cols-2 lg:grid-cols-3 dark:border-white/10">
-                <label v-if="['acme-http01','cloudflare-dns01'].includes(global.certificate.mode)" class="text-sm" for="global-acme-email">{{ t('deployments.fields.acmeEmail') }}<input id="global-acme-email" v-model="global.certificate.email" type="email" class="mt-1 w-full border bg-transparent px-2 py-2" /></label>
-                <label v-if="global.certificate.mode === 'cloudflare-dns01'" class="text-sm" for="global-certificate-api-token">{{ t('deployments.fields.cloudflareApiToken') }}<SecretInput v-model="global.certificate.apiToken" class="mt-1" input-id="global-certificate-api-token" :placeholder="retainedSecrets ? t('deployments.placeholders.retainOriginalSecret') : ''" /></label>
-                <label v-if="global.certificate.mode === 'existing'" class="text-sm">{{ t('deployments.fields.certificatePath') }}<input v-model="global.certificate.certificatePath" class="mt-1 w-full border bg-transparent px-2 py-2" /></label>
-                <label v-if="global.certificate.mode === 'existing'" class="text-sm">{{ t('deployments.fields.keyPath') }}<SecretInput v-model="global.certificate.keyPath" class="mt-1" /></label>
-              </div>
-
             </div>
             <div data-testid="deployment-global-actions" class="flex flex-wrap justify-end gap-2 border-t p-4 dark:border-white/10">
               <button data-testid="save-deployment-defaults" type="button" class="deploy-btn-neutral min-h-10 border px-4 text-sm" :disabled="defaultsLoading" @click="saveGlobal">{{ t('deployments.saveSystemDefault') }}</button>

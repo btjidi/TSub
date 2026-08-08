@@ -58,7 +58,9 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.get('[data-testid="vps-subscription-settings"]').classes()).toContain('order-6');
     expect(wrapper.get('[data-testid="deployment-runtime-toggle"]').attributes('aria-expanded')).toBe('false');
     expect(wrapper.get('[data-testid="deployment-runtime-toggle-icon"]').classes()).not.toContain('rotate-180');
-    expect(wrapper.get('[data-testid="deployment-global-toggle-icon"]').classes()).not.toContain('rotate-180');
+    expect(wrapper.find('[data-testid="deployment-global-toggle"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="global-username"]').element.value).toBe('tsub');
+    expect(wrapper.find('[data-testid="deployment-certificate-settings"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="deployment-runtime-settings"]').isVisible()).toBe(false);
     expect(wrapper.get('[data-testid="deployment-global-settings"]').find('[data-testid="agent-poll-interval"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="control-command-input"]').element.value).toBe('tsub');
@@ -160,7 +162,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(advanced.attributes('aria-expanded')).toBe('false');
     expect(wrapper.get('[data-testid="inbound-more-icon-0"]').classes()).not.toContain('rotate-180');
     expect(wrapper.get('[data-testid="inbound-node-name"]').attributes('placeholder')).toContain('部署名称-vless-随机端口');
-    await wrapper.findAll('button').find(button => button.text().includes('更多设置')).trigger('click');
+    await wrapper.get('[data-testid="deployment-runtime-toggle"]').trigger('click');
     expect(wrapper.get('[data-testid="node-name-mode"]').element.value).toBe('deployment-protocol-port');
     const firewallMode = wrapper.get('[data-testid="global-firewall-mode"]');
     expect(firewallMode.element.value).toBe('true');
@@ -168,6 +170,31 @@ describe('TSub Proxy simplified deployment generator', () => {
     await firewallMode.setValue('false');
     expect(firewallMode.element.value).toBe('false');
     expect(wrapper.html()).not.toContain('mt-32');
+  });
+
+  it('shows certificate inputs next to the selected certificate strategy', async () => {
+    wrapper = mountView();
+    await flushPromises();
+
+    const certificateMode = wrapper.get('[data-testid="global-certificate-mode"]');
+    expect(wrapper.find('[data-testid="deployment-certificate-settings"]').exists()).toBe(false);
+
+    await certificateMode.setValue('acme-http01');
+    expect(wrapper.get('[data-testid="deployment-certificate-settings"]').exists()).toBe(true);
+    expect(wrapper.find('#global-acme-email').exists()).toBe(true);
+    expect(wrapper.find('#global-certificate-api-token').exists()).toBe(false);
+
+    await certificateMode.setValue('cloudflare-dns01');
+    expect(wrapper.find('#global-acme-email').exists()).toBe(true);
+    expect(wrapper.find('#global-certificate-api-token').exists()).toBe(true);
+
+    await certificateMode.setValue('existing');
+    expect(wrapper.find('#global-acme-email').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="global-certificate-path"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="global-certificate-key-path"]').exists()).toBe(true);
+
+    await certificateMode.setValue('self-signed');
+    expect(wrapper.find('[data-testid="deployment-certificate-settings"]').exists()).toBe(false);
   });
 
   it('shows accessible generator help on preview or click and keeps one popover open', async () => {

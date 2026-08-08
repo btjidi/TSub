@@ -67,6 +67,8 @@ for (const viewport of [
     await expect(page.getByTestId('control-command-input')).toHaveValue('tsub');
     await expect(page.getByText('资源与 Agent', { exact: true })).toBeVisible();
     await expect(page.getByText('协议全局配置', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('deployment-global-toggle')).toHaveCount(0);
+    await expect(page.getByTestId('global-username')).toBeVisible();
     await expect(page.getByText('CDN、Argo 与 WARP', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '一次性部署命令' })).toBeVisible();
     await expect(page.getByTestId('deployment-submit')).toHaveText('生成安装命令');
@@ -111,7 +113,7 @@ for (const viewport of [
     } else {
       await expect(commandPanel).toHaveCSS('position', 'static');
     }
-    const neutralButton = page.getByTestId('deployment-global-settings').getByRole('button', { name: /更多设置/ });
+    const neutralButton = page.getByTestId('save-deployment-defaults');
     const neutralBefore = await neutralButton.evaluate(element => getComputedStyle(element).backgroundColor);
     if (viewport.width >= 1024) {
       await neutralButton.hover();
