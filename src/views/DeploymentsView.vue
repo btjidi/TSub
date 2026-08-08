@@ -831,8 +831,8 @@ function hydrateDeploymentTemplate(payload, mode) {
   next.deployment.namePrefix = config.subscription?.namePrefix || 'TSub';
   next.deployment.nodeNameMode = payload.editor?.nodeNameMode || 'deployment-protocol-port';
   next.deployment.addressMode = config.subscription?.addressMode || 'auto';
-  next.deployment.nodeGroup = deployment.nodeGroup || '';
-  next.deployment.profileId = deployment.profileId || '';
+  next.deployment.nodeGroup = mode === 'install' ? '' : (deployment.nodeGroup || '');
+  next.deployment.profileId = mode === 'install' ? '' : (deployment.profileId || '');
   const server = config.subscription?.server || {};
   next.subscriptionServer.enabled = server.enabled === true;
   next.subscriptionServer.port = server.port || '';

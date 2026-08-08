@@ -847,7 +847,7 @@ describe('TSub Proxy simplified deployment generator', () => {
   it('loads an existing deployment for update, reuses it safely, and exposes uninstall mode', async () => {
     const deployment = {
       id: 'deploy-template', name: 'Singapore Edge', schemaVersion: 2, configRevision: 4, status: 'succeeded',
-      nodeGroup: 'Singapore', profileId: '', configSummary: { runtime: { core: 'xray' }, protocols: [{ protocol: 'vless', port: 443 }] }
+      nodeGroup: 'Singapore', profileId: 'profile-template', configSummary: { runtime: { core: 'xray' }, protocols: [{ protocol: 'vless', port: 443 }] }
     };
     const template = {
       deployment, configRevision: 4, retainedSecrets: true,
@@ -870,6 +870,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     getDeploymentTemplate.mockResolvedValue({ success: true, data: template });
     createDeploymentCommand.mockResolvedValue({ data: { command: 'update command', wgetCommand: 'update wget', expiresAt: '' } });
     createDeployment.mockResolvedValue({ data: { deployment: { id: 'deploy-clone' }, command: 'install command', wgetCommand: 'install wget', expiresAt: '' } });
+    useDataStore().profiles = [{ id: 'profile-template', name: 'Template Profile' }];
     wrapper = mountView();
     await flushPromises();
 
@@ -932,6 +933,8 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.get('[data-testid="deployment-mode-update"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('[data-testid="target-deployment-select"]').element.value).toBe('deploy-template');
     expect(wrapper.find('input[placeholder="HK Edge"]').element.value).toBe('Singapore Edge');
+    expect(wrapper.get('[data-testid="global-node-group"]').element.value).toBe('Singapore');
+    expect(wrapper.get('[data-testid="global-profile"]').element.value).toBe('profile-template');
     await wrapper.findAll('button').find(button => button.text().includes('更多') && !button.text().includes('设置')).trigger('click');
     expect(wrapper.get('[data-testid="inbound-uuid"]').element.value).toBe('');
     expect(wrapper.get('[data-testid="inbound-uuid"]').attributes('placeholder')).toBe('留空沿用原部署值');
@@ -950,6 +953,8 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.get('[data-testid="deployment-mode-install"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('[data-testid="reuse-config-notice"]').text()).toContain('创建一条全新部署记录');
     expect(wrapper.find('input[placeholder="HK Edge"]').element.value).toBe('');
+    expect(wrapper.get('[data-testid="global-node-group"]').element.value).toBe('');
+    expect(wrapper.get('[data-testid="global-profile"]').element.value).toBe('');
     expect(wrapper.get('[data-testid="inbound-node-name"]').element.value).toBe('');
     expect(wrapper.find('[data-testid="edge-hostname"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="warp-settings"]').text()).not.toContain('warp-peer');
@@ -961,6 +966,8 @@ describe('TSub Proxy simplified deployment generator', () => {
     await flushPromises();
     expect(createDeployment).toHaveBeenLastCalledWith(expect.objectContaining({
       name: 'Tokyo Edge',
+      nodeGroup: '',
+      profileId: '',
       cloneFromDeploymentId: 'deploy-template',
       resetInheritedNodeNames: true,
       config: expect.objectContaining({

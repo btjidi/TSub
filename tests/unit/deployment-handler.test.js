@@ -1202,7 +1202,10 @@ describe('TSub V2 deployment handler', () => {
   it('clones node and subscription credentials while rotating machine-only secrets', async () => {
     const env = createEnv();
     const source = await createAndBootstrap(env, config({
-      defaults: { tunnel: { mode: 'named', hostname: 'legacy.example.com', token: 'legacy-tunnel-token-secret' } },
+      defaults: {
+        deployment: { nodeGroup: 'Default Group', profileId: 'profile-1' },
+        tunnel: { mode: 'named', hostname: 'legacy.example.com', token: 'legacy-tunnel-token-secret' }
+      },
       edge: {
         mode: 'disabled', hostname: 'old-edge.example.com', endpoints: [{ id: 'edge-1', label: 'Preferred', address: '198.51.100.8' }],
         cloudflare: { accountId: 'a'.repeat(32), zoneId: 'b'.repeat(32), apiToken: 'cloudflare-edit-token' },
@@ -1216,11 +1219,12 @@ describe('TSub V2 deployment handler', () => {
     const sourceNodeName = template.config.inbounds[0].name;
     const cloned = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', {
       name: 'HK Clone', cloneFromDeploymentId: sourceId, configRevision: template.configRevision,
-      resetInheritedNodeNames: true, config: template.config
+      resetInheritedNodeNames: true, nodeGroup: '', profileId: '', config: template.config
     }), env, '/deployments');
     expect(cloned.status).toBe(201);
     const cloneBody = await cloned.json();
     const cloneRecord = env.TSUB_KV.dump('tsub_deployments_v2').find(item => item.id === cloneBody.data.deployment.id);
+    expect(cloneRecord).toMatchObject({ nodeGroup: '', profileId: '' });
     const cloneConfig = await decryptDeploymentConfig(cloneRecord.encryptedConfig, env);
     expect(cloneConfig.edge).toMatchObject({
       mode: 'disabled', hostname: '', endpoints: [{ id: 'edge-1', label: 'Preferred', address: '198.51.100.8', port: null }],

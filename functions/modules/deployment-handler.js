@@ -1907,9 +1907,16 @@ export async function handleDeploymentsRequest(request, env, path) {
     }
     catch (error) { return createErrorResponse(error.code || error.message, error.status || (/DEPLOYMENT_SECRET_KEY|资产|版本环境变量|PINNED_CORE_MANIFEST|Pinned 清单/.test(error.message) ? 503 : 400)); }
     const timestamp = nowIso();
+    const clonedDeployment = Boolean(body.cloneFromDeploymentId);
+    const nodeGroup = clonedDeployment && body.nodeGroup !== undefined
+      ? body.nodeGroup
+      : (body.nodeGroup || defaults.deployment.nodeGroup || name);
+    const profileId = clonedDeployment && body.profileId !== undefined
+      ? body.profileId
+      : (body.profileId || defaults.deployment.profileId || '');
     const deployment = {
-      id: randomId('deploy'), schemaVersion: 2, configRevision: 1, name, nodeGroup: String(body.nodeGroup || defaults.deployment.nodeGroup || name).trim().slice(0, 120),
-      profileId: String(body.profileId || defaults.deployment.profileId || '').trim().slice(0, 160), configSummary: summarizeConfig(publicV2Config(config)), encryptedConfig,
+      id: randomId('deploy'), schemaVersion: 2, configRevision: 1, name, nodeGroup: String(nodeGroup).trim().slice(0, 120),
+      profileId: String(profileId).trim().slice(0, 160), configSummary: summarizeConfig(publicV2Config(config)), encryptedConfig,
       editorConfig: editorConfigFromDefaults(defaults, requestConfig),
       status: 'pending', nodeCount: 0, runtime: RUNTIME_MANIFEST, createdAt: timestamp, updatedAt: timestamp, lastSyncAt: null, lastError: ''
     };

@@ -476,6 +476,8 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
     await page.getByRole('button', { name: '复用配置' }).click();
     await expect(page.getByTestId('deployment-mode-install')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('reuse-config-notice')).toContainText('创建一条全新部署记录');
+    await expect(page.getByTestId('global-node-group')).toHaveValue('');
+    await expect(page.getByTestId('global-profile')).toHaveValue('');
 
     await page.getByTestId('deployment-mode-uninstall').click();
     await page.getByTestId('target-deployment-select').selectOption('deploy-e2e');
