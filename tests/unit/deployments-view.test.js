@@ -129,6 +129,16 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.get('[data-testid="inbound-uuid"]').attributes('placeholder')).toBe('留空为当前入站独立生成 UUID');
     expect(wrapper.find('input[placeholder="HK Edge"]').classes()).toContain('keep-square');
     expect(wrapper.get('[data-testid="inbound-port"]').classes()).not.toContain('keep-square');
+    const sharedOptions = wrapper.get('[data-testid="deployment-shared-options"]');
+    expect(sharedOptions.classes()).toEqual(expect.arrayContaining(['grid-cols-6', 'lg:grid-cols-5']));
+    expect(wrapper.find('[data-testid="deployment-shared-protocol-settings"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="global-shared-transport-shell"]').classes()).toContain('deployment-select-shell');
+    const sharedTransportChevron = wrapper.get('[data-testid="global-shared-transport-shell"] [data-testid="deployment-select-chevron"]');
+    expect(sharedTransportChevron.classes()).not.toContain('rotate-180');
+    await wrapper.get('[data-testid="global-shared-transport"]').trigger('pointerdown');
+    expect(sharedTransportChevron.classes()).toContain('rotate-180');
+    await wrapper.get('[data-testid="global-shared-transport"]').trigger('change');
+    expect(sharedTransportChevron.classes()).not.toContain('rotate-180');
     const inboundGrid = wrapper.get('[data-testid="inbound-basic-row"]').classes().join(' ');
     expect(inboundGrid).toContain('minmax(104px,0.8fr)');
     expect(inboundGrid).toContain('minmax(80px,0.45fr)');

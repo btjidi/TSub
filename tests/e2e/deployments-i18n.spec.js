@@ -145,6 +145,21 @@ for (const viewport of [
     expect(edgeBox.y - (globalBox.y + globalBox.height)).toBeLessThanOrEqual(24);
     expect(inboundHeaderBox.y - (edgeBox.y + edgeBox.height)).toBeLessThanOrEqual(24);
     expect(subscriptionBox.y - (inboundHeaderBox.y + inboundHeaderBox.height)).toBeLessThanOrEqual(24);
+    const sharedTransportBox = await page.getByTestId('global-shared-transport').boundingBox();
+    const sharedTlsBox = await page.getByTestId('global-shared-tls').boundingBox();
+    const sharedOutboundBox = await page.getByTestId('global-shared-outbound').boundingBox();
+    const sharedServerNameBox = await page.locator('#global-shared-server-name').boundingBox();
+    const globalUsernameBox = await page.getByTestId('global-username').boundingBox();
+    if (viewport.width < 1024) {
+      expect(Math.max(sharedTransportBox.y, sharedTlsBox.y, sharedOutboundBox.y) - Math.min(sharedTransportBox.y, sharedTlsBox.y, sharedOutboundBox.y)).toBeLessThanOrEqual(2);
+      expect(Math.abs(sharedServerNameBox.y - globalUsernameBox.y)).toBeLessThanOrEqual(2);
+      expect(sharedServerNameBox.y).toBeGreaterThan(sharedTransportBox.y + sharedTransportBox.height);
+    }
+    expect(Number.parseFloat(await page.getByTestId('global-shared-transport').evaluate(element => getComputedStyle(element).paddingRight))).toBeGreaterThanOrEqual(32);
+    await page.getByTestId('global-shared-transport').dispatchEvent('pointerdown');
+    await expect(page.getByTestId('global-shared-transport-shell').getByTestId('deployment-select-chevron')).toHaveClass(/rotate-180/);
+    await page.getByTestId('global-shared-transport').dispatchEvent('change');
+    await expect(page.getByTestId('global-shared-transport-shell').getByTestId('deployment-select-chevron')).not.toHaveClass(/rotate-180/);
     if (viewport.width >= 1024) {
       const protocolBox = await page.getByTestId('inbound-protocol').boundingBox();
       const portBox = await page.getByTestId('inbound-port').boundingBox();
