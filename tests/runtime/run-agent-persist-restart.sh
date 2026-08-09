@@ -14,11 +14,7 @@ TSUB_BIN="$TEST_TMP/bin"
 TSUB_ETC="$TEST_TMP/etc"
 mkdir -p "$TSUB_TMP" "$TSUB_BIN" "$TSUB_ETC"
 TSUB_CONFIG="$TEST_TMP/bootstrap.conf"
-cat >"$TSUB_CONFIG" <<'EOF'
-agent_mode=remote
-agent_controller_url=https://controller.example/api/deploy/agent
-agent_deployment_id=deploy-test
-EOF
+printf 'agent_mode=remote\nagent_controller_url=https://controller.example/api/deploy/agent\nagent_deployment_id=deploy-test\ntunnel_1_target_scheme=https' >"$TSUB_CONFIG"
 cat >"$TSUB_ETC/runtime.conf" <<'EOF'
 agent_mode=none
 agent_controller_url=https://controller.example/api/deploy/agent
@@ -53,6 +49,8 @@ grep -q '^agent_token_b64=cGVyc2lzdGVkLXRva2Vu$' "$TSUB_ETC/runtime.conf"
 [ "$(grep -c '^agent_mode=' "$TSUB_ETC/runtime.conf")" -eq 1 ]
 [ "$(grep -c '^agent_token_b64=' "$TSUB_ETC/runtime.conf")" -eq 1 ]
 grep -q '^agent_mode=remote$' "$TSUB_ETC/runtime.conf"
+grep -q '^tunnel_1_target_scheme=https$' "$TSUB_ETC/runtime.conf"
+! grep -q 'httpsagent_mode=' "$TSUB_ETC/runtime.conf"
 
 cat >"$TSUB_CONFIG" <<'EOF'
 schema_version=2

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='2.4.23'
+TSUB_RUNTIME_VERSION='2.4.24'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -3470,6 +3470,7 @@ persist_runtime() {
   fi
   sed '/^callback_url=/d; /^callback_token_b64=/d; /^agent_mode=/d; /^agent_controller_url=/d; /^agent_deployment_id=/d; /^agent_token_b64=/d' \
     "$TSUB_CONFIG" >"$TSUB_TMP/runtime.conf"
+  printf '\n' >>"$TSUB_TMP/runtime.conf"
   for persist_agent_key in agent_mode agent_controller_url agent_deployment_id agent_token_b64; do
     persist_agent_value=$(sed -n "s/^${persist_agent_key}=//p" "$persist_agent_source" | awk 'NF { value=$0 } END { print value }')
     [ -z "$persist_agent_value" ] || printf '%s=%s\n' "$persist_agent_key" "$persist_agent_value" >>"$TSUB_TMP/runtime.conf"
