@@ -198,6 +198,14 @@ describe('TSub V2 deployment handler', () => {
     const bootstrap = await handleDeployBootstrap(new Request('https://tsub.example/api/deploy/bootstrap', { headers: { Authorization: `Bearer ${bootstrapToken}` } }), env);
     const script = await bootstrap.text();
     const pushToken = atob(configValue(script, 'push_token_b64'));
+    const callbackToken = atob(configValue(script, 'callback_token_b64'));
+    const certificatePin = 'ab'.repeat(32);
+    const spkiPin = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=';
+    const pinnedTuic = `tuic://79411d85-b0dc-4cd2-b46c-01789a18c650:secret@198.51.100.42:51235?pcs=${certificatePin}&spki=${encodeURIComponent(spkiPin)}#Pinned-TUIC`;
+    expect((await handleDeployEvents(new Request('https://tsub.example/api/deploy/events', {
+      method: 'POST', headers: { Authorization: `Bearer ${callbackToken}` },
+      body: `status=succeeded\nstage=apply\nsubscriptionReady=true\nsubscriptionNodeCount=1\ncacheNode=${pinnedTuic}\ntrafficBackend=core-singbox`
+    }), env)).status).toBe(200);
     const callback = await handleDeployQuickTunnelCallback(new Request('https://tsub.example/api/deploy/edge/quick', {
       method: 'POST', headers: { Authorization: `Bearer ${pushToken}`, 'Content-Type': 'application/json', Accept: 'text/plain' },
       body: JSON.stringify({ deploymentId, hostname: 'auto-five.trycloudflare.com' })
@@ -206,6 +214,9 @@ describe('TSub V2 deployment handler', () => {
     const nodes = (await callback.text()).trim().split('\n');
     expect(nodes).toHaveLength(5);
     expect(nodes.map(node => node.slice(0, node.indexOf('://')))).toEqual(['vless', 'vmess', 'hysteria2', 'tuic', 'socks5']);
+    expect(nodes.join('\n')).not.toContain('__TSUB_CERT_');
+    expect(nodes.find(node => node.startsWith('hysteria2://'))).toContain(`pinSHA256=${certificatePin}`);
+    expect(nodes.find(node => node.startsWith('tuic://'))).toContain(`pcs=${certificatePin}`);
     expect(nodes[0]).toContain('@auto-five.trycloudflare.com:443');
     expect(JSON.parse(atob(nodes[1].slice('vmess://'.length))).add).toBe('198.51.100.42');
     for (const node of nodes.slice(2)) expect(node).toContain('198.51.100.42');

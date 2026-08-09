@@ -1182,6 +1182,57 @@ function resolveQuickTunnelNodeConfig(config, deployment) {
   return resolveBootstrapConfig(config, fallbackAddress, detectedAddresses);
 }
 
+function validCertificatePins(certificatePin, spkiPin) {
+  if (!/^[0-9a-f]{64}$/i.test(certificatePin) || !/^[A-Za-z0-9+/]{43}=$/.test(spkiPin)) return false;
+  try { return atob(spkiPin).length === 32; } catch { return false; }
+}
+
+function certificatePinsFromNodes(nodeUrls) {
+  for (const value of nodeUrls) {
+    try {
+      let certificatePin = ''; let spkiPin = '';
+      if (/^vmess:\/\//i.test(value)) {
+        const payload = JSON.parse(atob(String(value).slice('vmess://'.length)));
+        certificatePin = String(payload.pcs || payload.pinSHA256 || '');
+        spkiPin = String(payload.spki || '');
+      } else {
+        const node = new URL(String(value));
+        certificatePin = node.searchParams.get('pcs') || node.searchParams.get('pinSHA256') || '';
+        spkiPin = node.searchParams.get('spki') || '';
+      }
+      if (validCertificatePins(certificatePin, spkiPin)) return { certificatePin, spkiPin };
+    } catch { /* inspect the next node */ }
+  }
+  return null;
+}
+
+function applyCertificatePinsToNodes(nodeUrls, pins) {
+  if (!pins) return nodeUrls;
+  const encodedSpki = encodeURIComponent(pins.spkiPin);
+  return nodeUrls.map(value => {
+    if (!String(value).includes('__TSUB_CERT_')) return value;
+    if (/^vmess:\/\//i.test(value)) {
+      try {
+        const payload = atob(String(value).slice('vmess://'.length))
+          .replaceAll('__TSUB_CERT_PIN_SHA256__', pins.certificatePin)
+          .replaceAll('__TSUB_CERT_SPKI_SHA256__', pins.spkiPin);
+        return `vmess://${btoa(payload)}`;
+      } catch { return value; }
+    }
+    return String(value)
+      .replaceAll('__TSUB_CERT_PIN_SHA256__', pins.certificatePin)
+      .replaceAll('__TSUB_CERT_SPKI_SHA256__', encodedSpki);
+  });
+}
+
+async function quickTunnelSnapshotNodes(storage, deployment) {
+  const all = typeof storage.getAllSubscriptions === 'function' ? await storage.getAllSubscriptions() : await readCollection(storage, 'tsub_subscriptions_v1');
+  const source = all.find(item => item.id === `tsub_airport_${deployment.id}`);
+  if (!source) return [];
+  const previous = await readDeploymentSnapshotCache(storage, deployment.id, buildSubscriptionNodeCacheKey(source));
+  return Array.isArray(previous.cache.nodes) ? previous.cache.nodes : [];
+}
+
 export async function handleDeployQuickTunnelCallback(request, env) {
   if (request.method !== 'POST') return createErrorResponse('Method Not Allowed', 405);
   const bearer = parseBearer(request);
@@ -1213,15 +1264,23 @@ export async function handleDeployQuickTunnelCallback(request, env) {
       deployment.edgeHostname = hostname;
     }
     const nodeConfig = resolveQuickTunnelNodeConfig(config, deployment);
-    const nodes = compileNodeUrls(nodeConfig, { edgeHostname: hostname });
-    if (config.subscription?.server?.enabled) {
+    let nodes = compileNodeUrls(nodeConfig, { edgeHostname: hostname });
+    if (nodes.some(node => String(node).includes('__TSUB_CERT_'))) {
+      nodes = applyCertificatePinsToNodes(nodes, certificatePinsFromNodes(await quickTunnelSnapshotNodes(storage, deployment)));
+    }
+    const unresolvedCertificatePins = nodes.some(node => String(node).includes('__TSUB_CERT_'));
+    if (config.subscription?.server?.enabled && !unresolvedCertificatePins) {
       await commitDeploymentSubscriptionSnapshot(storage, deployment, config, nodes, request.url, 'tsub-deployment-quick-tunnel');
-    } else {
+    } else if (!config.subscription?.server?.enabled) {
       applyDeploymentAddressState(deployment, config);
       deployment.nodeCount = (await replaceDeploymentNodes(storage, deployment, nodes)).length;
       deployment.updatedAt = nowIso();
       await writeDeployment(storage, deployment);
       await invalidateDeploymentOutputCaches(storage, deployment, `tsub_airport_${deployment.id}`);
+    } else {
+      applyDeploymentAddressState(deployment, config);
+      deployment.updatedAt = nowIso();
+      await writeDeployment(storage, deployment);
     }
     if (String(request.headers.get('Accept') || '').includes('text/plain')) {
       return new Response(`${nodes.join('\n')}\n`, { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
