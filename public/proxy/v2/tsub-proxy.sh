@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='2.4.24'
+TSUB_RUNTIME_VERSION='2.4.25'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -1201,6 +1201,7 @@ set -eu
 mode=$1; index=$2; tunnel_bin=$3; target_scheme=$4; target_port=$5; callback=$6; deployment=$7
 token_file=$8; nodes_file=$9; hostname_file=${10}; tunnel_pid_file=${11}; tunnel_log=${12}; monitor_pid_file=${13}; monitor_script=${14}; metadata_file=${15}
 stopping=false; tunnel_pid=''; monitor_pid=''
+restart_delay=2
 cleanup_tunnel_children() {
   case "$monitor_pid" in ''|*[!0-9]*) ;; *) kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true ;; esac
   case "$tunnel_pid" in ''|*[!0-9]*) ;; *) kill "$tunnel_pid" 2>/dev/null || true; wait "$tunnel_pid" 2>/dev/null || true ;; esac
@@ -1209,6 +1210,7 @@ cleanup_tunnel_children() {
 stop_tunnel_supervisor() { stopping=true; cleanup_tunnel_children; }
 trap stop_tunnel_supervisor HUP INT TERM
 while [ "$stopping" = false ]; do
+  tunnel_started_at=$(date +%s 2>/dev/null || printf 0)
   : >"$tunnel_log"; chmod 600 "$tunnel_log"
   if [ "$mode" = named ]; then
     TOKEN=$(cat "$token_file")
@@ -1230,7 +1232,16 @@ while [ "$stopping" = false ]; do
   [ "$stopping" = false ] || break
   case "$monitor_pid" in ''|*[!0-9]*) ;; *) kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true ;; esac
   monitor_pid=''; rm -f "$tunnel_pid_file" "$monitor_pid_file"
-  sleep 2
+  sleep "$restart_delay"
+  if [ "$mode" = quick ]; then
+    tunnel_stopped_at=$(date +%s 2>/dev/null || printf 0)
+    tunnel_lifetime=0
+    case "$tunnel_started_at:$tunnel_stopped_at" in *[!0-9:]*) ;; *) tunnel_lifetime=$((tunnel_stopped_at - tunnel_started_at)) ;; esac
+    if [ "$tunnel_lifetime" -ge 60 ]; then restart_delay=2
+    elif [ "$restart_delay" -lt 60 ]; then restart_delay=$((restart_delay * 2)); [ "$restart_delay" -le 60 ] || restart_delay=60
+    fi
+  else restart_delay=2
+  fi
 done
 cleanup_tunnel_children
 EOF

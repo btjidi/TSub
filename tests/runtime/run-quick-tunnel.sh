@@ -36,6 +36,8 @@ ensure_tunnel_binary
 grep -q 'quick-tunnel-monitor.sh' "$TSUB_STATE/start-tunnels.sh"
 grep -q '^umask 077$' "$TSUB_STATE/start-tunnels.sh"
 [ "$(stat -c '%a' "$TSUB_STATE/tunnel-supervisor.sh")" = 700 ]
+grep -q 'restart_delay=2' "$TSUB_STATE/tunnel-supervisor.sh"
+grep -q 'restart_delay=60' "$TSUB_STATE/tunnel-supervisor.sh"
 ! grep -q 'quick-test-token' "$TSUB_STATE/start-tunnels.sh"
 [ "$(stat -c '%a' "$TSUB_STATE/quick-tunnel.token")" = 600 ]
 [ "$(stat -c '%a' "$TSUB_STATE/quick-tunnel.meta")" = 600 ]
@@ -130,7 +132,7 @@ supervisor_pid=$(cat "$TSUB_STATE/tunnel-supervisor-1.pid")
 first_supervised_pid=$(cat "$TSUB_STATE/tunnel-1.pid")
 kill "$first_supervised_pid"
 attempt=0
-while [ "$(cat "$TSUB_STATE/quick-tunnel.hostname" 2>/dev/null || true)" != supervised-2.trycloudflare.com ] && [ "$attempt" -lt 20 ]; do
+while [ "$(cat "$TSUB_STATE/quick-tunnel.hostname" 2>/dev/null || true)" != supervised-2.trycloudflare.com ] && [ "$attempt" -lt 30 ]; do
   attempt=$((attempt + 1)); sleep 1
 done
 [ "$(cat "$TSUB_STATE/quick-tunnel.hostname")" = supervised-2.trycloudflare.com ]

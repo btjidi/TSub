@@ -29,4 +29,4 @@ export const DEPLOYMENT_ACTIONS = [
   ['rollback', 'deployments.actions.rollback'], ['uninstall', 'deployments.actions.uninstall']
 ];
 
-export const RUNTIME_VERSION = '2.4.24';
+export const RUNTIME_VERSION = '2.4.25';
