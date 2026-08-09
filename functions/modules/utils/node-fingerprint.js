@@ -39,7 +39,10 @@ export async function nodeFingerprint(nodeUrl) {
 }
 
 function normalizeIdentityName(value) {
-    const name = String(value || '').trim();
+    const name = String(value || '').trim().replace(
+        /-CDN(?:-[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.trycloudflare\.com)?$/i,
+        '-临时隧道'
+    );
     return name ? name.normalize('NFC') : '';
 }
 

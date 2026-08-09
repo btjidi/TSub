@@ -67,6 +67,35 @@ describe('Profile node selection fingerprints', () => {
     expect(final.nodeSelection.fingerprints).toEqual([await nodeFingerprint(finalNode)]);
   });
 
+  it('migrates legacy Quick Tunnel names to the stable temporary-tunnel name', async () => {
+    const current = 'vless://uuid@new.trycloudflare.com:443#Hong-Kong-vless-51237-%E4%B8%B4%E6%97%B6%E9%9A%A7%E9%81%93';
+    const result = await reconcileNodeSelection(
+      {
+        mode: 'include',
+        fingerprints: [],
+        identities: [
+          { protocol: 'vless', name: 'Hong-Kong-vless-51237-CDN-old-name.trycloudflare.com' },
+          { protocol: 'vmess', name: 'Hong-Kong-vmess-51238-CDN' }
+        ]
+      },
+      [current]
+    );
+    expect(result.matchedCount).toBe(1);
+    expect(result.nodeSelection.identities).toEqual([
+      { protocol: 'vless', name: 'Hong-Kong-vless-51237-临时隧道' }
+    ]);
+    expect(result.nodeSelection.fingerprints).toEqual([await nodeFingerprint(current)]);
+  });
+
+  it('normalizes legacy Quick Tunnel suffixes for regular and VMess nodes', () => {
+    expect(nodeSelectionIdentity('vless://uuid@example.com:443#Node-CDN-random-name.trycloudflare.com')).toEqual({
+      protocol: 'vless', name: 'Node-临时隧道'
+    });
+    const json = JSON.stringify({ v: '2', ps: 'Node-CDN', add: 'example.com', port: '443', id: 'uuid' });
+    const payload = btoa(String.fromCharCode(...new TextEncoder().encode(json)));
+    expect(nodeSelectionIdentity(`vmess://${payload}`)).toEqual({ protocol: 'vmess', name: 'Node-临时隧道' });
+  });
+
   it('normalizes VMess protocol and Unicode display names for identities', () => {
     const json = JSON.stringify({ v: '2', ps: '  Te\u0301st  ', add: 'example.com', port: '443', id: 'uuid' });
     const payload = btoa(String.fromCharCode(...new TextEncoder().encode(json)));

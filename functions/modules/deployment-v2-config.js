@@ -952,6 +952,7 @@ export function compileNodeUrls(config, options = {}) {
   const endpoints = config.edge?.endpoints?.length
     ? config.edge.endpoints
     : (runtimeEdgeHostname ? [{ id: 'edge-hostname', label: '', address: runtimeEdgeHostname, port: null }] : []);
+  const defaultQuickTunnel = config.edge?.mode === 'quick' && !config.edge?.endpoints?.length;
   return config.inbounds.flatMap(item => {
     const directNodes = item.edgeMode === 'only' ? [] : hosts.filter(entry => entry.host).map(entry => compileInboundNode(config, item, entry));
     if (item.edgeMode === 'direct' || config.edge?.mode === 'disabled' || !runtimeEdgeHostname) return directNodes;
@@ -959,7 +960,7 @@ export function compileNodeUrls(config, options = {}) {
       host: endpoint.address,
       port: endpoint.port || (config.edge.mode === 'manual' ? item.port : 443),
       edgeHostname: runtimeEdgeHostname,
-      suffix: `-CDN-${endpoint.label || endpoint.address}`
+      suffix: defaultQuickTunnel ? '-临时隧道' : `-CDN-${endpoint.label || endpoint.address}`
     }, true));
     return [...directNodes, ...edgeNodes];
   });

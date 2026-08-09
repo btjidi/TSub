@@ -472,7 +472,25 @@ describe('schemaVersion 2 compiler', () => {
     expect(config.subscription.server.pushEnabled).toBe(true);
     expect(config.tunnels).toEqual([{ type: 'quick', hostname: '', token: '' }]);
     expect(compileNodeUrls(config)).toEqual([]);
-    expect(compileNodeUrls(config, { edgeHostname: 'random.trycloudflare.com' })).toHaveLength(1);
+    const [quickNode] = compileNodeUrls(config, { edgeHostname: 'random.trycloudflare.com' });
+    expect(quickNode).toBeTruthy();
+    const quickPayload = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(quickNode.slice('vmess://'.length)), character => character.charCodeAt(0))));
+    expect(quickPayload.ps).toMatch(/-临时隧道$/);
+    expect(quickPayload.ps).not.toContain('random.trycloudflare.com');
+  });
+
+  it('keeps custom Quick Tunnel endpoint labels in CDN node names', () => {
+    const config = resolveV2Config({
+      name: '香港',
+      inbounds: [{ id: 'ws-1', protocol: 'vless', port: 51237, transport: 'ws', edgeMode: 'only', tls: { mode: 'none' } }],
+      edge: {
+        mode: 'quick', quickInboundId: 'ws-1',
+        endpoints: [{ id: 'preferred', label: '优选一', address: '198.51.100.10' }]
+      },
+      subscription: { server: { enabled: true, pushEnabled: true } }
+    });
+    const [node] = compileNodeUrls(config, { edgeHostname: 'random.trycloudflare.com' });
+    expect(decodeURIComponent(node.split('#')[1])).toMatch(/-CDN-优选一$/);
   });
 
   it('uses runtime placeholders for automatic WARP identities and masks managed resources', () => {
