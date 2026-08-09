@@ -9,7 +9,7 @@ describe('generated TSub Proxy v2', () => {
     const source = await readFile('public/proxy/v2/tsub-proxy.sh');
     expect(source.byteLength).toBeLessThanOrEqual(512 * 1024);
     expect(createHash('sha256').update(source).digest('hex')).toBe(RUNTIME_MANIFEST.sha256);
-    expect(RUNTIME_MANIFEST.version).toBe('2.4.22');
+    expect(RUNTIME_MANIFEST.version).toBe('2.4.23');
     expect(RUNTIME_VERSION).toBe(RUNTIME_MANIFEST.version);
     expect(source.toString()).toContain(`TSUB_RUNTIME_VERSION='${RUNTIME_VERSION}'`);
     expect(source.toString()).toContain('main "$@"');
@@ -189,6 +189,7 @@ describe('generated TSub Proxy v2', () => {
     const service = await readFile('runtime/v2/modules/40-service.sh', 'utf8');
     expect(service).toContain('chown "$TSUB_SERVICE_USER:$service_group" "$TSUB_STATE/quick-tunnel-monitor.sh"');
     expect(service).toContain('chmod 700 "$TSUB_STATE/quick-tunnel-monitor.sh"');
+    expect(service).toContain('"$TSUB_STATE/quick-tunnel.meta"');
     expect(service).toContain('"$TSUB_STATE/quick-tunnel.token"');
     expect(service).toContain('"$TSUB_STATE"/quick-tunnel-monitor-*.pid');
   });

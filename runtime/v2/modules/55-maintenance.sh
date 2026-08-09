@@ -85,5 +85,5 @@ remove_maintenance() {
     crontab -l 2>/dev/null | grep -v 'tsub-proxy.sh repair' >"$cron_file" || true
     crontab "$cron_file" 2>/dev/null || true
   fi
-  rm -f "$TSUB_ETC/runtime.conf" "$TSUB_BIN/tsub-proxy.sh"
+  rm -f "$TSUB_ETC/runtime.conf" "$TSUB_BIN/tsub-proxy.sh" "$TSUB_STATE/quick-tunnel.meta" "$TSUB_STATE/quick-tunnel.hostname.status"
 }

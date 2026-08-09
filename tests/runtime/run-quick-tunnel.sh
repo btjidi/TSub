@@ -29,6 +29,7 @@ quick_tunnel_callback_url=https://controller.example/api/deploy/edge/quick
 deployment_id=deploy-quick
 config_revision=7
 push_generation=quick-generation
+agent_token_b64=c2Vuc2l0aXZlLWFnZW50LXRva2Vu
 EOF
 download_file() { cp "$1" "$2"; }
 ensure_tunnel_binary
@@ -37,6 +38,12 @@ grep -q '^umask 077$' "$TSUB_STATE/start-tunnels.sh"
 [ "$(stat -c '%a' "$TSUB_STATE/tunnel-supervisor.sh")" = 700 ]
 ! grep -q 'quick-test-token' "$TSUB_STATE/start-tunnels.sh"
 [ "$(stat -c '%a' "$TSUB_STATE/quick-tunnel.token")" = 600 ]
+[ "$(stat -c '%a' "$TSUB_STATE/quick-tunnel.meta")" = 600 ]
+grep -q '^config_revision=7$' "$TSUB_STATE/quick-tunnel.meta"
+grep -q '^push_generation=quick-generation$' "$TSUB_STATE/quick-tunnel.meta"
+! grep -q 'agent_token\|sensitive-agent-token' "$TSUB_STATE/quick-tunnel.meta"
+grep -q "$TSUB_STATE/quick-tunnel.meta" "$TSUB_STATE/start-tunnels.sh"
+! grep -q "$TSUB_CONFIG" "$TSUB_STATE/start-tunnels.sh"
 quick_hash=$(tunnel_config_hash)
 sed -i 's/^tunnel_1_type=quick$/tunnel_1_type=named/' "$TSUB_CONFIG"
 [ "$(tunnel_config_hash)" != "$quick_hash" ]
@@ -66,7 +73,7 @@ printf '%s\n' "$primary_tunnel_pid" >"$TSUB_STATE/tunnel-1.pid"
 printf '%s\n' 'INF route https://valid-quick.trycloudflare.com ready' >"$TSUB_STATE/tunnel-1.log"
 PATH="$TEST_TMP/fake-bin:$PATH" "$TSUB_STATE/quick-tunnel-monitor.sh" 1 \
   'https://controller.example/api/deploy/edge/quick' deploy-quick "$TSUB_STATE/tunnel-1.pid" "$TSUB_STATE/tunnel-1.log" \
-  "$TSUB_STATE/quick-tunnel.token" "$TSUB_STATE/nodes.txt" "$TSUB_STATE/quick-tunnel.hostname" "$TSUB_CONFIG" &
+  "$TSUB_STATE/quick-tunnel.token" "$TSUB_STATE/nodes.txt" "$TSUB_STATE/quick-tunnel.hostname" "$TSUB_STATE/quick-tunnel.meta" &
 monitor_pid=$!
 attempt=0
 while [ ! -s "$TSUB_STATE/quick-tunnel.hostname" ] && [ "$attempt" -lt 20 ]; do attempt=$((attempt + 1)); sleep 1; done
@@ -83,6 +90,21 @@ while ! grep -q '^vless://' "$TSUB_STATE/nodes.txt" && [ "$attempt" -lt 20 ]; do
 grep -q '^vless://' "$TSUB_STATE/nodes.txt"
 [ "$(awk 'NF { count++ } END { print count + 0 }' "$TSUB_STATE/nodes.txt")" = 5 ]
 [ -s "$TSUB_STATE/quick-tunnel.hostname.nodes.cksum" ]
+
+printf '%s\n' 'preserved while metadata is invalid' >"$TSUB_STATE/nodes.txt"
+printf '%s\n' 'config_revision=invalid' >"$TSUB_STATE/quick-tunnel.meta"
+attempt=0
+while [ "$(cat "$TSUB_STATE/quick-tunnel.hostname.status" 2>/dev/null || true)" != metadata_unavailable ] && [ "$attempt" -lt 20 ]; do attempt=$((attempt + 1)); sleep 1; done
+[ "$(cat "$TSUB_STATE/nodes.txt")" = 'preserved while metadata is invalid' ]
+[ "$(cat "$TSUB_STATE/quick-tunnel.hostname.status")" = metadata_unavailable ]
+printf 'config_revision=8\npush_generation=next-generation\n' >"$TSUB_STATE/quick-tunnel.meta"
+attempt=0
+while ! grep -q '^vless://' "$TSUB_STATE/nodes.txt" && [ "$attempt" -lt 20 ]; do attempt=$((attempt + 1)); sleep 1; done
+grep -q '"configRevision":8' "$QUICK_PAYLOAD_FILE"
+grep -q '"pushGeneration":"next-generation"' "$QUICK_PAYLOAD_FILE"
+grep -q '^vless://' "$TSUB_STATE/nodes.txt"
+grep -q '\[quick-tunnel\] metadata_unavailable' "$TSUB_STATE/runtime.log"
+grep -q '\[quick-tunnel\] ready' "$TSUB_STATE/runtime.log"
 kill "$monitor_pid" 2>/dev/null || true
 wait "$monitor_pid" 2>/dev/null || true
 
@@ -130,8 +152,10 @@ wait "$stale_monitor_pid" 2>/dev/null || true
 [ ! -e "$TSUB_STATE/quick-tunnel-monitor-9.pid" ]
 [ ! -e "$TSUB_STATE/quick-tunnel.hostname" ]
 [ ! -e "$TSUB_STATE/quick-tunnel.hostname.nodes.cksum" ]
+[ ! -e "$TSUB_STATE/quick-tunnel.hostname.status" ]
 
 sed -i 's/^tunnel_count=1$/tunnel_count=0/' "$TSUB_CONFIG"
 ensure_tunnel_binary
 ! grep -q 'nohup .*cloudflared' "$TSUB_STATE/start-tunnels.sh"
+[ ! -e "$TSUB_STATE/quick-tunnel.meta" ]
 printf 'Quick Tunnel tests passed\n'

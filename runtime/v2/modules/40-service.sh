@@ -53,10 +53,10 @@ prepare_service_identity() {
     chgrp -R "$service_group" "$TSUB_STATE/certificates" 2>/dev/null || true
     find "$TSUB_STATE/certificates" -type d -exec chmod 750 {} \; 2>/dev/null || true
   fi
-  for file in "$TSUB_STATE"/tunnel-*.token "$TSUB_STATE/quick-tunnel.token" "$TSUB_STATE"/certificates/certificates/*; do
+  for file in "$TSUB_STATE"/tunnel-*.token "$TSUB_STATE/quick-tunnel.token" "$TSUB_STATE/quick-tunnel.meta" "$TSUB_STATE"/certificates/certificates/*; do
     [ -e "$file" ] && chown "$TSUB_SERVICE_USER:$service_group" "$file" 2>/dev/null || true
   done
-  for file in "$TSUB_STATE"/tunnel-*.log "$TSUB_STATE"/tunnel-*.pid "$TSUB_STATE"/tunnel-supervisor-*.pid "$TSUB_STATE"/quick-tunnel-monitor-*.pid "$TSUB_STATE/quick-tunnel.hostname" "$TSUB_STATE/quick-tunnel.hostname.nodes.cksum"; do
+  for file in "$TSUB_STATE"/tunnel-*.log "$TSUB_STATE"/tunnel-*.pid "$TSUB_STATE"/tunnel-supervisor-*.pid "$TSUB_STATE"/quick-tunnel-monitor-*.pid "$TSUB_STATE/quick-tunnel.hostname" "$TSUB_STATE/quick-tunnel.hostname.nodes.cksum" "$TSUB_STATE/quick-tunnel.hostname.status"; do
     [ -e "$file" ] || continue
     chown "$TSUB_SERVICE_USER:$service_group" "$file" 2>/dev/null || true
     chmod 600 "$file" 2>/dev/null || true
