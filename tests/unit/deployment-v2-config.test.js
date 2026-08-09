@@ -41,11 +41,19 @@ describe('schemaVersion 2 compiler', () => {
     expect(urls[0]).toContain('#%E6%96%B0%E5%8A%A0%E5%9D%A1-IPv4');
     expect(urls[1]).toContain('@[2001:db8::10]:51231');
     expect(urls[1]).toContain('#%E6%96%B0%E5%8A%A0%E5%9D%A1-IPv6');
+    expect(compileCoreConfig(dual).inbounds[0].listen).toBe('::');
 
     const auto = resolveV2Config({ inbounds: [{ protocol: 'vless' }] });
-    expect(resolveBootstrapConfig(auto, '', { ipv4: '198.51.100.11', ipv6: '2001:db8::11' }).subscription.hostname).toBe('198.51.100.11');
+    const autoDual = resolveBootstrapConfig(auto, '', { ipv4: '198.51.100.11', ipv6: '2001:db8::11' });
+    expect(autoDual.subscription.hostname).toBe('198.51.100.11');
+    expect(compileCoreConfig(autoDual).inbounds[0].listen).toBe('0.0.0.0');
+    const autoIpv6 = resolveBootstrapConfig(auto, '', { ipv6: '2001:db8::11' });
+    expect(compileCoreConfig(autoIpv6).inbounds[0].listen).toBe('::');
     const ipv6 = resolveV2Config({ defaults: { deployment: { addressMode: 'ipv6' } }, inbounds: [{ protocol: 'vless' }] });
     expect(resolveBootstrapConfig(ipv6, '', { ipv6: '2001:db8::12' }).subscription.hostname).toBe('[2001:db8::12]');
+    expect(compileCoreConfig(ipv6).inbounds[0].listen).toBe('::');
+    const explicitListen = resolveV2Config({ defaults: { deployment: { addressMode: 'ipv6' } }, inbounds: [{ protocol: 'vless', listen: '127.0.0.1' }] });
+    expect(compileCoreConfig(explicitListen).inbounds[0].listen).toBe('127.0.0.1');
     expect(() => resolveBootstrapConfig(ipv6, '', { ipv4: '198.51.100.12' })).toThrow(/IPv6/);
   });
 
@@ -231,7 +239,10 @@ describe('schemaVersion 2 compiler', () => {
     expect(nodes.find(node => node.startsWith('tuic://'))).toContain('sni=www.cloudflare.com');
     expect(nodes.find(node => node.startsWith('tuic://'))).toContain('alpn=h3');
     expect(nodes.find(node => node.startsWith('tuic://'))).not.toContain('sni=tuic.local');
-    expect(compileCoreConfig(config).inbounds.find(item => item.type === 'tuic').tls.alpn).toEqual(['h3']);
+    expect(compileCoreConfig(config).inbounds.find(item => item.type === 'tuic')).toMatchObject({
+      congestion_control: 'bbr',
+      tls: { alpn: ['h3'] }
+    });
   });
 
   it('generates independent UUIDs and an unrelated subscription token when sharing is disabled', () => {

@@ -70,6 +70,37 @@ MATCH,节点选择
         }));
     });
 
+    it('uses the shared sing-box protocol mapping in template output', () => {
+        const spkiHex = '02'.repeat(32);
+        const vmessPayload = btoa(JSON.stringify({
+            v: '2', ps: 'VMess', add: 'vmess.example.invalid', port: '443',
+            id: '11111111-1111-4111-8111-111111111111', aid: '0', scy: 'none',
+            net: 'grpc', path: 'vmess-service', tls: 'tls', sni: 'tls.example.invalid'
+        }));
+        const rendered = renderSingboxFromIniTemplate('[Proxy Group]\n节点选择 = select, VMess, Trojan, HY2, TUIC, DIRECT', {
+            nodeList: [
+                `vmess://${vmessPayload}`,
+                'trojan://password@trojan.example.invalid:443?security=tls&sni=tls.example.invalid&type=grpc&serviceName=trojan-service#Trojan',
+                `hysteria2://password@hy2.example.invalid:443?sni=tls.example.invalid&upmbps=100&downmbps=200&mport=20000-20010&hopInterval=30&allow_insecure=1&spki=${spkiHex}#HY2`,
+                `tuic://22222222-2222-4222-8222-222222222222:password@tuic.example.invalid:443?sni=tls.example.invalid&alpn=h3&congestion_control=bbr&udp_relay_mode=native&allow_insecure=1&spki=${spkiHex}#TUIC`
+            ].join('\n')
+        });
+        const parsed = JSON.parse(rendered);
+        const vmess = parsed.outbounds.find(outbound => outbound.type === 'vmess');
+        const trojan = parsed.outbounds.find(outbound => outbound.type === 'trojan');
+        const hy2 = parsed.outbounds.find(outbound => outbound.type === 'hysteria2');
+        const tuic = parsed.outbounds.find(outbound => outbound.type === 'tuic');
+
+        expect(vmess.transport).toEqual({ type: 'grpc', service_name: 'vmess-service' });
+        expect(vmess).not.toHaveProperty('udp_relay_mode');
+        expect(vmess).not.toHaveProperty('congestion_control');
+        expect(trojan.transport).toEqual({ type: 'grpc', service_name: 'trojan-service' });
+        expect(hy2).toMatchObject({ server_ports: ['20000:20010'], hop_interval: '30s', up_mbps: 100, down_mbps: 200 });
+        expect(hy2.tls).toMatchObject({ insecure: false, certificate_public_key_sha256: [expect.any(String)] });
+        expect(tuic).toMatchObject({ congestion_control: 'bbr', udp_relay_mode: 'native' });
+        expect(tuic.tls).toMatchObject({ alpn: ['h3'], insecure: false, certificate_public_key_sha256: [expect.any(String)] });
+    });
+
     it('should parse limited ini template into unified model', () => {
         const model = parseIniTemplate(`
 [Proxy Group]

@@ -33,7 +33,7 @@ function normalizeSha256Base64(value) {
     return btoa(String.fromCharCode(...bytes));
 }
 
-function buildOutbound(proxy) {
+export function buildSingboxOutbound(proxy) {
     if (!proxy || !proxy.server || !proxy.port) return null;
 
     const type = (proxy.type || '').toLowerCase();
@@ -313,7 +313,7 @@ export function generateBuiltinSingboxConfig(nodeList, options = {}) {
         const baseName = sanitizeName(clashProxy.name);
         clashProxy.name = getUniqueName(baseName, usedNames);
 
-        const built = buildOutbound(clashProxy);
+        const built = buildSingboxOutbound(clashProxy);
         if (built?.endpoint) {
             endpoints.push(built.endpoint);
         } else if (built) {

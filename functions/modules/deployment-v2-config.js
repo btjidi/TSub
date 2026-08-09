@@ -406,6 +406,11 @@ export function resolveBootstrapConfig(config, connectingAddress = '', detectedA
   resolved.subscription.resolvedAddresses = { ipv4, ipv6 };
   const primary = mode === 'ipv6' ? ipv6 : (ipv4 || ipv6);
   resolved.subscription.hostname = primary.includes(':') ? `[${primary}]` : primary;
+  if (mode === 'auto' && !ipv4 && ipv6) {
+    for (const inbound of resolved.inbounds || []) {
+      if (inbound.listen === '0.0.0.0') inbound.listen = '::';
+    }
+  }
   return resolved;
 }
 
@@ -474,6 +479,11 @@ function normalizeInbound(raw, index) {
     },
     credentials
   };
+}
+
+function defaultInboundListen(addressModeValue, hostname = '') {
+  const normalizedHostname = String(hostname || '').replace(/^\[|\]$/g, '');
+  return addressModeValue === 'ipv6' || addressModeValue === 'dual' || validIpv6(normalizedHostname) ? '::' : '0.0.0.0';
 }
 
 function parsePortIntervals(value) {
@@ -657,6 +667,10 @@ export function normalizeV2Config(raw = {}) {
   const pushEnabled = subscriptionServerEnabled && raw.subscription?.server?.pushEnabled !== false;
   const pushIntervalMinutes = normalizePushInterval(raw.subscription?.server?.pushIntervalMinutes);
   const resolvedAddressMode = subscriptionHostname ? 'auto' : addressMode(raw.subscription?.addressMode);
+  const automaticListen = defaultInboundListen(subscriptionHostname ? 'auto' : resolvedAddressMode, subscriptionHostname);
+  inbounds.forEach((inbound, index) => {
+    if (!text(raw.inbounds?.[index]?.listen, 64)) inbound.listen = automaticListen;
+  });
   const resolvedPushAddressMode = pushAddressMode(raw.subscription?.server?.pushAddressMode);
   if (pushEnabled && !/^[A-Za-z0-9_-]{43}$/.test(pushToken)) throw new Error('主动推送凭证格式无效');
   if (pushEnabled && !UUID_PATTERN.test(pushGeneration)) throw new Error('主动推送配置代格式无效');
@@ -812,7 +826,10 @@ function compileSingBox(config) {
     if (item.tls.mode !== 'none') result.tls = { enabled: true, server_name: item.tls.serverName, alpn: item.protocol === 'tuic' ? ['h3'] : undefined, certificate_path: item.tls.certificatePath || undefined, key_path: item.tls.keyPath || undefined, reality: item.tls.mode === 'reality' ? { enabled: true, handshake: { server: item.tls.serverName, server_port: 443 }, private_key: realityPrivateKey(item), short_id: item.tls.shortId } : undefined };
     if (item.protocol === 'shadowsocks') { result.method = item.credentials.method || '2022-blake3-aes-128-gcm'; result.password = item.credentials.password; }
     else if (item.protocol === 'socks5') result.users = [{ username: item.credentials.username || 'tsub', password: item.credentials.password }];
-    else if (item.protocol === 'tuic') result.users = [{ name: item.id, uuid: item.credentials.uuid, password: item.credentials.password }];
+    else if (item.protocol === 'tuic') {
+      result.users = [{ name: item.id, uuid: item.credentials.uuid, password: item.credentials.password }];
+      result.congestion_control = 'bbr';
+    }
     else if (['vless', 'vmess'].includes(item.protocol)) result.users = [{ name: item.id, uuid: item.credentials.uuid }];
     else result.users = [{ name: item.id, password: item.credentials.password }];
     return result;

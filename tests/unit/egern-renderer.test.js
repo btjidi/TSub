@@ -65,6 +65,14 @@ describe('Egern native renderer', () => {
     expect(anytls.udp_relay).toBe(true);
   });
 
+  it('preserves TUIC BBR congestion control aliases', () => {
+    const rendered = transformBuiltinSubscription('tuic://11111111-1111-4111-8111-111111111111:password@tuic.example.invalid:443?sni=tls.example.invalid&alpn=h3&congestion_control=bbr&udp_relay_mode=native#TUIC', 'egern');
+    const parsed = yaml.load(rendered);
+    const tuic = parsed.proxies.find(item => item.tuic)?.tuic;
+
+    expect(tuic).toMatchObject({ congestion_control: 'bbr', udp_relay_mode: 'native', alpn: ['h3'] });
+  });
+
   it('maps SS2022 v2ray-plugin websocket using Egern Shadowsocks transport', () => {
     const rendered = transformBuiltinSubscription(SS2022_V2RAY_PLUGIN_NODE, 'egern');
     const parsed = yaml.load(rendered);

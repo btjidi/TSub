@@ -1,242 +1,9 @@
 import { urlsToClashProxies } from '../../../utils/url-to-clash.js';
+import { buildSingboxOutbound } from '../builtin-singbox-generator.js';
 import { normalizeUnifiedTemplateModel } from '../template-model.js';
 
 function sanitizeTag(value) {
     return String(value || '').trim() || 'Untitled';
-}
-
-function parsePort(port) {
-    const num = Number.parseInt(String(port), 10);
-    return Number.isFinite(num) ? num : undefined;
-}
-
-function normalizeSha256Base64(value) {
-    const normalized = String(value || '').trim();
-    if (!/^[0-9a-f]{64}$/i.test(normalized)) return normalized;
-    const bytes = normalized.match(/.{2}/g).map(byte => Number.parseInt(byte, 16));
-    return btoa(String.fromCharCode(...bytes));
-}
-
-function buildOutbound(proxy) {
-    if (!proxy || !proxy.server || !proxy.port) return null;
-
-    const type = String(proxy.type || '').toLowerCase();
-    const tag = sanitizeTag(proxy.name);
-    const server = proxy.server;
-    const serverPort = parsePort(proxy.port);
-    if (!serverPort) return null;
-
-    if (type === 'trojan') {
-        return {
-            tag,
-            type: 'trojan',
-            server,
-            server_port: serverPort,
-            password: proxy.password || '',
-            tls: {
-                enabled: true,
-                server_name: proxy.servername ?? proxy.sni ?? server,
-                insecure: proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
-            }
-        };
-    }
-
-    if (type === 'ss' || type === 'shadowsocks') {
-        const outbound = {
-            tag,
-            type: 'shadowsocks',
-            server,
-            server_port: serverPort,
-            method: proxy.cipher || 'aes-128-gcm',
-            password: proxy.password || ''
-        };
-        // sing-box 的 Shadowsocks 出站使用 SIP003 plugin/plugin_opts；
-        // `transport` 仅属于 V2Ray 传输协议，SFA 会严格拒绝它。
-        const plugin = proxy.plugin || '';
-        const opts = proxy['plugin-opts'] || proxy.pluginOpts || {};
-        if (plugin === 'v2ray-plugin' || opts.mode === 'websocket') {
-            outbound.plugin = 'v2ray-plugin';
-            const pluginOptions = ['mode=websocket'];
-            if (opts.host) pluginOptions.push(`host=${opts.host}`);
-            if (opts.path) pluginOptions.push(`path=${opts.path}`);
-            if (opts.tls || opts.mode === 'websocket-tls') pluginOptions.push('tls');
-            outbound.plugin_opts = pluginOptions.join(';');
-        }
-        return outbound;
-    }
-
-    if (type === 'vmess') {
-        const outbound = {
-            tag,
-            type: 'vmess',
-            server,
-            server_port: serverPort,
-            uuid: proxy.uuid || '',
-            security: proxy.cipher || 'auto',
-            udp_relay_mode: proxy['udp-relay-mode'] || 'native',
-            congestion_control: proxy['congestion-control'] || 'cubic',
-            alter_id: Number.isFinite(Number(proxy.alterId)) ? Number(proxy.alterId) : 0
-        };
-
-        const network = proxy.network || '';
-        if (network === 'ws') {
-            const wsOpts = proxy['ws-opts'] || proxy.wsOpts;
-            outbound.transport = {
-                type: 'ws',
-                path: wsOpts?.path || '/',
-                headers: wsOpts?.headers || {}
-            };
-        } else if (network === 'grpc') {
-            const grpcOpts = proxy['grpc-opts'] || proxy.grpcOpts;
-            outbound.transport = {
-                type: 'grpc',
-                service_name: grpcOpts?.['grpc-service-name'] || grpcOpts?.serviceName || 'grpc'
-            };
-        } else if (network === 'h2' || network === 'http') {
-            const opts = proxy[`${network}-opts`] || proxy[`${network}Opts`];
-            outbound.transport = {
-                type: network === 'h2' ? 'h2' : 'http',
-                host: opts?.host ? (Array.isArray(opts.host) ? opts.host : [opts.host]) : [],
-                path: opts?.path || '/'
-            };
-        }
-
-        if (proxy.tls || proxy.sni || proxy.servername) {
-            outbound.tls = {
-                enabled: true,
-                server_name: proxy.servername ?? proxy.sni ?? server,
-                insecure: proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
-            };
-            if (proxy.alpn) outbound.tls.alpn = Array.isArray(proxy.alpn) ? proxy.alpn : [proxy.alpn];
-        }
-        return outbound;
-    }
-
-    if (type === 'vless') {
-        const outbound = {
-            tag,
-            type: 'vless',
-            server,
-            server_port: serverPort,
-            uuid: proxy.uuid || ''
-        };
-        if (proxy.flow) outbound.flow = proxy.flow;
-
-        const network = proxy.network || '';
-        if (network === 'ws') {
-            const wsOpts = proxy['ws-opts'] || proxy.wsOpts;
-            outbound.transport = {
-                type: 'ws',
-                path: wsOpts?.path || '/',
-                headers: wsOpts?.headers || {}
-            };
-        } else if (network === 'grpc') {
-            const grpcOpts = proxy['grpc-opts'] || proxy.grpcOpts;
-            outbound.transport = {
-                type: 'grpc',
-                service_name: grpcOpts?.['grpc-service-name'] || grpcOpts?.serviceName || 'grpc'
-            };
-        } else if (network === 'httpupgrade') {
-            const httpupgradeOpts = proxy['httpupgrade-opts'] || proxy.httpupgradeOpts;
-            outbound.transport = {
-                type: 'httpupgrade',
-                path: httpupgradeOpts?.path || '/',
-                host: httpupgradeOpts?.host || ''
-            };
-        }
-
-        if (proxy.tls || proxy.sni || proxy.servername) {
-            outbound.tls = {
-                enabled: true,
-                server_name: proxy.servername ?? proxy.sni ?? server,
-                insecure: proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
-            };
-
-            const fingerprint = proxy['client-fingerprint'] || proxy.clientFingerprint || proxy.fp;
-            if (fingerprint) {
-                outbound.tls.utls = {
-                    enabled: true,
-                    fingerprint: fingerprint
-                };
-            }
-
-            const realityOpts = proxy['reality-opts'] || proxy.realityOpts;
-            if (realityOpts) {
-                outbound.tls.reality = {
-                    enabled: true,
-                    public_key: realityOpts['public-key'] || realityOpts.publicKey || '',
-                    short_id: realityOpts['short-id'] || realityOpts.shortId || ''
-                };
-                if (realityOpts['spider-x'] || realityOpts.spiderX) {
-                    outbound.tls.reality.spider_x = realityOpts['spider-x'] || realityOpts.spiderX;
-                }
-            }
-        }
-        return outbound;
-    }
-
-    if (type === 'hysteria2' || type === 'hy2') {
-        return {
-            tag,
-            type: 'hysteria2',
-            server,
-            server_port: serverPort,
-            password: proxy.password || '',
-            tls: {
-                enabled: true,
-                server_name: proxy.servername ?? proxy.sni ?? server,
-                insecure: proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
-            }
-        };
-    }
-
-    if (type === 'tuic') {
-        const certificatePublicKeySha256 = proxy.certificatePublicKeySha256;
-        const outbound = {
-            tag,
-            type: 'tuic',
-            server,
-            server_port: serverPort,
-            uuid: proxy.uuid || '',
-            password: proxy.password || '',
-            tls: {
-                enabled: true,
-                server_name: proxy.servername ?? proxy.sni ?? server,
-                insecure: certificatePublicKeySha256
-                    ? false
-                    : proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
-            }
-        };
-        if (certificatePublicKeySha256) {
-            outbound.tls.certificate_public_key_sha256 = [normalizeSha256Base64(certificatePublicKeySha256)];
-        }
-        if (proxy.alpn) outbound.tls.alpn = Array.isArray(proxy.alpn) ? proxy.alpn : [proxy.alpn];
-        const congestionControl = proxy['congestion-control'] || proxy['congestion-controller'] || proxy.congestion;
-        if (congestionControl) outbound.congestion_control = congestionControl;
-        if (proxy['udp-relay-mode']) outbound.udp_relay_mode = proxy['udp-relay-mode'];
-        if (proxy['udp-over-stream'] !== undefined) outbound.udp_over_stream = Boolean(proxy['udp-over-stream']);
-        if (proxy['zero-rtt-handshake'] !== undefined || proxy['reduce-rtt'] !== undefined) {
-            outbound.zero_rtt_handshake = Boolean(proxy['zero-rtt-handshake'] ?? proxy['reduce-rtt']);
-        }
-        if (proxy.heartbeat) outbound.heartbeat = String(proxy.heartbeat);
-        if (proxy.network) outbound.network = proxy.network;
-        return outbound;
-    }
-
-    if (type === 'wireguard') {
-        return {
-            tag,
-            type: 'wireguard',
-            server,
-            server_port: serverPort,
-            local_address: Array.isArray(proxy.ip) ? proxy.ip : (proxy.ip ? [proxy.ip] : []),
-            private_key: proxy['private-key'] || '',
-            peer_public_key: proxy['public-key'] || '',
-            pre_shared_key: proxy['preshared-key'] || ''
-        };
-    }
-
-    return null;
 }
 
 function mapGroupType(type) {
@@ -367,7 +134,9 @@ export function renderSingboxFromTemplateModel(model, options = {}) {
     const proxies = Array.isArray(normalizedModel.proxies) && normalizedModel.proxies.length > 0
         ? normalizedModel.proxies
         : urlsToClashProxies(proxyUrls);
-    const proxyOutbounds = proxies.map(buildOutbound).filter(Boolean);
+    const builtNodes = proxies.map(buildSingboxOutbound).filter(Boolean);
+    const proxyOutbounds = builtNodes.filter(item => !item.endpoint);
+    const endpoints = builtNodes.map(item => item.endpoint).filter(Boolean);
     const groupOutbounds = buildGroupOutbounds(normalizedModel.groups.filter(g => Array.isArray(g.members) && g.members.length > 0));
     const ruleSetObjects = buildRuleSets(normalizedModel.rules);
     const routeRules = normalizedModel.rules.map(mapRuleToSingbox).filter(Boolean);
@@ -387,6 +156,7 @@ export function renderSingboxFromTemplateModel(model, options = {}) {
             ...proxyOutbounds,
             ...groupOutbounds
         ],
+        ...(endpoints.length ? { endpoints } : {}),
         route: {
             auto_detect_interface: true,
             final: normalizedModel.groups[0]?.name || 'DIRECT',

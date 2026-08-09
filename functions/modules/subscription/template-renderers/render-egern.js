@@ -185,7 +185,7 @@ function mapProxy(proxy) {
                 uuid,
                 password,
                 version: 5,
-                congestion_control: s(proxy['congestion-control'] || 'cubic'),
+                congestion_control: s(proxy['congestion-control'] || proxy['congestion-controller'] || proxy.congestion || 'cubic'),
                 skip_tls_verify: Boolean(proxy['skip-cert-verify'] || proxy.skipCertVerify)
             }
         };
