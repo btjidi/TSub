@@ -638,7 +638,7 @@ describe('TSub V2 deployment handler', () => {
     expect(normalizeDeploymentClientNodeUrl('vless://uuid@203.0.113.7:443?type=ws#VLESS')).toContain('encryption=none');
   });
 
-  it('filters unpinned self-signed TUIC snapshots and restores client-specific output after a pinned push', async () => {
+  it('warns without filtering unpinned self-signed TUIC snapshots and restores pinned client output after a push', async () => {
     const env = createEnv();
     const tuicDeployment = config({
       inbounds: [{
@@ -662,11 +662,21 @@ describe('TSub V2 deployment handler', () => {
 
     const missing = await handleDeploySubscription(new Request(`https://tsub.example/api/deploy/subscriptions/${deploymentId}/${subscriptionToken}`), env, deploymentId, subscriptionToken);
     expect(missing.headers.get('X-TSub-TUIC-Pin-Status')).toBe('missing');
-    expect(missing.headers.get('X-TSub-TUIC-Pin-Filtered')).toBe('1');
+    expect(missing.headers.get('X-TSub-TUIC-Pin-Filtered')).toBe('0');
+    expect(missing.headers.get('X-TSub-Node-Total')).toBe('2');
+    expect(missing.headers.get('X-TSub-Node-Rendered')).toBe('2');
+    expect(missing.headers.get('X-TSub-Node-Omitted')).toBe('0');
+    expect(missing.headers.get('X-TSub-Conversion-Warnings')).toContain('missing-certificate-pin=1');
     expect(await missing.text()).toContain('vless://');
     const missingBody = await handleDeploySubscription(new Request(`https://tsub.example/api/deploy/subscriptions/${deploymentId}/${subscriptionToken}`), env, deploymentId, subscriptionToken);
-    expect(await missingBody.text()).not.toContain('tuic://');
+    expect(await missingBody.text()).toContain('tuic://');
     expect(env.TSUB_KV.dump('tsub_deployments_v2')[0].capabilities.tuicCertificatePinStatus).toBe('missing');
+
+    const missingDiagnostics = await handleDeploySubscription(new Request(`https://tsub.example/api/deploy/subscriptions/${deploymentId}/${subscriptionToken}?diagnostics=1`), env, deploymentId, subscriptionToken);
+    expect(await missingDiagnostics.json()).toMatchObject({
+      total: 2, rendered: 2, omitted: 0,
+      warnings: [expect.objectContaining({ protocol: 'tuic', reason: 'missing-certificate-pin' })]
+    });
 
     const pcs = 'ab'.repeat(32);
     const spki = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=';

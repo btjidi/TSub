@@ -1621,8 +1621,8 @@ export async function handleDeploySubscription(request, env, deploymentId, subsc
   if (['shadowrocket', 'v2ray', 'v2rayn', 'v2rayng'].includes(targetFormat)) targetFormat = 'base64';
   if (['raw', 'plain'].includes(targetFormat)) targetFormat = 'nodes';
   const pinStatus = tuicCertificatePinStatus(config, cached.nodes);
-  const filteredTuicCount = pinStatus === 'missing' ? cached.nodes.filter(isTuicNode).length : 0;
-  const sourceNodes = pinStatus === 'missing' ? cached.nodes.filter(node => !isTuicNode(node)) : cached.nodes;
+  const missingTuicNodes = pinStatus === 'missing' ? cached.nodes.filter(isTuicNode) : [];
+  const sourceNodes = cached.nodes;
   const rawNodeList = `${sourceNodes.join('\n')}${sourceNodes.length ? '\n' : ''}`;
   const conversionNodeList = `${sourceNodes.map(normalizeDeploymentClientNodeUrl).join('\n')}${sourceNodes.length ? '\n' : ''}`;
   let responseBody = rawNodeList;
@@ -1646,17 +1646,15 @@ export async function handleDeploySubscription(request, env, deploymentId, subsc
       conversionDiagnostics = { target: 'nodes', total: sourceNodes.length, rendered: sourceNodes.length, omitted: 0, items: [], warnings: [], rawTarget: 'nodes' };
     }
   }
-  if (filteredTuicCount) {
-    const pinItems = cached.nodes.filter(isTuicNode).map(node => {
+  if (missingTuicNodes.length) {
+    const pinWarnings = missingTuicNodes.map(node => {
       let name = 'TUIC';
       try { name = decodeURIComponent(new URL(String(node)).hash.slice(1)) || name; } catch {}
       return { name, protocol: 'tuic', transport: 'quic', reason: 'missing-certificate-pin' };
     });
     conversionDiagnostics = {
       ...conversionDiagnostics,
-      total: conversionDiagnostics.total + filteredTuicCount,
-      omitted: conversionDiagnostics.omitted + filteredTuicCount,
-      items: [...pinItems, ...conversionDiagnostics.items]
+      warnings: [...pinWarnings, ...conversionDiagnostics.warnings]
     };
   }
   if (requestUrl.searchParams.get('diagnostics') === '1') {
@@ -1667,7 +1665,7 @@ export async function handleDeploySubscription(request, env, deploymentId, subsc
   }
   const headers = new Headers({ 'Content-Type': contentType, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-TSub-Mode': `deployment-${targetFormat}` });
   headers.set('X-TSub-TUIC-Pin-Status', pinStatus);
-  headers.set('X-TSub-TUIC-Pin-Filtered', String(filteredTuicCount));
+  headers.set('X-TSub-TUIC-Pin-Filtered', '0');
   headers.set('X-TSub-Node-Total', String(conversionDiagnostics.total));
   headers.set('X-TSub-Node-Rendered', String(conversionDiagnostics.rendered));
   headers.set('X-TSub-Node-Omitted', String(conversionDiagnostics.omitted));

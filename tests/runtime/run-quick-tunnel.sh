@@ -62,14 +62,19 @@ for argument in "$@"; do
 done
 cat >"$output" <<'NODES'
 vless://test@example.com:443?security=tls#quick
-vmess://synthetic-vmess
 hysteria2://synthetic@example.com:51234
-tuic://synthetic@example.com:51235
+tuic://synthetic@example.com:51235?pcs=__TSUB_CERT_PIN_SHA256__&spki=__TSUB_CERT_SPKI_SHA256__
 socks5://synthetic@example.com:51236
 NODES
+vmess_payload='{"v":"2","ps":"Quick-VMess","add":"example.com","port":"443","id":"11111111-1111-4111-8111-111111111111","tls":"tls","pcs":"__TSUB_CERT_PIN_SHA256__","spki":"__TSUB_CERT_SPKI_SHA256__"}'
+printf 'vmess://%s\n' "$(printf '%s' "$vmess_payload" | base64 | tr -d '\r\n')" >>"$output"
 EOF
 chmod 755 "$TEST_TMP/fake-bin/curl"
 QUICK_PAYLOAD_FILE="$TEST_TMP/quick-payload.json"; export QUICK_PAYLOAD_FILE
+certificate_pin=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+certificate_spki=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
+printf '%s\n' "$certificate_pin" >"$TSUB_STATE/certificate.pin-sha256"
+printf '%s\n' "$certificate_spki" >"$TSUB_STATE/certificate.spki-sha256"
 sleep 60 & primary_tunnel_pid=$!
 printf '%s\n' "$primary_tunnel_pid" >"$TSUB_STATE/tunnel-1.pid"
 printf '%s\n' 'INF route https://valid-quick.trycloudflare.com ready' >"$TSUB_STATE/tunnel-1.log"
@@ -85,6 +90,24 @@ grep -q '"pushGeneration":"quick-generation"' "$QUICK_PAYLOAD_FILE"
 grep -q '^vless://' "$TSUB_STATE/nodes.txt"
 [ "$(awk 'NF { count++ } END { print count + 0 }' "$TSUB_STATE/nodes.txt")" = 5 ]
 for protocol in vless vmess hysteria2 tuic socks5; do grep -q "^${protocol}://" "$TSUB_STATE/nodes.txt"; done
+! grep -Eq '__TSUB_CERT_(PIN|SPKI)_SHA256__' "$TSUB_STATE/nodes.txt"
+grep -q "pcs=$certificate_pin" "$TSUB_STATE/nodes.txt"
+grep -q 'spki=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE%3D' "$TSUB_STATE/nodes.txt"
+vmess_link=$(sed -n 's#^vmess://##p' "$TSUB_STATE/nodes.txt")
+printf '%s' "$vmess_link" | base64 -d >"$TEST_TMP/vmess.json"
+grep -q "\"pcs\":\"$certificate_pin\"" "$TEST_TMP/vmess.json"
+grep -q "\"spki\":\"$certificate_spki\"" "$TEST_TMP/vmess.json"
+
+printf '%s\n' 'preserved while certificate pins are unavailable' >"$TSUB_STATE/nodes.txt"
+rm -f "$TSUB_STATE/certificate.pin-sha256"
+attempt=0
+while [ "$(cat "$TSUB_STATE/quick-tunnel.hostname.status" 2>/dev/null || true)" != certificate_pin_unavailable ] && [ "$attempt" -lt 20 ]; do attempt=$((attempt + 1)); sleep 1; done
+[ "$(cat "$TSUB_STATE/nodes.txt")" = 'preserved while certificate pins are unavailable' ]
+[ "$(cat "$TSUB_STATE/quick-tunnel.hostname.status")" = certificate_pin_unavailable ]
+printf '%s\n' "$certificate_pin" >"$TSUB_STATE/certificate.pin-sha256"
+attempt=0
+while ! grep -q '^vless://' "$TSUB_STATE/nodes.txt" && [ "$attempt" -lt 20 ]; do attempt=$((attempt + 1)); sleep 1; done
+! grep -Eq '__TSUB_CERT_(PIN|SPKI)_SHA256__' "$TSUB_STATE/nodes.txt"
 
 printf '%s\n' 'stale direct node' >"$TSUB_STATE/nodes.txt"
 attempt=0

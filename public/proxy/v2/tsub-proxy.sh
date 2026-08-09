@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='2.4.25'
+TSUB_RUNTIME_VERSION='2.4.26'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -1257,12 +1257,76 @@ index=$1; callback=$2; deployment=$3; tunnel_pid_file=$4; tunnel_log=$5; token_f
 nodes_checksum_file="${hostname_file}.nodes.cksum"
 status_file="${hostname_file}.status"
 runtime_log="${nodes_file%/*}/runtime.log"
+certificate_pin_file="${nodes_file%/*}/certificate.pin-sha256"
+certificate_spki_file="${nodes_file%/*}/certificate.spki-sha256"
 record_status() {
   next_status=$1
   previous_status=$(cat "$status_file" 2>/dev/null || true)
   [ "$next_status" = "$previous_status" ] && return 0
   printf '%s [quick-tunnel] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf unknown)" "$next_status" >>"$runtime_log" 2>/dev/null || true
   printf '%s\n' "$next_status" >"${status_file}.new.$$"; chmod 600 "${status_file}.new.$$"; mv -f "${status_file}.new.$$" "$status_file"
+}
+base64_decode_value() {
+  encoded_value=$1
+  decoded_file=$2
+  printf '%s' "$encoded_value" | tr '_-' '/+' >"${decoded_file}.b64"
+  decoded=false
+  if command -v base64 >/dev/null 2>&1; then
+    if base64 -d <"${decoded_file}.b64" >"$decoded_file" 2>/dev/null && [ -s "$decoded_file" ]; then decoded=true
+    elif base64 --decode <"${decoded_file}.b64" >"$decoded_file" 2>/dev/null && [ -s "$decoded_file" ]; then decoded=true
+    elif base64 -D <"${decoded_file}.b64" >"$decoded_file" 2>/dev/null && [ -s "$decoded_file" ]; then decoded=true; fi
+  fi
+  if [ "$decoded" = false ] && command -v openssl >/dev/null 2>&1; then
+    openssl base64 -d -A <"${decoded_file}.b64" >"$decoded_file" 2>/dev/null && [ -s "$decoded_file" ] && decoded=true
+  fi
+  rm -f "${decoded_file}.b64"
+  [ "$decoded" = true ]
+}
+base64_encode_file() {
+  if command -v base64 >/dev/null 2>&1; then base64 <"$1" | tr -d '\r\n'
+  elif command -v openssl >/dev/null 2>&1; then openssl base64 -A <"$1"
+  else return 1; fi
+}
+apply_response_certificate_pins() {
+  response_file=$1
+  grep -Eq '__TSUB_CERT_(PIN|SPKI)_SHA256__' "$response_file" 2>/dev/null || return 0
+  certificate_pin=$(cat "$certificate_pin_file" 2>/dev/null || true)
+  certificate_spki=$(cat "$certificate_spki_file" 2>/dev/null || true)
+  case "$certificate_pin" in *[!0-9a-fA-F]*|'') return 1 ;; esac
+  [ "${#certificate_pin}" -eq 64 ] || return 1
+  case "$certificate_spki" in *[!A-Za-z0-9+/=]*|'') return 1 ;; esac
+  [ "${#certificate_spki}" -eq 44 ] || return 1
+  case "$certificate_spki" in *=) ;; *) return 1 ;; esac
+  certificate_spki_encoded=$(printf '%s' "$certificate_spki" | sed -e 's/%/%25/g' -e 's/+/%2B/g' -e 's|/|%2F|g' -e 's/=/%3D/g') || return 1
+  pinned_response="${response_file}.pinned"
+  : >"$pinned_response"
+  line_number=0
+  while IFS= read -r node_line || [ -n "$node_line" ]; do
+    line_number=$((line_number + 1))
+    case "$node_line" in
+      vmess://*)
+        vmess_payload="${response_file}.vmess.$line_number"
+        base64_decode_value "${node_line#vmess://}" "$vmess_payload" || { rm -f "$pinned_response" "$vmess_payload"; return 1; }
+        sed -e "s/__TSUB_CERT_PIN_SHA256__/$certificate_pin/g" -e "s|__TSUB_CERT_SPKI_SHA256__|$certificate_spki|g" "$vmess_payload" >"${vmess_payload}.pinned"
+        vmess_encoded=$(base64_encode_file "${vmess_payload}.pinned") || { rm -f "$pinned_response" "$vmess_payload" "${vmess_payload}.pinned"; return 1; }
+        printf 'vmess://%s\n' "$vmess_encoded" >>"$pinned_response"
+        rm -f "$vmess_payload" "${vmess_payload}.pinned"
+        ;;
+      *)
+        printf '%s\n' "$node_line" | sed -e "s/__TSUB_CERT_PIN_SHA256__/$certificate_pin/g" -e "s|__TSUB_CERT_SPKI_SHA256__|$certificate_spki_encoded|g" >>"$pinned_response"
+        ;;
+    esac
+  done <"$response_file"
+  grep -Eq '__TSUB_CERT_(PIN|SPKI)_SHA256__' "$pinned_response" 2>/dev/null && { rm -f "$pinned_response"; return 1; }
+  while IFS= read -r node_line || [ -n "$node_line" ]; do
+    case "$node_line" in
+      tuic://*)
+        case "$node_line" in *"pcs=$certificate_pin"*) ;; *) rm -f "$pinned_response"; return 1 ;; esac
+        case "$node_line" in *"spki=$certificate_spki_encoded"*) ;; *) rm -f "$pinned_response"; return 1 ;; esac
+        ;;
+    esac
+  done <"$pinned_response"
+  mv -f "$pinned_response" "$response_file"
 }
 attempt=0
 while [ "$attempt" -lt 120 ]; do
@@ -1292,12 +1356,16 @@ while [ "$attempt" -lt 120 ]; do
         wget -qO "$response" -T 30 --header="Authorization: Bearer $token" --header='Content-Type: application/json' --header='Accept: text/plain' --post-data="$payload" "$callback" >/dev/null 2>&1 && sent=true
       fi
       unset token payload
-      if [ "$sent" = true ] && [ -s "$response" ]; then
+      if [ "$sent" = true ] && [ -s "$response" ] && apply_response_certificate_pins "$response"; then
         chmod 640 "$response"; mv -f "$response" "$nodes_file"
         cksum "$nodes_file" >"${nodes_checksum_file}.new.$$"; chmod 600 "${nodes_checksum_file}.new.$$"; mv -f "${nodes_checksum_file}.new.$$" "$nodes_checksum_file"
         printf '%s\n' "$hostname" >"${hostname_file}.new.$$"; chmod 600 "${hostname_file}.new.$$"; mv -f "${hostname_file}.new.$$" "$hostname_file"
         record_status ready
-      else rm -f "$response"; record_status callback_failed; fi
+      else
+        rm -f "$response" "${response}.pinned" "${response}.vmess."* "${response}.vmess."*.pinned
+        if [ "$sent" = true ]; then record_status certificate_pin_unavailable
+        else record_status callback_failed; fi
+      fi
     fi
     attempt=0
   fi

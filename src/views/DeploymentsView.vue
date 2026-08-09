@@ -1257,11 +1257,26 @@ async function generateDirectConfigCommand(deployment, action) {
 async function generateDirectPendingCommand() {
   const deployment = pendingTemplateRecord.value;
   const action = pendingTemplateAction.value;
+  const useRemote = pendingTemplateRemote.value;
   showLoadConfigDialog.value = false;
   pendingTemplateRecord.value = null;
   pendingTemplateRemote.value = false;
   pendingTemplateAction.value = 'update';
-  if (deployment) await generateDirectConfigCommand(deployment, action);
+  if (!deployment) return;
+  if (!useRemote) return generateDirectConfigCommand(deployment, action);
+  if (!capabilities.value.features.remoteCommands) return toast.showToast(t('deployments.remote.requiresD1'), 'warning');
+  if (!deployment.agent?.online) return toast.showToast(t('deployments.remote.offline'), 'warning');
+  loading.value = true;
+  try {
+    await createRemoteDeploymentCommand(deployment.id, 'update', { outputLanguage: locale.value });
+    selectedDeploymentId.value = deployment.id;
+    toast.showToast(t('deployments.remote.configQueued'), 'success');
+    await refreshDeployments({ silent: true });
+    activeTab.value = 'operations';
+    await loadOperations(deployment.id);
+  } catch (error) {
+    toast.showToast(error?.data?.message || t('deployments.remote.failed'), 'error');
+  } finally { loading.value = false; }
 }
 function cancelOperationCommand() { pendingOperation.value = null; }
 async function confirmOperationCommand() {
@@ -1802,8 +1817,8 @@ onBeforeUnmount(() => {
         <div data-testid="load-config-dialog" class="deployment-risk-panel w-full max-w-lg rounded-xl border border-gray-200 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-gray-900">
           <h2 id="load-config-title" class="text-lg font-semibold">{{ t(pendingTemplateAction === 'reinstall' ? 'deployments.loadConfig.reinstallTitle' : 'deployments.loadConfig.title') }}</h2>
           <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">{{ t(pendingTemplateAction === 'reinstall' ? 'deployments.loadConfig.reinstallDescription' : 'deployments.loadConfig.description', { name: pendingTemplateRecord?.name || '' }) }}</p>
-          <div class="mt-3 space-y-2 text-xs leading-5 text-gray-500 dark:text-gray-400"><p>{{ t('deployments.loadConfig.directDescription') }}</p><p>{{ t('deployments.loadConfig.loadDescription') }}</p><p>{{ t('deployments.loadConfig.reconfigureDescription') }}</p></div>
-          <div class="mt-5 flex flex-wrap justify-end gap-2"><button type="button" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm" :disabled="loading" @click="cancelLoadConfig">{{ t('actions.cancel') }}</button><button type="button" data-testid="direct-deployment-command" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm font-semibold" :disabled="loading" @click="generateDirectPendingCommand">{{ t('deployments.loadConfig.directCommand') }}</button><button type="button" data-testid="reconfigure-deployment" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm font-semibold" :disabled="loading" @click="reconfigureDeployment">{{ t('deployments.loadConfig.reconfigure') }}</button><button type="button" class="deploy-btn-primary min-h-10 rounded-lg bg-primary-600 px-4 text-sm font-semibold text-white shadow-sm" :disabled="loading" @click="confirmLoadConfig">{{ t('deployments.loadConfig.confirm') }}</button></div>
+          <div class="mt-3 space-y-2 text-xs leading-5 text-gray-500 dark:text-gray-400"><p>{{ t(pendingTemplateRemote ? 'deployments.loadConfig.directRemoteDescription' : 'deployments.loadConfig.directDescription') }}</p><p>{{ t('deployments.loadConfig.loadDescription') }}</p><p>{{ t('deployments.loadConfig.reconfigureDescription') }}</p></div>
+          <div class="mt-5 flex flex-wrap justify-end gap-2"><button type="button" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm" :disabled="loading" @click="cancelLoadConfig">{{ t('actions.cancel') }}</button><button type="button" data-testid="direct-deployment-command" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm font-semibold" :disabled="loading" @click="generateDirectPendingCommand">{{ t(pendingTemplateRemote ? 'deployments.loadConfig.directRemoteApply' : 'deployments.loadConfig.directCommand') }}</button><button type="button" data-testid="reconfigure-deployment" class="deploy-btn-neutral min-h-10 rounded-lg border px-4 text-sm font-semibold" :disabled="loading" @click="reconfigureDeployment">{{ t('deployments.loadConfig.reconfigure') }}</button><button type="button" class="deploy-btn-primary min-h-10 rounded-lg bg-primary-600 px-4 text-sm font-semibold text-white shadow-sm" :disabled="loading" @click="confirmLoadConfig">{{ t('deployments.loadConfig.confirm') }}</button></div>
         </div>
       </div>
     </Teleport>

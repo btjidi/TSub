@@ -1321,6 +1321,20 @@ describe('TSub Proxy simplified deployment generator', () => {
     await wrapper.get('[data-testid="remote-update-config"]').trigger('click');
     await flushPromises();
     expect(document.body.textContent).toContain('选择更新方式');
+    expect(document.body.textContent).toContain('使用主控中保存的原配置创建 Agent 任务');
+    expect(document.querySelector('[data-testid="direct-deployment-command"]').textContent).toBe('直接远程应用');
+    document.querySelector('[data-testid="direct-deployment-command"]').click();
+    await flushPromises();
+    expect(createRemoteDeploymentCommand).toHaveBeenCalledWith('deploy-remote', 'update', { outputLanguage: 'zh-CN' });
+    expect(createDeploymentCommand).not.toHaveBeenCalled();
+    expect(getDeploymentTemplate).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="deployment-tabs"]').text()).toContain('操作记录');
+
+    await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="deployment-remote-trigger"]').trigger('click');
+    await wrapper.get('[data-testid="remote-update-config"]').trigger('click');
+    await flushPromises();
     Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '重新配置').click();
     await flushPromises();
     expect(wrapper.get('[data-testid="deployment-submit"]').text()).toBe('保存并远程应用');
@@ -1443,7 +1457,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
     await flushPromises();
 
-    expect(wrapper.get('[data-testid="tuic-certificate-pin-warning"]').text()).toContain('请执行“更新配置”后恢复');
+    expect(wrapper.get('[data-testid="tuic-certificate-pin-warning"]').text()).toContain('主控仍会下发该节点');
     expect(wrapper.get('[data-testid="deployment-update-config"]').exists()).toBe(true);
   });
 
