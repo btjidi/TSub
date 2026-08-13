@@ -246,6 +246,9 @@ export async function pollAgent(request, env, storage, payload = {}) {
       ON CONFLICT(deployment_id) DO UPDATE SET data = excluded.data, last_seen_at = excluded.last_seen_at`)
       .bind(deploymentId, heartbeatData, timestamp).run();
   }
+  if (payload.heartbeatOnly === true) {
+    return { deploymentId, heartbeatAt: timestamp, nextPollSeconds: heartbeat.pollIntervalSeconds, command: null };
+  }
   await failExpiredRunningCommands(storage, timestamp, deploymentId);
   await storage.db.prepare(`UPDATE deployment_commands SET status = 'pending', lease_id = NULL, lease_expires_at = NULL,
     updated_at = CURRENT_TIMESTAMP WHERE deployment_id = ? AND status = 'claimed' AND lease_expires_at <= ? AND expires_at > ?`).bind(deploymentId, timestamp, timestamp).run();

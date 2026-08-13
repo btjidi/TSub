@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='2.4.27'
+TSUB_RUNTIME_VERSION='2.4.28'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -2486,6 +2486,7 @@ agent_execute_command() {
       agent_report "$agent_command_id" "$agent_lease" succeeded "$agent_action" "${agent_probe_message:-edge probe passed}"
     else
       agent_report "$agent_command_id" "$agent_lease" succeeded "$agent_action" 'command completed'
+      agent_poll_once true >/dev/null 2>&1 || true
       case "$agent_action" in apply|update|reinstall)
         # Report completion first, then replace this Agent with the verified Runtime.
         agent_maybe_update_runtime force
@@ -2500,11 +2501,13 @@ agent_execute_command() {
     agent_failure=$(agent_failure_summary "$agent_command_log" || true)
     agent_failure=${agent_failure:-command failed with exit $agent_result}
     agent_report "$agent_command_id" "$agent_lease" failed "$agent_action" "$agent_failure"
+    agent_poll_once true >/dev/null 2>&1 || true
     return "$agent_result"
   fi
 }
 
 agent_poll_once() {
+  agent_heartbeat_only=${1:-false}
   agent_response="$TSUB_TMP/agent-poll.txt"
   agent_payload="$TSUB_TMP/agent-poll.json"
   agent_core=$(kv_get runtime_core); agent_core=${agent_core:-unknown}
@@ -2527,10 +2530,14 @@ agent_poll_once() {
     "${TSUB_MEMORY_MB:-0}" "${TSUB_MEMORY_AVAILABLE_MB:-0}" "${TSUB_SWAP_REPORTED:-false}" "${TSUB_SWAP_TOTAL_MB:-0}" "${TSUB_SWAP_FREE_MB:-0}" "${TSUB_SWAP_USED_MB:-0}" \
     "${TSUB_CGROUP_SWAP_REPORTED:-false}" "${TSUB_CGROUP_SWAP_CURRENT_MB:-0}" "${TSUB_CGROUP_SWAP_LIMIT_MB:-0}" \
     "$agent_rss" "$agent_core_rss" "$agent_tunnel_rss" "$agent_estimated_core" "$agent_estimated_tunnel" >"$agent_payload"
+  if [ "$agent_heartbeat_only" = true ]; then
+    sed -i 's/}$/,"heartbeatOnly":true}/' "$agent_payload"
+  fi
   agent_http=$(curl -sS -o "$agent_response" -w '%{http_code}' --connect-timeout 10 --max-time 35 -X POST \
     -H "Authorization: Bearer $TSUB_AGENT_TOKEN" -H 'Accept: text/plain' -H 'Content-Type: application/json' \
     --data-binary "@$agent_payload" "$TSUB_AGENT_URL/poll" 2>/dev/null || printf 000)
   [ "$agent_http" = 200 ] || { [ "$agent_http" = 409 ] && printf 300 || agent_poll_interval; return 1; }
+  [ "$agent_heartbeat_only" = true ] && { printf '%s' "$(agent_value nextPollSeconds "$agent_response")"; return 0; }
   agent_wait=$(agent_value nextPollSeconds "$agent_response"); agent_wait=${agent_wait:-$(agent_poll_interval)}
   agent_command_id=$(agent_value commandId "$agent_response")
   if [ -n "$agent_command_id" ]; then
