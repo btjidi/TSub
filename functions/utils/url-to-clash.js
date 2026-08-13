@@ -211,6 +211,13 @@ function parseVlessUrl(url) {
             proxy['client-fingerprint'] = params.get('fp');
         }
 
+        if (params.get('security') === 'reality' || params.get('pbk') || params.get('sid')) {
+            const realityOpts = proxy['reality-opts'] || {};
+            if (params.get('pbk')) realityOpts['public-key'] = params.get('pbk');
+            if (params.get('sid')) realityOpts['short-id'] = params.get('sid');
+            proxy['reality-opts'] = realityOpts;
+        }
+
         // Flow (XTLS)
         if (params.get('flow')) {
             proxy.flow = params.get('flow');
@@ -433,6 +440,12 @@ function parseVmessUrl(url) {
             if (config.sni) proxy.servername = config.sni;
             if (config.fp) proxy['client-fingerprint'] = config.fp;
             if (config.alpn) proxy.alpn = String(config.alpn).split(',').map(s => s.trim());
+            if (config.tls === 'reality' || config.pbk || config.sid) {
+                proxy['reality-opts'] = {
+                    'public-key': config.pbk || '',
+                    'short-id': config.sid || ''
+                };
+            }
         }
         if (config.pcs) proxy.pinnedPeerCertSha256 = String(config.pcs);
         if (config.spki) proxy.certificatePublicKeySha256 = String(config.spki);

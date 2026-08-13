@@ -1,5 +1,6 @@
 const STREAM_TRANSPORTS = Object.freeze(['tcp', 'ws', 'grpc']);
 const PLAIN_OR_TLS = Object.freeze(['none', 'tls']);
+const VMESS_TROJAN_REALITY = Object.freeze(['none', 'tls', 'reality']);
 const VLESS_TLS = Object.freeze(['none', 'tls', 'reality']);
 const TLS_ONLY = Object.freeze(['tls']);
 
@@ -7,12 +8,12 @@ export const SUBSCRIPTION_TARGET_CAPABILITIES = Object.freeze({
   clash: Object.freeze({
     protocols: Object.freeze(['ss', 'shadowsocks', 'vmess', 'vless', 'trojan', 'hysteria2', 'hy2', 'tuic', 'anytls', 'snell', 'wireguard', 'http', 'https', 'socks5', 'socks5-tls']),
     transports: Object.freeze({ vmess: Object.freeze(['tcp', 'ws', 'grpc']), vless: Object.freeze(['tcp', 'ws', 'grpc', 'xhttp']), trojan: Object.freeze(['tcp', 'ws', 'grpc']) }),
-    tls: Object.freeze({ vmess: PLAIN_OR_TLS, vless: VLESS_TLS, trojan: TLS_ONLY, hysteria2: TLS_ONLY, hy2: TLS_ONLY, tuic: TLS_ONLY, anytls: TLS_ONLY, https: TLS_ONLY, 'socks5-tls': TLS_ONLY })
+    tls: Object.freeze({ vmess: VMESS_TROJAN_REALITY, vless: VLESS_TLS, trojan: Object.freeze(['tls', 'reality']), hysteria2: TLS_ONLY, hy2: TLS_ONLY, tuic: TLS_ONLY, anytls: TLS_ONLY, https: TLS_ONLY, 'socks5-tls': TLS_ONLY })
   }),
   singbox: Object.freeze({
     protocols: Object.freeze(['ss', 'shadowsocks', 'vmess', 'vless', 'trojan', 'hysteria2', 'hy2', 'tuic', 'anytls', 'snell', 'wireguard', 'http', 'https', 'socks5', 'socks5-tls', 'naive']),
     transports: Object.freeze({ vmess: STREAM_TRANSPORTS, vless: STREAM_TRANSPORTS, trojan: STREAM_TRANSPORTS }),
-    tls: Object.freeze({ vmess: PLAIN_OR_TLS, vless: VLESS_TLS, trojan: TLS_ONLY, hysteria2: TLS_ONLY, hy2: TLS_ONLY, tuic: TLS_ONLY, anytls: TLS_ONLY, https: TLS_ONLY, 'socks5-tls': TLS_ONLY, naive: TLS_ONLY })
+    tls: Object.freeze({ vmess: VMESS_TROJAN_REALITY, vless: VLESS_TLS, trojan: Object.freeze(['tls', 'reality']), hysteria2: TLS_ONLY, hy2: TLS_ONLY, tuic: TLS_ONLY, anytls: TLS_ONLY, https: TLS_ONLY, 'socks5-tls': TLS_ONLY, naive: TLS_ONLY })
   }),
   loon: Object.freeze({
     protocols: Object.freeze(['ss', 'shadowsocks', 'vmess', 'vless', 'trojan', 'hysteria2', 'hy2', 'tuic', 'wireguard', 'snell', 'http', 'https']),
@@ -32,7 +33,7 @@ export const SUBSCRIPTION_TARGET_CAPABILITIES = Object.freeze({
   egern: Object.freeze({
     protocols: Object.freeze(['ss', 'shadowsocks', 'vmess', 'vless', 'trojan', 'hysteria2', 'hy2', 'tuic', 'anytls', 'wireguard', 'http', 'https', 'socks5']),
     transports: Object.freeze({ vmess: STREAM_TRANSPORTS, vless: STREAM_TRANSPORTS, trojan: STREAM_TRANSPORTS }),
-    tls: Object.freeze({ vmess: PLAIN_OR_TLS, vless: VLESS_TLS, trojan: TLS_ONLY, hysteria2: TLS_ONLY, hy2: TLS_ONLY, tuic: TLS_ONLY, anytls: TLS_ONLY, https: TLS_ONLY })
+    tls: Object.freeze({ vmess: VMESS_TROJAN_REALITY, vless: VLESS_TLS, trojan: Object.freeze(['tls', 'reality']), hysteria2: TLS_ONLY, hy2: TLS_ONLY, tuic: TLS_ONLY, anytls: TLS_ONLY, https: TLS_ONLY })
   })
 });
 
