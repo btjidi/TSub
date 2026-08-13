@@ -3,8 +3,8 @@
   "runtimeVersion": "2.4.27",
   "runtime": {
     "path": "/proxy/v2/tsub-proxy.sh",
-    "sha256": "ada4787cd305cd1c48767788ca6268c84576c67083eb6e149c6d6e6ee46b4a69",
-    "bytes": 203195
+    "sha256": "e14a9df67c5273664c3ed19b96abe746e952d4df06b2cd7ef405febc11fd0062",
+    "bytes": 203603
   },
   "providers": {
     "xray": {

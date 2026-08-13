@@ -22,7 +22,9 @@ agent_maybe_update_runtime() {
   agent_update_checked_file="$TSUB_STATE/runtime.update-checked-at"
   agent_update_checked=$(cat "$agent_update_checked_file" 2>/dev/null || printf 0)
   case "$agent_update_now:$agent_update_checked" in *[!0-9:]*) agent_update_checked=0 ;; esac
-  [ "$agent_update_now" -eq 0 ] || [ $((agent_update_now - agent_update_checked)) -ge 3600 ] || return 0
+  # Configuration application should pick up a newly published Runtime immediately;
+  # the regular agent loop remains throttled to avoid needless manifest requests.
+  [ "${1:-}" = force ] || { [ "$agent_update_now" -eq 0 ] || [ $((agent_update_now - agent_update_checked)) -ge 3600 ] || return 0; }
 
   agent_update_origin=$(agent_controller_origin) || return 0
   agent_update_manifest="$TSUB_TMP/runtime-manifest.json"
@@ -202,7 +204,7 @@ agent_execute_transfer() {
 
 agent_execute_command() {
   agent_command_id=$1 agent_action=$2 agent_lease=$3
-  case "$agent_action" in apply|update|restart|repair|status|list|doctor|rollback|uninstall|transfer-controller|edge-probe) ;; *) return 2 ;; esac
+  case "$agent_action" in apply|update|reinstall|restart|repair|status|list|doctor|rollback|uninstall|transfer-controller|edge-probe) ;; *) return 2 ;; esac
   agent_config="$TSUB_TMP/agent-command.conf"
   curl -fsS --connect-timeout 10 --max-time 60 \
     -H "Authorization: Bearer $TSUB_AGENT_TOKEN" -H "X-TSub-Lease: $agent_lease" \
@@ -233,6 +235,11 @@ agent_execute_command() {
       agent_report "$agent_command_id" "$agent_lease" succeeded "$agent_action" "${agent_probe_message:-edge probe passed}"
     else
       agent_report "$agent_command_id" "$agent_lease" succeeded "$agent_action" 'command completed'
+      case "$agent_action" in apply|update|reinstall)
+        # Report completion first, then replace this Agent with the verified Runtime.
+        agent_maybe_update_runtime force
+        ;;
+      esac
     fi
   else
     agent_result=$?
