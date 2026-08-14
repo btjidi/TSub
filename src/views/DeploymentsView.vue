@@ -26,8 +26,7 @@ const { locale, t } = useI18n();
 const { profiles } = storeToRefs(dataStore);
 const tabs = computed(() => [
   { id: 'generator', label: t('deployments.tabs.generator') },
-  { id: 'deployments', label: t('deployments.tabs.deployments') },
-  { id: 'operations', label: t('deployments.tabs.operations') }
+  { id: 'deployments', label: t('deployments.tabs.deployments') }
 ]);
 const deploymentModeOptions = computed(() => [
   { value: 'install', label: t('deployments.modes.install') },
@@ -74,6 +73,11 @@ const edgeModesBeforeQuick = ref([]);
 const showRiskDialog = ref(false);
 const pendingOperation = ref(null);
 const showOperationCommandModal = ref(false);
+const showOperationsModal = ref(false);
+const operationsDeployment = ref(null);
+const operationsError = ref(false);
+const operationsLoading = ref(false);
+let operationsRefreshTimer = 0;
 const showPushHistoryModal = ref(false);
 const pushHistoryRecord = ref({});
 const systemDefaults = ref({});
@@ -733,8 +737,7 @@ async function probePreferredEndpoint(endpoint = null) {
     } else {
       toast.showToast(response.data?.result?.ok ? t('deployments.edge.probePassed') : t('deployments.edge.probeFailed'), response.data?.result?.ok ? 'success' : 'error');
     }
-    activeTab.value = 'operations';
-    await loadOperations(targetDeployment.value.id);
+    await openOperationsModal(targetDeployment.value);
   } catch (error) {
     const code = error?.data?.error;
     toast.showToast(code === 'REVISION_CONFLICT' ? t('deployments.errors.configRevisionConflict') : code === 'edge_probe_agent_required' ? t('deployments.edge.probeAgentRequired') : t('deployments.edge.probeFailed'), 'error');
@@ -1151,8 +1154,7 @@ async function generateInstallCommand() {
       if (remoteUpdate.value) {
         toast.showToast(t('deployments.remote.configQueued'), 'success');
         await refreshDeployments();
-        activeTab.value = 'operations';
-        await loadOperations(preparedUpdateTargetId.value);
+        await openOperationsModal(deployments.value.find(item => item.id === preparedUpdateTargetId.value) || { id: preparedUpdateTargetId.value, name: form.name });
         return;
       }
       toast.showToast(t(reinstallMode.value ? 'deployments.notices.reinstallCommandGenerated' : 'deployments.notices.updateCommandGenerated'), 'success');
@@ -1208,11 +1210,42 @@ function pollDeploymentStatus() {
   refreshDeployments({ silent: true });
 }
 async function loadOperations(id = selectedDeploymentId.value) {
-  if (!id || selectedDeployment.value?.migrationRequired) { operations.value = []; return; }
-  loading.value = true;
+  if (!id || operationsDeployment.value?.migrationRequired) { operations.value = []; return; }
+  operationsError.value = false;
+  operationsLoading.value = true;
   try { operations.value = (await listDeploymentOperations(id)).data || []; }
-  catch { toast.showToast(t('deployments.errors.loadOperations'), 'error'); }
-  finally { loading.value = false; }
+  catch { operationsError.value = true; }
+  finally { operationsLoading.value = false; }
+}
+function operationsHavePendingItems() {
+  return operations.value.some(operation => ['pending', 'claimed', 'running'].includes(operation.status));
+}
+function scheduleOperationsRefresh() {
+  clearTimeout(operationsRefreshTimer);
+  if (!showOperationsModal.value || !operationsHavePendingItems()) return;
+  operationsRefreshTimer = window.setTimeout(async () => {
+    await loadOperations(operationsDeployment.value?.id);
+    scheduleOperationsRefresh();
+  }, 5000);
+}
+async function openOperationsModal(deployment) {
+  clearTimeout(operationsRefreshTimer);
+  operationsDeployment.value = deployment;
+  selectedDeploymentId.value = deployment.id;
+  operations.value = [];
+  operationsError.value = false;
+  operationsLoading.value = false;
+  showOperationsModal.value = true;
+  await loadOperations(deployment.id);
+  scheduleOperationsRefresh();
+}
+function closeOperationsModal() {
+  showOperationsModal.value = false;
+  operationsDeployment.value = null;
+  operations.value = [];
+  operationsError.value = false;
+  operationsLoading.value = false;
+  clearTimeout(operationsRefreshTimer);
 }
 function assignCommand(target, result) {
   target.curl = result.data.command;
@@ -1285,8 +1318,7 @@ async function generateDirectPendingCommand() {
     selectedDeploymentId.value = deployment.id;
     toast.showToast(t('deployments.remote.configQueued'), 'success');
     await refreshDeployments({ silent: true });
-    activeTab.value = 'operations';
-    await loadOperations(deployment.id);
+    await openOperationsModal(deployment);
   } catch (error) {
     toast.showToast(error?.data?.message || t('deployments.remote.failed'), 'error');
   } finally { loading.value = false; }
@@ -1395,7 +1427,8 @@ async function copyOperationCommand() {
 }
 function closeOperationModalOnEscape(event) {
   if (event.key !== 'Escape') return;
-  if (showOperationCommandModal.value) closeOperationCommandModal();
+  if (showOperationsModal.value) closeOperationsModal();
+  else if (showOperationCommandModal.value) closeOperationCommandModal();
   else if (pendingOperation.value) cancelOperationCommand();
 }
 function statusClass(status) {
@@ -1419,7 +1452,7 @@ function deploymentStatusText(deployment) {
 function formatDate(value) { return value ? new Date(value).toLocaleString(locale.value) : ''; }
 function operationStartedAt(operation) { return operation.createdAt || operation.updatedAt || ''; }
 function operationCompletedAt(operation) { return operation.completedAt || (['succeeded', 'failed', 'expired'].includes(operation.status) ? operation.updatedAt : ''); }
-function operationHostname(operation) { return operation.hostname || selectedDeployment.value?.agent?.heartbeat?.hostname || '-'; }
+function operationHostname(operation) { return operation.hostname || operationsDeployment.value?.agent?.heartbeat?.hostname || selectedDeployment.value?.agent?.heartbeat?.hostname || '-'; }
 function operationResult(operation) {
   if (operation.message) return operation.message;
   const events = Array.isArray(operation.events) ? operation.events : [];
@@ -1434,7 +1467,7 @@ function operationResources(operation) {
   if (probe) return `TLS ${probe.checks?.tls ? '✓' : '×'} · SNI ${probe.checks?.hostSni ? '✓' : '×'} · WS 101 ${probe.checks?.websocket101 ? '✓' : '×'} · ${probe.latencyMs || 0}ms`;
   return `${resources.tier || '-'} ${resources.rssMb || 0}/${resources.memoryMb || 0}MB`;
 }
-function switchTab(tab) { deploymentInfoPopoverKey.value = ''; activeTab.value = tab; if (tab === 'deployments') { lastHeartbeatRefreshAt = Date.now(); refreshDeployments(); } if (tab === 'operations') loadOperations(); }
+function switchTab(tab) { deploymentInfoPopoverKey.value = ''; activeTab.value = tab; if (tab === 'deployments') { lastHeartbeatRefreshAt = Date.now(); refreshDeployments(); } }
 function openPushHistory(deployment) {
   pushHistoryRecord.value = deployment;
   showPushHistoryModal.value = true;
@@ -1453,6 +1486,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   clearTimeout(edgeDetectionTimer);
   clearInterval(deploymentPollTimer);
+  clearTimeout(operationsRefreshTimer);
   edgeDetectionRequest += 1;
   document.removeEventListener('click', closeActionMenusOnOutside);
   window.removeEventListener('keydown', closeOperationModalOnEscape);
@@ -1773,6 +1807,7 @@ onBeforeUnmount(() => {
             <p v-if="deployment.deployedAt && deployment.capabilities?.tuicCertificatePinStatus === 'missing'" data-testid="tuic-certificate-pin-warning" class="mt-2 rounded-md bg-amber-400/15 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-200">{{ t('deployments.record.tuicCertificatePinMissing') }}</p>
           </div>
           <div class="flex flex-wrap gap-2 xl:justify-end">
+            <button data-testid="deployment-operation-history" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="loading" @click="openOperationsModal(deployment)">{{ t('deployments.operationHistory.open') }}</button>
             <button v-if="deployment.configSummary?.subscriptionServer?.pushEnabled" data-testid="deployment-push-history" type="button" class="min-h-9 border border-primary-200 bg-primary-50 px-3 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300" @click="openPushHistory(deployment)">{{ t('pushHistory.open') }}</button>
             <button v-if="!deployment.demo && deployment.subscriptionSourceDisabled" data-testid="restore-deployment-source" type="button" class="min-h-9 border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" :disabled="loading" @click="restoreSubscriptionSource(deployment)">{{ t('deployments.restoreSource') }}</button>
             <button v-if="!deployment.demo" data-testid="deployment-update-config" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="deployment.migrationRequired || deployment.status === 'offline' || loading" :title="deployment.status === 'offline' ? t('deployments.errors.offlineUseReinstall') : ''" @click="requestUpdateConfig(deployment, false, 'update')">{{ t('deployments.actions.plan') }}</button>
@@ -1793,10 +1828,20 @@ onBeforeUnmount(() => {
       </article></div>
     </template>
 
-    <template v-else>
-      <div class="deployment-surface flex flex-col gap-3 p-4 sm:flex-row sm:items-end"><label class="grow text-sm font-medium">{{ t('deployments.selectDeployment') }}<select v-model="selectedDeploymentId" class="mt-1 w-full border bg-transparent px-3 py-2.5" @change="loadOperations()"><option value="">{{ t('deployments.pleaseSelect') }}</option><option v-for="deployment in deployments" :key="deployment.id" :value="deployment.id">{{ deployment.name }}</option></select></label><button type="button" class="deploy-btn-neutral min-h-11 border px-4 text-sm font-medium" :disabled="!selectedDeployment" @click="loadOperations()">{{ t('actions.refresh') }}</button></div>
-          <div class="deployment-surface overflow-x-auto"><table v-if="operations.length" class="w-full min-w-[1100px] text-left text-sm"><thead class="bg-gray-50 text-xs text-gray-500 dark:bg-white/5"><tr><th class="p-3">{{ t('deployments.table.action') }}</th><th class="p-3">{{ t('common.status') }}</th><th class="p-3">{{ t('deployments.table.startedAt') }}</th><th class="p-3">{{ t('deployments.table.completedAt') }}</th><th class="p-3">{{ t('deployments.table.stage') }}</th><th class="p-3">{{ t('deployments.table.host') }}</th><th class="p-3">{{ t('deployments.table.resources') }}</th><th class="p-3">{{ t('deployments.table.result') }}</th></tr></thead><tbody><tr v-for="operation in operations" :key="operation.id" class="border-t dark:border-white/10"><td class="p-3 font-mono">{{ operation.action }}</td><td class="p-3">{{ statusText(operation.status) }}</td><td class="whitespace-nowrap p-3">{{ formatDate(operationStartedAt(operation)) || t('deployments.table.notRecorded') }}</td><td class="whitespace-nowrap p-3">{{ formatDate(operationCompletedAt(operation)) || (operation.status === 'running' ? statusText('running') : t('deployments.table.notRecorded')) }}</td><td class="p-3">{{ operation.events?.at(-1)?.stage || '-' }}</td><td data-testid="operation-host" class="p-3">{{ operationHostname(operation) }}</td><td class="p-3">{{ operationResources(operation) }}</td><td data-testid="operation-result" class="max-w-xs truncate p-3" :title="operationResult(operation)">{{ operationResult(operation) }}</td></tr></tbody></table><div v-else class="py-12 text-center text-sm text-gray-500">{{ t('deployments.emptyOperations') }}</div></div>
-    </template>
+    <Teleport to="body">
+      <div v-if="showOperationsModal" data-testid="deployment-operation-history-dialog" class="fixed inset-0 z-[106] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="deployment-operation-history-title" @click.self="closeOperationsModal">
+        <div class="w-full max-w-5xl rounded-xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-gray-900 sm:p-5">
+          <div class="mb-4 flex items-start justify-between gap-3"><h2 id="deployment-operation-history-title" class="min-w-0 truncate text-base font-semibold">{{ t('deployments.operationHistory.title', { name: operationsDeployment?.name || '' }) }}</h2><div class="flex shrink-0 gap-2"><button type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" @click="loadOperations(operationsDeployment?.id)">{{ t('deployments.operationHistory.refresh') }}</button><button data-testid="close-deployment-operation-history" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" @click="closeOperationsModal">{{ t('actions.close') }}</button></div></div>
+          <div v-if="operationsLoading" class="py-10 text-center text-sm text-gray-500">{{ t('deployments.operationHistory.loading') }}</div>
+          <div v-else-if="operationsError" class="space-y-3 py-8 text-center text-sm text-red-600"><p>{{ t('deployments.operationHistory.error') }}</p><button type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" @click="loadOperations(operationsDeployment?.id)">{{ t('deployments.operationHistory.retry') }}</button></div>
+          <div v-else-if="!operations.length" class="py-10 text-center text-sm text-gray-500">{{ t('deployments.operationHistory.empty') }}</div>
+          <div v-else class="max-h-[min(70vh,680px)] overflow-y-auto">
+            <div class="hidden overflow-x-auto md:block"><table class="w-full text-left text-sm"><thead class="bg-gray-50 text-xs text-gray-500 dark:bg-white/5"><tr><th class="p-3">{{ t('deployments.table.action') }}</th><th class="p-3">{{ t('common.status') }}</th><th class="p-3">{{ t('deployments.table.startedAt') }}</th><th class="p-3">{{ t('deployments.table.completedAt') }}</th><th class="p-3">{{ t('deployments.table.stage') }}</th><th class="p-3">{{ t('deployments.table.host') }}</th><th class="p-3">{{ t('deployments.table.resources') }}</th><th class="p-3">{{ t('deployments.table.result') }}</th></tr></thead><tbody><tr v-for="operation in operations" :key="operation.id" class="border-t dark:border-white/10"><td class="p-3 font-mono">{{ operation.action }}</td><td class="p-3">{{ statusText(operation.status) }}</td><td class="whitespace-nowrap p-3">{{ formatDate(operationStartedAt(operation)) || t('deployments.table.notRecorded') }}</td><td class="whitespace-nowrap p-3">{{ formatDate(operationCompletedAt(operation)) || (['pending','claimed','running'].includes(operation.status) ? t('deployments.operationHistory.current') : t('deployments.table.notRecorded')) }}</td><td class="p-3">{{ operation.events?.at(-1)?.stage || '-' }}</td><td class="p-3">{{ operationHostname(operation) }}</td><td class="p-3">{{ operationResources(operation) }}</td><td class="max-w-xs truncate p-3" :title="operationResult(operation)">{{ operationResult(operation) }}</td></tr></tbody></table></div>
+            <div class="space-y-3 md:hidden"><article v-for="operation in operations" :key="operation.id" class="rounded-lg border p-3 dark:border-white/10"><div class="flex items-center justify-between gap-2"><strong class="font-mono text-xs">{{ operation.action }}</strong><span class="text-xs" :class="statusClass(operation.status)">{{ statusText(operation.status) }}</span></div><dl class="mt-2 space-y-1 text-xs"><div><dt class="inline text-gray-500">{{ t('deployments.table.startedAt') }}：</dt><dd class="inline">{{ formatDate(operationStartedAt(operation)) || t('deployments.table.notRecorded') }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.completedAt') }}：</dt><dd class="inline">{{ formatDate(operationCompletedAt(operation)) || (['pending','claimed','running'].includes(operation.status) ? t('deployments.operationHistory.current') : t('deployments.table.notRecorded')) }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.stage') }}：</dt><dd class="inline">{{ operation.events?.at(-1)?.stage || '-' }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.host') }}：</dt><dd class="inline break-words">{{ operationHostname(operation) }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.resources') }}：</dt><dd class="inline break-words">{{ operationResources(operation) }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.result') }}：</dt><dd class="inline break-words">{{ operationResult(operation) }}</dd></div></dl></article></div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div v-if="pendingOperation" class="deployment-risk-dialog fixed inset-0 z-[104] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="deployment-operation-confirm-title" @click.self="cancelOperationCommand">

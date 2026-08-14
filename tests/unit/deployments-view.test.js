@@ -1366,7 +1366,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(createRemoteDeploymentCommand).toHaveBeenCalledWith('deploy-remote', 'update', { outputLanguage: 'zh-CN' });
     expect(createDeploymentCommand).not.toHaveBeenCalled();
     expect(getDeploymentTemplate).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-testid="deployment-tabs"]').text()).toContain('操作记录');
+    expect(wrapper.get('[data-testid="deployment-tabs"]').text()).not.toContain('操作记录');
 
     await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
     await flushPromises();
@@ -1405,7 +1405,7 @@ describe('TSub Proxy simplified deployment generator', () => {
       config: expect.objectContaining({ inbounds: [expect.objectContaining({ protocol: 'trojan' })] })
     }));
     expect(createDeploymentCommand).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-testid="deployment-tabs"]').text()).toContain('操作记录');
+    expect(wrapper.get('[data-testid="deployment-tabs"]').text()).not.toContain('操作记录');
     expect(wrapper.find('[data-testid="deployment-command-panel"]').exists()).toBe(false);
   });
 
@@ -1440,7 +1440,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(probeDeploymentEdge).toHaveBeenCalledWith('deploy-probe', {
       inboundId: 'ws-main', endpointId: 'preferred-ip', configRevision: 4, runner: 'auto'
     });
-    expect(wrapper.get('[data-testid="deployment-tabs"]').text()).toContain('操作记录');
+    expect(wrapper.get('[data-testid="deployment-tabs"]').text()).not.toContain('操作记录');
   });
 
   it('restores a deleted managed subscription from its deployment record', async () => {
@@ -1609,7 +1609,9 @@ describe('TSub Proxy simplified deployment generator', () => {
     }] });
     wrapper = mountView();
     await flushPromises();
-    await wrapper.findAll('button').find(button => button.text() === '操作记录').trigger('click');
+    await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="deployment-operation-history"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.get('[data-testid="operation-host"]').text()).toBe('legacy-agent-host');

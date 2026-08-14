@@ -333,6 +333,7 @@ export const messages = {
       saveSystemDefault: '保存为系统默认', generateDeploymentCommand: '生成部署命令',
       oneTimeCommand: '一次性部署命令', commandPlaceholder: '仅可领取一次，请复制到目标服务器的 Shell 中执行', showTroubleshootingCommand: '显示排障命令', hideTroubleshootingCommand: '隐藏排障命令', bootstrapExpires: 'Bootstrap 令牌过期：{time}',
       operationCommand: { title: '{name} · {action}命令', hint: '复制命令并在目标服务器的 Shell 中执行。' },
+      operationHistory: { open: '操作记录', title: '{name} · 操作记录', refresh: '刷新', loading: '正在加载操作记录…', retry: '重试', error: '读取操作记录失败', empty: '暂无操作记录', current: '执行中' },
       emptyDeployments: '暂无部署记录', emptyOperations: '暂无操作记录', deleteRecord: '删除记录', restoreSource: '恢复订阅',
       selectDeployment: '选择部署', pleaseSelect: '请选择', nodeCount: '{count} 个节点', deployedAt: '部署成功：{time}', configUpdatedAt: '配置更新：{time}', systemVersion: '系统版本：{version}', runtimeVersion: 'Runtime 版本：{version}', selfSignedSummary: '自签证书/指纹固定',
       record: {
@@ -1886,6 +1887,7 @@ export const messages = {
       saveSystemDefault: 'Save as System Default', generateDeploymentCommand: 'Generate Deployment Command',
       oneTimeCommand: 'One-time Deployment Command', commandPlaceholder: 'May be claimed once only. Copy and run it in the target server shell', showTroubleshootingCommand: 'Show troubleshooting command', hideTroubleshootingCommand: 'Hide troubleshooting command', bootstrapExpires: 'Bootstrap token expires: {time}',
       operationCommand: { title: '{name} · {action} Command', hint: 'Copy and run this command in the target server shell.' },
+      operationHistory: { open: 'Operation History', title: '{name} · Operation History', refresh: 'Refresh', loading: 'Loading operation history…', retry: 'Retry', error: 'Failed to load operation history', empty: 'No operation history', current: 'Running' },
       emptyDeployments: 'No deployment records', emptyOperations: 'No operation records', deleteRecord: 'Delete Record', restoreSource: 'Restore Subscription',
       selectDeployment: 'Select Deployment', pleaseSelect: 'Select one', nodeCount: '{count} nodes', deployedAt: 'Deployed: {time}', configUpdatedAt: 'Configuration updated: {time}', systemVersion: 'System version: {version}', runtimeVersion: 'Runtime version: {version}', selfSignedSummary: 'Self-signed certificate / SHA-256 pinning',
       record: {

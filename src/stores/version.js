@@ -11,7 +11,7 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 2.0.0**
+    const localChangelog = `**TSub 1.0.0**
 - 集成订阅管理、转换、Profile、备份、通知和代理部署能力。
 - 使用自主 POSIX Shell 实现的 TSub Proxy 代理部署程序。
 - 新增 cgroup 资源规划、事务回滚、最小权限服务、ACME、Cloudflared 与内置 WARP。

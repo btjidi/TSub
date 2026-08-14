@@ -400,7 +400,7 @@ export async function onRequest(context) {
  * 调试信息导出 (仅开发环境)
  */
 export const debugInfo = {
-    version: '2.0.0-modular-v2',
+    version: '1.0.0',
     modules: [
         'utils',
         'auth-middleware',

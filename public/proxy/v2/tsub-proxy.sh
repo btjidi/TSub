@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='2.4.30'
+TSUB_RUNTIME_VERSION='1.0.0'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu

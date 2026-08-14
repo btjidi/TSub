@@ -262,7 +262,7 @@ export async function handleExportDataRequest(request, env) {
         const exportData = {
             exportInfo: {
                 timestamp: new Date().toISOString(),
-                version: '2.0.0',
+                version: '1.0.0',
                 storageType: await StorageFactory.getStorageType(env)
             },
             data: {}
