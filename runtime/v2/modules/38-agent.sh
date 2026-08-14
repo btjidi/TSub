@@ -36,15 +36,27 @@ agent_maybe_update_runtime() {
   [ "$agent_update_path" = /proxy/v2/tsub-proxy.sh ] || return 0
   case "$agent_update_sha" in *[!0-9a-f]*|'') return 0 ;; esac
   [ "${#agent_update_sha}" -eq 64 ] || return 0
+  agent_update_target="$TSUB_BIN/tsub-proxy.sh"
+  if [ -x "$agent_update_target" ] && [ "$(sha256_file "$agent_update_target")" = "$agent_update_sha" ]; then
+    printf '%s\n' "$agent_update_now" >"$TSUB_TMP/runtime.update-checked-at"
+    atomic_install "$TSUB_TMP/runtime.update-checked-at" "$agent_update_checked_file" 600
+    return 0
+  fi
+  agent_update_download="$TSUB_TMP/runtime-update.sh"
+  rm -f "$agent_update_download"
+  if ! download_file "$agent_update_origin$agent_update_path?v=$agent_update_sha" "$agent_update_download"; then
+    i18n_log WARN "Runtime $agent_update_version 下载失败，将在下一轮 Agent 轮询重试" "Runtime $agent_update_version download failed; retrying on the next agent poll"
+    rm -f "$agent_update_download"
+    return 0
+  fi
+  [ "$(sha256_file "$agent_update_download")" = "$agent_update_sha" ] || { i18n_log ERROR 'Runtime 自动更新校验失败' 'Runtime automatic update verification failed'; rm -f "$agent_update_download"; return 0; }
+  if ! atomic_install "$agent_update_download" "$agent_update_target" 700; then
+    i18n_log WARN "Runtime $agent_update_version 安装失败，将在下一轮 Agent 轮询重试" "Runtime $agent_update_version installation failed; retrying on the next agent poll"
+    rm -f "$agent_update_download"
+    return 0
+  fi
   printf '%s\n' "$agent_update_now" >"$TSUB_TMP/runtime.update-checked-at"
   atomic_install "$TSUB_TMP/runtime.update-checked-at" "$agent_update_checked_file" 600
-
-  agent_update_target="$TSUB_BIN/tsub-proxy.sh"
-  if [ -x "$agent_update_target" ] && [ "$(sha256_file "$agent_update_target")" = "$agent_update_sha" ]; then return 0; fi
-  agent_update_download="$TSUB_TMP/runtime-update.sh"
-  download_file "$agent_update_origin$agent_update_path?v=$agent_update_sha" "$agent_update_download" || return 0
-  [ "$(sha256_file "$agent_update_download")" = "$agent_update_sha" ] || { i18n_log ERROR 'Runtime 自动更新校验失败' 'Runtime automatic update verification failed'; return 0; }
-  atomic_install "$agent_update_download" "$agent_update_target" 700
   i18n_log INFO "Runtime 已更新到 $agent_update_version，正在重新加载 Agent" "Runtime updated to $agent_update_version; reloading the agent"
   rm -rf "$TSUB_TMP"
   trap - 0 1 2 15

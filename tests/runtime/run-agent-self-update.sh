@@ -13,7 +13,9 @@ TSUB_TMP="$TEST_TMP/tmp"
 TSUB_STATE="$TEST_TMP/state"
 TSUB_BIN="$TEST_TMP/bin"
 TSUB_AGENT_URL=https://controller.example/api/deploy/agent
+TSUB_CONFIG="$TEST_TMP/runtime.conf"
 mkdir -p "$TSUB_TMP" "$TSUB_STATE" "$TSUB_BIN"
+: >"$TSUB_CONFIG"
 
 cat >"$TEST_TMP/new-runtime.sh" <<EOF
 #!/bin/sh
@@ -36,10 +38,20 @@ chmod 700 "$TSUB_BIN/tsub-proxy.sh"
 download_file() {
   case "$1" in
     https://controller.example/proxy/v2/manifest.json?v=*) cp "$TEST_TMP/manifest.json" "$2" ;;
-    https://controller.example/proxy/v2/tsub-proxy.sh?v="$runtime_sha") cp "$TEST_TMP/new-runtime.sh" "$2" ;;
+    https://controller.example/proxy/v2/tsub-proxy.sh?v="$runtime_sha")
+      [ "${FAIL_RUNTIME_DOWNLOAD:-false}" != true ] || return 56
+      cp "$TEST_TMP/new-runtime.sh" "$2"
+      ;;
     *) return 1 ;;
   esac
 }
+
+FAIL_RUNTIME_DOWNLOAD=true
+agent_maybe_update_runtime force 2>"$TEST_TMP/update-failure.log"
+[ ! -e "$TSUB_STATE/runtime.update-checked-at" ]
+[ "$(cat "$TSUB_BIN/tsub-proxy.sh")" = old ]
+grep -q '将在下一轮 Agent 轮询重试' "$TEST_TMP/update-failure.log"
+unset FAIL_RUNTIME_DOWNLOAD
 
 (agent_maybe_update_runtime)
 [ "$(cat "$TEST_TMP/reloaded")" = updated ]
