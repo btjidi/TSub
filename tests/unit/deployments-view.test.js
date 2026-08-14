@@ -29,6 +29,7 @@ describe('TSub Proxy simplified deployment generator', () => {
 
   beforeEach(() => {
     setActivePinia(createPinia());
+    sessionStorage.removeItem('tsub.deployments.activeTab');
     const dataStore = useDataStore();
     dataStore.fetchData = vi.fn(() => Promise.resolve());
     dataStore.profiles = [];
@@ -41,6 +42,26 @@ describe('TSub Proxy simplified deployment generator', () => {
     document.body.innerHTML = '';
     vi.restoreAllMocks();
     vi.clearAllMocks();
+    sessionStorage.removeItem('tsub.deployments.activeTab');
+  });
+
+  it('restores and persists the last deployment tab for the current session', async () => {
+    sessionStorage.setItem('tsub.deployments.activeTab', 'deployments');
+    wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.get('[data-testid="deployment-tabs"] button:nth-child(2)').classes()).toContain('border-primary-200');
+    await wrapper.get('[data-testid="deployment-tabs"] button:first-child').trigger('click');
+    expect(sessionStorage.getItem('tsub.deployments.activeTab')).toBe('generator');
+    await wrapper.get('[data-testid="deployment-tabs"] button:nth-child(2)').trigger('click');
+    expect(sessionStorage.getItem('tsub.deployments.activeTab')).toBe('deployments');
+  });
+
+  it('falls back to generator for an invalid persisted deployment tab', async () => {
+    sessionStorage.setItem('tsub.deployments.activeTab', 'invalid');
+    wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.get('[data-testid="deployment-tabs"] button:first-child').classes()).toContain('border-primary-200');
+    expect(sessionStorage.getItem('tsub.deployments.activeTab')).toBe('generator');
   });
 
   it('shows common global and inbound fields initially while keeping advanced overrides collapsed', async () => {

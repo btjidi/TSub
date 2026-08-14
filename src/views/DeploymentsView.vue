@@ -28,6 +28,19 @@ const tabs = computed(() => [
   { id: 'generator', label: t('deployments.tabs.generator') },
   { id: 'deployments', label: t('deployments.tabs.deployments') }
 ]);
+const DEPLOYMENTS_TAB_STORAGE_KEY = 'tsub.deployments.activeTab';
+const DEPLOYMENT_TAB_IDS = new Set(['generator', 'deployments']);
+function readPersistedDeploymentTab() {
+  try {
+    const value = window.sessionStorage?.getItem(DEPLOYMENTS_TAB_STORAGE_KEY);
+    return DEPLOYMENT_TAB_IDS.has(value) ? value : 'generator';
+  } catch {
+    return 'generator';
+  }
+}
+function persistDeploymentTab(value) {
+  try { window.sessionStorage?.setItem(DEPLOYMENTS_TAB_STORAGE_KEY, value); } catch { /* storage may be unavailable */ }
+}
 const deploymentModeOptions = computed(() => [
   { value: 'install', label: t('deployments.modes.install') },
   { value: 'update', label: t('deployments.modes.update') },
@@ -45,7 +58,9 @@ const PREFERRED_DOMAIN_PRESETS = Object.freeze([
   { key: 'nexusMods', address: 'staticdelivery.nexusmods.com' },
   { key: 'timeIs', address: 'time.is' }
 ]);
-const activeTab = ref('generator');
+const activeTab = ref(readPersistedDeploymentTab());
+persistDeploymentTab(activeTab.value);
+watch(activeTab, persistDeploymentTab);
 const deploymentMode = ref('install');
 const targetDeploymentId = ref('');
 const preparedUpdateTargetId = ref('');
