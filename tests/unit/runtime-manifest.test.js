@@ -9,7 +9,7 @@ describe('generated TSub Proxy v2', () => {
     const source = await readFile('public/proxy/v2/tsub-proxy.sh');
     expect(source.byteLength).toBeLessThanOrEqual(512 * 1024);
     expect(createHash('sha256').update(source).digest('hex')).toBe(RUNTIME_MANIFEST.sha256);
-    expect(RUNTIME_MANIFEST.version).toBe('2.4.27');
+    expect(RUNTIME_MANIFEST.version).toBe('2.4.28');
     expect(RUNTIME_VERSION).toBe(RUNTIME_MANIFEST.version);
     expect(source.toString()).toContain(`TSUB_RUNTIME_VERSION='${RUNTIME_VERSION}'`);
     expect(source.toString()).toContain('main "$@"');

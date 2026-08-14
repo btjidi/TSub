@@ -33,9 +33,8 @@ describe('deployment protocol capability matrix', () => {
 
   it('restricts Reality and computes a whole-deployment core intersection', () => {
     expect(tlsModesForProtocol('vless', 'ws')).toEqual(['none', 'tls']);
-    expect(tlsModesForProtocol('vmess', 'tcp')).toContain('reality');
-    expect(tlsModesForProtocol('trojan', 'grpc')).toContain('reality');
-    expect(tlsModesForProtocol('vmess', 'ws')).not.toContain('reality');
+    expect(tlsModesForProtocol('vmess', 'tcp')).not.toContain('reality');
+    expect(tlsModesForProtocol('trojan', 'grpc')).not.toContain('reality');
     expect(tlsModesForProtocol('vless', 'grpc')).toContain('reality');
     expect(compatibleCoresForInbound({ protocol: 'vless', transport: 'xhttp', tlsMode: 'tls', outbound: 'direct' })).toEqual(['xray']);
     expect(compatibleCoresForInbounds([
@@ -65,22 +64,6 @@ describe('deployment protocol capability matrix', () => {
           }
         }
       }
-    }
-  });
-
-  it('compiles VMess and Trojan Reality for both supported cores', () => {
-    for (const core of ['xray', 'sing-box']) {
-      const config = normalizeV2Config({
-        runtime: { core },
-        inbounds: [
-          { ...inbound('vmess', 'tcp', 'reality'), id: 'vmess-reality', port: 51231 },
-          { ...inbound('trojan', 'grpc', 'reality'), id: 'trojan-reality', port: 51232 }
-        ]
-      });
-      const compiled = compileCoreConfig(config);
-      const serialized = JSON.stringify(compiled);
-      expect(serialized).toContain('reality');
-      expect(serialized).toContain('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
     }
   });
 

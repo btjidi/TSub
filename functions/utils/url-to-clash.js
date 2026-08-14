@@ -440,12 +440,6 @@ function parseVmessUrl(url) {
             if (config.sni) proxy.servername = config.sni;
             if (config.fp) proxy['client-fingerprint'] = config.fp;
             if (config.alpn) proxy.alpn = String(config.alpn).split(',').map(s => s.trim());
-            if (config.tls === 'reality' || config.pbk || config.sid) {
-                proxy['reality-opts'] = {
-                    'public-key': config.pbk || '',
-                    'short-id': config.sid || ''
-                };
-            }
         }
         if (config.pcs) proxy.pinnedPeerCertSha256 = String(config.pcs);
         if (config.spki) proxy.certificatePublicKeySha256 = String(config.spki);

@@ -114,12 +114,6 @@ export function convertVmessToUrl(proxy) {
             if (proxy.alpn) {
                 config.alpn = Array.isArray(proxy.alpn) ? proxy.alpn.join(',') : proxy.alpn;
             }
-            const reality = proxy.reality_opts || proxy['reality-opts'];
-            if (reality) {
-                config.pbk = reality['public-key'] || reality.public_key || '';
-                config.sid = reality['short-id'] || reality.short_id || '';
-            }
-
             const pinnedPeerCertSha256 = proxy.pinnedPeerCertSha256 || proxy['pinned-peer-cert-sha256'] || proxy.certSha256;
             if (pinnedPeerCertSha256) config.pcs = pinnedPeerCertSha256;
 

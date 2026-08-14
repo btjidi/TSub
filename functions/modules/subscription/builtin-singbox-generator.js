@@ -79,12 +79,6 @@ export function buildSingboxOutbound(proxy) {
             if (proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true) {
                 outbound.tls.insecure = true;
             }
-            const reality = proxy.reality_opts || proxy['reality-opts'];
-            if (reality) {
-                outbound.tls.reality = { enabled: true, public_key: reality['public-key'] || reality.public_key, short_id: reality['short-id'] || reality.short_id };
-                outbound.tls.utls = { enabled: true, fingerprint: proxy['client-fingerprint'] || 'chrome' };
-                delete outbound.tls.insecure;
-            }
         }
         if (proxy.network === 'ws') {
             outbound.transport = { type: 'ws' };
@@ -142,12 +136,6 @@ export function buildSingboxOutbound(proxy) {
             enabled: true,
             server_name: proxy.sni || proxy.servername || server
         };
-        const reality = proxy.reality_opts || proxy['reality-opts'];
-        if (reality) {
-            outbound.tls.reality = { enabled: true, public_key: reality['public-key'] || reality.public_key, short_id: reality['short-id'] || reality.short_id };
-            outbound.tls.utls = { enabled: true, fingerprint: proxy['client-fingerprint'] || 'chrome' };
-            delete outbound.tls.insecure;
-        }
         if (proxy.network === 'ws') {
             const wsOpts = proxy['ws-opts'] || proxy.wsOpts;
             outbound.transport = {
