@@ -439,7 +439,7 @@ export const messages = {
       },
       actions: { plan: '更新配置', reinstall: '重新安装', apply: '复用配置', status: '获取状态', list: '同步节点', update: '更新核心', restart: '重启', repair: '修复', doctor: '诊断', rollback: '回滚', uninstall: '卸载', 'edge-probe': 'CDN 真实握手检测' },
       remote: { title: '远程执行', requiresD1: '切换到 D1 后可使用远程执行和实时心跳', online: '服务器在线', offline: '服务器 Agent 未在线', confirm: '确认在“{name}”远程执行“{action}”吗？', typeName: '请输入部署名称“{name}”确认远程卸载', queued: '远程命令已加入队列', configQueued: '配置已保存，远程应用任务已加入队列', configConfirmTitle: '确认保存并远程应用', configConfirm: '新配置将保存到主控并由在线服务器 Agent 立即领取应用。执行期间代理服务可能短暂重启。', failed: '远程命令创建失败', connectLocal: '连接本机执行器', localConfirm: '确认将“{name}”绑定到本机特权执行器吗？同一时间只允许一个本机部署。', localProvisioned: '本机执行器凭据已安全生成，等待执行器上线', localFailed: '本机执行器绑定失败' },
-      status: { pending: '等待执行', configPending: '配置待应用', running: '执行中', succeeded: '成功', failed: '失败', offline: '已离线', expired: '已过期', draft: '待迁移' },
+      status: { pending: '等待执行', configPending: '配置待应用', running: '执行中', online: '运行中', succeeded: '成功', failed: '失败', offline: '已离线', expired: '已过期', draft: '待迁移' },
       table: { action: '动作', stage: '阶段', host: '主机', resources: '资源', startedAt: '开始时间', completedAt: '完成时间', notRecorded: '未记录', result: '结果' },
       notices: {
         defaultsSaved: '系统默认配置已加密保存', defaultsReset: '系统默认配置已重置',
@@ -1992,7 +1992,7 @@ export const messages = {
       },
       actions: { plan: 'Update Configuration', reinstall: 'Reinstall', apply: 'Reuse Configuration', status: 'Status', list: 'Sync Nodes', update: 'Update Core', restart: 'Restart', repair: 'Repair', doctor: 'Doctor', rollback: 'Rollback', uninstall: 'Uninstall', 'edge-probe': 'CDN Real Handshake Test' },
       remote: { title: 'Remote Execute', requiresD1: 'Switch to D1 to enable remote execution and live heartbeats', online: 'Server online', offline: 'Server agent is offline', confirm: 'Run “{action}” remotely on “{name}”?', typeName: 'Enter deployment name “{name}” to confirm remote uninstall', queued: 'Remote command queued', configQueued: 'Configuration saved and queued for remote application', configConfirmTitle: 'Save and Apply Remotely?', configConfirm: 'The controller will save the new configuration and the online server agent will apply it immediately. The proxy service may restart briefly.', failed: 'Could not create remote command', connectLocal: 'Connect Local Executor', localConfirm: 'Bind “{name}” to the local privileged executor? Only one local deployment can be bound at a time.', localProvisioned: 'Local executor credential created; waiting for it to connect', localFailed: 'Could not bind the local executor' },
-      status: { pending: 'Pending', configPending: 'Configuration Pending Apply', running: 'Running', succeeded: 'Succeeded', failed: 'Failed', offline: 'Offline', expired: 'Expired', draft: 'Migration Required' },
+      status: { pending: 'Pending', configPending: 'Configuration Pending Apply', running: 'Running', online: 'Online', succeeded: 'Succeeded', failed: 'Failed', offline: 'Offline', expired: 'Expired', draft: 'Migration Required' },
       table: { action: 'Action', stage: 'Stage', host: 'Host', resources: 'Resources', startedAt: 'Started', completedAt: 'Completed', notRecorded: 'Not recorded', result: 'Result' },
       notices: {
         defaultsSaved: 'System defaults saved with encryption', defaultsReset: 'System defaults reset',

@@ -1411,6 +1411,7 @@ function statusClass(status) {
 }
 function statusText(status) { return t(`deployments.status.${status}`) === `deployments.status.${status}` ? status : t(`deployments.status.${status}`); }
 function deploymentStatusText(deployment) {
+  if (deployment.status === 'running') return t('deployments.status.online');
   return deployment.pendingReason === 'config' && deployment.status === 'pending'
     ? t('deployments.status.configPending')
     : statusText(deployment.status);

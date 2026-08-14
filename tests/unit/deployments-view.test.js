@@ -1108,7 +1108,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     await flushPromises();
     await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('执行中');
+    expect(wrapper.text()).toContain('运行中');
 
     await vi.advanceTimersByTimeAsync(5000);
     await flushPromises();
