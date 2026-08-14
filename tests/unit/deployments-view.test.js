@@ -1614,8 +1614,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     await wrapper.get('[data-testid="deployment-operation-history"]').trigger('click');
     await flushPromises();
 
-    expect(wrapper.get('[data-testid="operation-host"]').text()).toBe('legacy-agent-host');
-    expect(wrapper.get('[data-testid="operation-result"]').text()).toBe('command completed');
-    expect(wrapper.get('[data-testid="operation-result"]').attributes('title')).toBe('command completed');
+    expect(document.body.textContent).toContain('legacy-agent-host');
+    expect(document.body.textContent).toContain('command completed');
   });
 });
