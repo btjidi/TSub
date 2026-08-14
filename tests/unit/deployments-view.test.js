@@ -55,7 +55,9 @@ describe('TSub Proxy simplified deployment generator', () => {
     const controlCard = wrapper.get('[data-testid="deployment-control-command"]');
     expect(controlCard.find('[data-testid="deployment-runtime-settings"]').exists()).toBe(true);
     expect(controlCard.find('[data-testid="vps-subscription-settings"]').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="vps-subscription-settings"]').classes()).toContain('order-6');
+    expect(wrapper.get('[data-testid="deployment-control-command"]').classes()).toContain('order-3');
+    expect(wrapper.get('[data-testid="deployment-global-settings"]').classes()).toContain('order-4');
+    expect(wrapper.get('[data-testid="vps-subscription-settings"]').classes()).toContain('order-5');
     expect(wrapper.get('[data-testid="deployment-runtime-toggle"]').attributes('aria-expanded')).toBe('false');
     expect(wrapper.get('[data-testid="deployment-runtime-toggle-icon"]').classes()).not.toContain('rotate-180');
     expect(wrapper.find('[data-testid="deployment-global-toggle"]').exists()).toBe(false);
@@ -145,9 +147,9 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(inboundGrid).toContain('minmax(152px,1.2fr)');
     expect(inboundGrid).toContain('minmax(126px,0.95fr)');
     const inboundCard = wrapper.get('[data-testid="deployment-inbounds-header"]');
-    expect(wrapper.get('[data-testid="edge-warp-settings"]').classes()).toContain('order-4');
-    expect(inboundCard.classes()).toEqual(expect.arrayContaining(['deployment-surface', 'order-5', 'overflow-hidden']));
-    expect(wrapper.get('[data-testid="vps-subscription-settings"]').classes()).toContain('order-6');
+    expect(wrapper.get('[data-testid="vps-subscription-settings"]').classes()).toContain('order-5');
+    expect(wrapper.get('[data-testid="edge-warp-settings"]').classes()).toContain('order-6');
+    expect(inboundCard.classes()).toEqual(expect.arrayContaining(['deployment-surface', 'order-7', 'overflow-hidden']));
     expect(inboundCard.findAll('[data-testid="deployment-inbound-item"]')).toHaveLength(1);
     expect(inboundCard.get('[data-testid="deployment-inbound-item"]').classes()).not.toContain('deployment-surface');
     expect(inboundCard.get('[data-testid="inbound-mobile-actions"]').classes()).toContain('sm:hidden');
@@ -426,6 +428,42 @@ describe('TSub Proxy simplified deployment generator', () => {
     expect(wrapper.find('[data-testid="deployment-command-panel"] textarea').element.value).toBe('wget short');
     await wrapper.findAll('[data-testid="deployment-command-panel"] button').find(button => button.text() === '显示排障命令').trigger('click');
     expect(wrapper.find('[data-testid="deployment-command-panel"] textarea').element.value).toBe('wget diagnostic');
+  });
+
+  it('scrolls to the one-time deployment command when it is outside the viewport', async () => {
+    createDeployment.mockResolvedValue({ data: { deployment: { id: 'deploy-scroll' }, command: 'curl command', wgetCommand: 'wget command', expiresAt: '' } });
+    wrapper = mountView();
+    await flushPromises();
+    const panel = wrapper.get('[data-testid="deployment-command-panel"]').element;
+    const scrollIntoView = vi.fn();
+    panel.getBoundingClientRect = vi.fn(() => ({ top: 900, bottom: 1200 }));
+    panel.scrollIntoView = scrollIntoView;
+
+    await wrapper.find('input[placeholder="HK Edge"]').setValue('Scroll VPS');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    document.querySelector('[data-testid="deployment-risk-panel"] button:last-child').click();
+    await flushPromises();
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'end' });
+  });
+
+  it('does not scroll after command generation when the command panel is fully visible', async () => {
+    createDeployment.mockResolvedValue({ data: { deployment: { id: 'deploy-visible' }, command: 'curl command', wgetCommand: 'wget command', expiresAt: '' } });
+    wrapper = mountView();
+    await flushPromises();
+    const panel = wrapper.get('[data-testid="deployment-command-panel"]').element;
+    const scrollIntoView = vi.fn();
+    panel.getBoundingClientRect = vi.fn(() => ({ top: 100, bottom: 500 }));
+    panel.scrollIntoView = scrollIntoView;
+
+    await wrapper.find('input[placeholder="HK Edge"]').setValue('Visible VPS');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    document.querySelector('[data-testid="deployment-risk-panel"] button:last-child').click();
+    await flushPromises();
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it('uses live global values without saving and keeps inbound overrides sparse', async () => {

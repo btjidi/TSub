@@ -61,6 +61,7 @@ const loading = ref(false);
 const defaultsLoading = ref(false);
 const runtimeOpen = ref(false);
 const warpSettingsRef = ref(null);
+const commandPanelRef = ref(null);
 const edgePermissionLoading = ref(false);
 const edgePermissionChecks = ref(null);
 const edgePermissionError = ref('');
@@ -1167,7 +1168,9 @@ async function generateInstallCommand() {
       selectedDeploymentId.value = result.data.deployment.id;
       toast.showToast(t('deployments.notices.commandGenerated'), 'success');
     }
-    setCommand(result); await refreshDeployments();
+    setCommand(result);
+    await scrollToGeneratedCommand();
+    await refreshDeployments();
   } catch (error) {
     const fallback = remoteUpdate.value ? t('deployments.remote.failed') : t('deployments.errors.generateCommand');
     const serviceCode = error?.data?.error || error?.data?.message || '';
@@ -1223,6 +1226,16 @@ function assignCommand(target, result) {
 function setCommand(result) {
   assignCommand(output, result);
   activeTab.value = 'generator';
+}
+async function scrollToGeneratedCommand() {
+  await nextTick();
+  const panel = commandPanelRef.value;
+  if (!panel) return;
+  const rect = panel.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  if (rect.top < 0 || rect.bottom > viewportHeight) {
+    panel.scrollIntoView?.({ behavior: 'smooth', block: 'end' });
+  }
 }
 async function executeActionCommand(deployment, action) {
   loading.value = true;
@@ -1496,7 +1509,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <section data-testid="deployment-global-settings" class="deployment-surface order-3 overflow-hidden">
+          <section data-testid="deployment-global-settings" class="deployment-surface order-4 overflow-hidden">
             <div class="space-y-3 p-3 sm:p-4">
               <h2 class="text-sm font-semibold">{{ t('deployments.globalConfig') }}</h2>
               <div data-testid="deployment-core-settings" class="grid grid-cols-2 gap-2.5 sm:gap-3">
@@ -1527,7 +1540,7 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <section ref="warpSettingsRef" data-testid="edge-warp-settings" class="deployment-surface order-4 overflow-hidden">
+          <section ref="warpSettingsRef" data-testid="edge-warp-settings" class="deployment-surface order-6 overflow-hidden">
             <div class="space-y-1 p-3 sm:p-4"><h2 class="text-sm font-semibold">{{ t('deployments.edge.title') }}</h2><p class="text-xs leading-5 text-gray-500">{{ t('deployments.edge.subtitle') }}</p></div>
             <div class="grid grid-cols-2 gap-2.5 border-t p-3 sm:gap-3 sm:p-4 lg:grid-cols-4 dark:border-white/10">
               <div class="text-sm"><DeploymentHelpLabel for-id="edge-mode" :label="t('deployments.edge.mode')" :help="t('deployments.help.edgeMode')" :open="deploymentInfoPopoverKey === generatorHelpKey('edge-mode')" test-id="edge-mode-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('edge-mode'), value)" /><DeploymentSelectShell><select id="edge-mode" v-model="global.edge.mode" data-testid="edge-mode" class="w-full border bg-transparent px-2 py-2" @focus="rememberEdgeMode" @pointerdown="rememberEdgeMode" @change="updateEdgeMode"><option value="disabled">{{ t('common.disabled') }}</option><option value="manual">{{ t('deployments.edge.manual') }}</option><option value="quick">{{ t('deployments.edge.quick') }}</option><option value="managed">{{ t('deployments.edge.managed') }}</option></select></DeploymentSelectShell></div>
@@ -1590,7 +1603,7 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <section id="deployment-inbounds-header" data-testid="deployment-inbounds-header" class="deployment-surface order-5 overflow-hidden">
+          <section id="deployment-inbounds-header" data-testid="deployment-inbounds-header" class="deployment-surface order-7 overflow-hidden">
             <div class="flex items-center justify-between gap-3 p-3 sm:p-4"><div class="min-w-0"><h2 class="text-base font-semibold">{{ t('deployments.inbounds.title') }}</h2><p class="mt-0.5 text-xs text-gray-500">{{ t('deployments.inbounds.hint') }}</p></div><button id="add-inbound" data-testid="add-inbound" type="button" class="deploy-btn-neutral min-h-10 shrink-0 border px-3 text-sm font-medium" :disabled="form.inbounds.length >= 20" @click="addInbound">{{ t('actions.add') }}</button></div>
 
           <article v-for="(inbound,index) in form.inbounds" :key="inbound.id" data-testid="deployment-inbound-item" class="relative overflow-hidden border-t dark:border-white/10">
@@ -1625,7 +1638,7 @@ onBeforeUnmount(() => {
           </article>
           </section>
 
-          <section data-testid="vps-subscription-settings" class="deployment-surface order-6 overflow-hidden">
+          <section data-testid="vps-subscription-settings" class="deployment-surface order-5 overflow-hidden">
             <div class="flex flex-col gap-2.5 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
               <div class="min-w-0"><h2 class="text-sm font-semibold">{{ t('deployments.subscription.title') }}</h2><p class="mt-0.5 text-xs text-gray-500">{{ t('deployments.subscription.subtitle') }}</p></div>
               <div class="grid grid-cols-2 gap-x-3 sm:flex sm:flex-wrap sm:gap-x-5">
@@ -1646,7 +1659,7 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <section data-testid="deployment-control-command" class="deployment-surface order-7 overflow-hidden">
+          <section data-testid="deployment-control-command" class="deployment-surface order-3 overflow-hidden">
             <div class="flex items-center justify-between gap-3 p-3 sm:p-4">
               <div class="min-w-0"><h2 class="text-sm font-semibold">{{ t('deployments.runtime.title') }}</h2><p class="mt-0.5 truncate text-xs text-gray-500">{{ global.runtime.tier }} · {{ global.runtime.channel }} · {{ t('deployments.options.seconds', { seconds: global.runtime.agentPollIntervalSeconds }) }}</p></div>
               <button type="button" data-testid="deployment-runtime-toggle" class="deploy-btn-neutral flex min-h-10 shrink-0 items-center gap-1 border px-3 text-sm" :aria-expanded="runtimeOpen" @click="runtimeOpen = !runtimeOpen"><span>{{ t('deployments.moreSettings') }}</span><svg data-testid="deployment-runtime-toggle-icon" aria-hidden="true" class="h-4 w-4 shrink-0 transition-transform" :class="runtimeOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg></button>
@@ -1679,7 +1692,7 @@ onBeforeUnmount(() => {
           </div>
         </form>
 
-        <aside v-if="!remoteUpdate" data-testid="deployment-command-panel" class="deployment-command-panel self-start rounded-xl border border-gray-800 bg-gray-950 p-3 text-white shadow-sm sm:p-4 xl:sticky xl:top-24 dark:border-white/15">
+        <aside ref="commandPanelRef" v-if="!remoteUpdate" data-testid="deployment-command-panel" class="deployment-command-panel self-start rounded-xl border border-gray-800 bg-gray-950 p-3 text-white shadow-sm sm:p-4 xl:sticky xl:top-24 dark:border-white/15">
           <div class="mb-3 flex items-center justify-between"><h2 class="text-sm font-semibold">{{ t('deployments.oneTimeCommand') }}</h2><button type="button" class="deploy-btn-dark-success px-2 py-1 text-xs text-emerald-300 disabled:opacity-30" :disabled="!shownCommand" @click="copyCommand">{{ t('actions.copy') }}</button></div>
           <div class="mb-2 flex flex-wrap items-center gap-1"><button v-for="client in ['wget','curl']" :key="client" type="button" class="deploy-btn-dark px-3 py-1.5 text-xs" :class="output.client === client ? 'bg-white/15 text-white' : 'text-gray-400'" @click="output.client = client">{{ client }}</button><button v-if="output.diagnosticCurl || output.diagnosticWget" type="button" class="deploy-btn-dark ml-auto px-3 py-1.5 text-xs text-gray-300" @click="output.diagnostic = !output.diagnostic">{{ output.diagnostic ? t('deployments.hideTroubleshootingCommand') : t('deployments.showTroubleshootingCommand') }}</button></div>
           <textarea :value="shownCommand" readonly class="h-40 w-full resize-none border border-white/10 bg-black/30 p-2.5 font-mono text-xs leading-5 text-emerald-300 sm:h-48 sm:p-3" :placeholder="t('deployments.commandPlaceholder')"></textarea>
