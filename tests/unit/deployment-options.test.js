@@ -4,7 +4,7 @@ import { DEPLOYMENT_ACTIONS, NATIVE_TRANSPORT_LABELS, OUTBOUND_OPTIONS, PROTOCOL
 describe('V2 deployment generator option matrix', () => {
   it('exposes the complete TSub Proxy protocol baseline', () => {
     expect(PROTOCOL_OPTIONS.map(item => item.value)).toEqual([
-      'vless', 'trojan', 'vmess', 'hysteria2', 'tuic', 'anytls', 'shadowsocks', 'socks5', 'naive'
+      'vless', 'vmess', 'trojan', 'hysteria2', 'tuic', 'anytls', 'shadowsocks', 'socks5', 'naive'
     ]);
     expect(PROTOCOL_OPTIONS.find(item => item.value === 'naive').cores).toEqual(['naive']);
     expect(TRANSPORT_OPTIONS.map(([value]) => value)).toEqual(['tcp', 'ws', 'grpc', 'xhttp']);
@@ -20,7 +20,7 @@ describe('V2 deployment generator option matrix', () => {
   });
 
   it('keeps Xray and sing-box protocol capabilities explicit', () => {
-    expect(PROTOCOL_OPTIONS.filter(item => item.cores.includes('xray')).map(item => item.value)).toEqual(['vless', 'trojan', 'vmess', 'hysteria2', 'shadowsocks', 'socks5']);
-    expect(PROTOCOL_OPTIONS.filter(item => item.cores.includes('sing-box')).map(item => item.value)).toEqual(['vless', 'trojan', 'vmess', 'hysteria2', 'tuic', 'anytls', 'shadowsocks', 'socks5']);
+    expect(PROTOCOL_OPTIONS.filter(item => item.cores.includes('xray')).map(item => item.value)).toEqual(['vless', 'vmess', 'trojan', 'hysteria2', 'shadowsocks', 'socks5']);
+    expect(PROTOCOL_OPTIONS.filter(item => item.cores.includes('sing-box')).map(item => item.value)).toEqual(['vless', 'vmess', 'trojan', 'hysteria2', 'tuic', 'anytls', 'shadowsocks', 'socks5']);
   });
 });

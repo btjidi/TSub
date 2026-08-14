@@ -40,6 +40,7 @@ print_runtime_basic_info() {
   summary_deployment_time=$(cat "$TSUB_STATE/deployment-time" 2>/dev/null || true)
   [ -n "$summary_deployment_time" ] || summary_deployment_time=$(i18n_text '未记录（重新 Apply 后生成）' 'Not recorded (generated after applying again)')
   printf '%s%s\n' "$(i18n_text '部署时间：' 'Deployment time: ')" "$summary_deployment_time"
+  printf '%s%s\n' "$(i18n_text 'Runtime 版本：' 'Runtime version: ')" "${TSUB_RUNTIME_VERSION:-unknown}"
 
   summary_core=$(kv_get runtime_core); summary_core=${summary_core:-unknown}
   summary_tier=$(kv_get runtime_tier_mode)
@@ -63,6 +64,11 @@ print_runtime_basic_info() {
   summary_tunnel_rss=$(summary_number "$summary_tunnel_rss")
   summary_rss=$((summary_rss + summary_tunnel_rss))
   printf ' · %s/%s · %s/%sMB' "${TSUB_CONTAINER:-unknown}" "${TSUB_INIT:-none}" "$summary_rss" "${TSUB_MEMORY_MB:-0}"
+  summary_quick_status=$(tunnel_quick_status 2>/dev/null || printf not-required)
+  case "$summary_quick_status" in
+    ready) printf ' · %s' "$(i18n_text '临时隧道：正常' 'Quick Tunnel: ready')" ;;
+    pending) printf ' · %s' "$(i18n_text '临时隧道：等待恢复' 'Quick Tunnel: waiting to recover')" ;;
+  esac
   summary_control=${TSUB_CONTROL_COMMAND_ACTUAL:-}
   [ -n "$summary_control" ] || summary_control=$(kv_get control_command)
   [ -z "$summary_control" ] || printf ' · %s%s' "$(i18n_text '服务器命令：' 'server command: ')" "$summary_control"

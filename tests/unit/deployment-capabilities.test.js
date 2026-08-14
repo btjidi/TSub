@@ -23,7 +23,7 @@ const inbound = (protocol, transport, tlsMode) => ({
 
 describe('deployment protocol capability matrix', () => {
   it('defines one canonical transport set for every deployment protocol', () => {
-    expect(Object.keys(PROTOCOL_CAPABILITIES)).toEqual(['vless', 'trojan', 'vmess', 'hysteria2', 'tuic', 'anytls', 'shadowsocks', 'socks5', 'naive']);
+    expect(Object.keys(PROTOCOL_CAPABILITIES)).toEqual(['vless', 'vmess', 'trojan', 'hysteria2', 'tuic', 'anytls', 'shadowsocks', 'socks5', 'naive']);
     expect(transportsForProtocol('vless', 'xray')).toEqual(['tcp', 'ws', 'grpc', 'xhttp']);
     expect(transportsForProtocol('vless', 'sing-box')).toEqual(['tcp', 'ws', 'grpc']);
     expect(canonicalTransport('tuic', 'tcp')).toBe('quic');

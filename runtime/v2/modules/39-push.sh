@@ -12,6 +12,10 @@ push_state_value() {
 
 push_snapshot() {
   push_enabled || return 0
+  if tunnel_quick_pending 2>/dev/null; then
+    i18n_degraded '临时隧道等待恢复' 'Quick Tunnel is waiting to recover'
+    return 0
+  fi
   traffic_ensure_rules
   traffic_checkpoint
   push_generation=$(kv_get push_generation)

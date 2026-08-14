@@ -93,15 +93,15 @@ let deploymentRefreshRequest = 0;
 let lastHeartbeatRefreshAt = 0;
 
 const builtinProtocolDefaults = {
-  vless: { transport: 'tcp', outbound: 'direct', tlsMode: 'reality', serverName: 'www.cloudflare.com', path: '/', serviceName: 'tsub' },
-  trojan: { transport: 'tcp', outbound: 'direct', tlsMode: 'tls', serverName: 'tsub.local', path: '/', serviceName: 'tsub' },
+  vless: { transport: 'tcp', outbound: 'direct', tlsMode: 'reality', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
+  trojan: { transport: 'tcp', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
   vmess: { transport: 'ws', outbound: 'direct', tlsMode: 'none', serverName: '', path: '/tsub', serviceName: 'tsub' },
-  hysteria2: { transport: 'hysteria', outbound: 'direct', tlsMode: 'tls', serverName: 'tsub.local', path: '/', serviceName: 'tsub' },
-  tuic: { transport: 'quic', outbound: 'direct', tlsMode: 'tls', serverName: 'tsub.local', path: '/', serviceName: 'tsub' },
-  anytls: { transport: 'tcp', outbound: 'direct', tlsMode: 'tls', serverName: 'tsub.local', path: '/', serviceName: 'tsub' },
+  hysteria2: { transport: 'hysteria', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
+  tuic: { transport: 'quic', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
+  anytls: { transport: 'tcp', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
   shadowsocks: { transport: 'tcp', outbound: 'direct', tlsMode: 'none', serverName: '', path: '/', serviceName: 'tsub' },
   socks5: { transport: 'tcp', outbound: 'direct', tlsMode: 'none', serverName: '', path: '/', serviceName: 'tsub' },
-  naive: { transport: 'https', outbound: 'direct', tlsMode: 'tls', serverName: 'tsub.local', path: '/', serviceName: 'tsub' }
+  naive: { transport: 'https', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' }
 };
 
 const blankGlobal = () => ({

@@ -1,10 +1,10 @@
 {
   "schemaVersion": 2,
-  "runtimeVersion": "2.4.28",
+  "runtimeVersion": "2.4.29",
   "runtime": {
     "path": "/proxy/v2/tsub-proxy.sh",
-    "sha256": "4eae051bf6a4970629f1e1adb9a4e1e86a64daecb893a7a672f8b884149614a8",
-    "bytes": 203966
+    "sha256": "1714095ecbd620eeb755df5a54f92aac2a63aec4bf5489b32178efce632d60f5",
+    "bytes": 213115
   },
   "providers": {
     "xray": {
@@ -28,8 +28,8 @@
       "mergeGroup": "main",
       "protocols": [
         "vless",
-        "trojan",
         "vmess",
+        "trojan",
         "hysteria2",
         "shadowsocks",
         "socks5"
@@ -63,8 +63,8 @@
       "mergeGroup": "main",
       "protocols": [
         "vless",
-        "trojan",
         "vmess",
+        "trojan",
         "hysteria2",
         "tuic",
         "anytls",

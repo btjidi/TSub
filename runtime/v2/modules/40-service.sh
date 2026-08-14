@@ -124,14 +124,14 @@ service_start() {
     s6)
       if [ -d /run/service/tsub-core ]; then s6-svc -r /run/service/tsub-core
       else
-        tunnel_start || return 1
+        tunnel_start named || return 1
         nohup "$TSUB_STATE/start-core.sh" >>"$TSUB_LOG" 2>&1 &
         printf '%s\n' "$!" >"$TSUB_STATE/core.pid"
       fi
       ;;
     rc-local|crontab)
       service_stop
-      tunnel_start || return 1
+      tunnel_start named || return 1
       subscription_start || return 1
       if [ "$core" = xray ]; then
         nohup "$TSUB_CORE_BIN" run -config "$config" >>"$TSUB_LOG" 2>&1 &
@@ -142,7 +142,7 @@ service_start() {
       ;;
     *)
       service_stop
-      tunnel_start || return 1
+      tunnel_start named || return 1
       subscription_start || return 1
       if [ "$core" = xray ]; then
         nohup "$TSUB_CORE_BIN" run -config "$config" >>"$TSUB_LOG" 2>&1 &
@@ -181,7 +181,7 @@ if [ -n "$TSUB_SERVICE_USER" ] && [ "\$(id -u)" -eq 0 ] && [ "\${1:-}" != --as-u
   elif command -v runuser >/dev/null 2>&1; then exec runuser -u tsub -- "\$0" --as-user
   fi
 fi
-[ ! -x "$TSUB_STATE/start-tunnels.sh" ] || "$TSUB_STATE/start-tunnels.sh"
+[ ! -x "$TSUB_STATE/start-tunnels.sh" ] || "$TSUB_STATE/start-tunnels.sh" named
 [ ! -x "$TSUB_STATE/start-subscription.sh" ] || "$TSUB_STATE/start-subscription.sh"
 printf '%s\n' "\$\$" >"$TSUB_STATE/core.pid"
 $service_memory_environment
@@ -295,7 +295,7 @@ health_check() {
     rss=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS))
     TSUB_CURRENT_RSS=$rss
     health_tunnel_ready=true
-    tunnel_health_rss >/dev/null 2>&1 || health_tunnel_ready=false
+    tunnel_health_rss named >/dev/null 2>&1 || health_tunnel_ready=false
     if [ "$rss" -gt 0 ] && [ "$health_tunnel_ready" = true ] && subscription_health_check >/dev/null 2>&1; then
       if [ $((rss * 100)) -gt $((TSUB_MEMORY_MB * 80)) ]; then
         i18n_log ERROR "核心 RSS ${rss}MB 超过 80% 内存预算" "Core RSS ${rss}MB exceeds 80% of the memory budget"
@@ -314,7 +314,7 @@ health_check() {
   TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0)
   TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS))
   [ "$TSUB_CORE_RSS" -gt 0 ] || i18n_log ERROR "核心进程未运行" "The core process is not running"
-  tunnel_health_rss >/dev/null 2>&1 || i18n_log ERROR "Cloudflared 进程未运行" "The cloudflared process is not running"
+  tunnel_health_rss named >/dev/null 2>&1 || true
   subscription_health_check >/dev/null 2>&1 || i18n_log ERROR "服务器订阅服务未通过健康检查" "The server subscription service failed its health check"
   i18n_log ERROR "健康检查在 ${wait_seconds} 秒后超时" "Health check timed out after ${wait_seconds} seconds"
   return 1

@@ -8,8 +8,8 @@ const freezeCapability = capability => Object.freeze({
 
 export const PROTOCOL_CAPABILITIES = Object.freeze({
   vless: freezeCapability({ cores: ['xray', 'sing-box'], transports: { xray: ['tcp', 'ws', 'grpc', 'xhttp'], 'sing-box': ['tcp', 'ws', 'grpc'] }, tls: ['none', 'tls', 'reality'], configurableTransport: true }),
-  trojan: freezeCapability({ cores: ['xray', 'sing-box'], transports: { xray: ['tcp', 'ws', 'grpc'], 'sing-box': ['tcp', 'ws', 'grpc'] }, tls: ['tls'], configurableTransport: true }),
   vmess: freezeCapability({ cores: ['xray', 'sing-box'], transports: { xray: ['tcp', 'ws', 'grpc'], 'sing-box': ['tcp', 'ws', 'grpc'] }, tls: ['none', 'tls'], configurableTransport: true }),
+  trojan: freezeCapability({ cores: ['xray', 'sing-box'], transports: { xray: ['tcp', 'ws', 'grpc'], 'sing-box': ['tcp', 'ws', 'grpc'] }, tls: ['tls'], configurableTransport: true }),
   hysteria2: freezeCapability({ cores: ['xray', 'sing-box'], transports: { xray: ['hysteria'], 'sing-box': ['hysteria'] }, tls: ['tls'], nativeTransport: 'hysteria' }),
   tuic: freezeCapability({ cores: ['sing-box'], transports: { 'sing-box': ['quic'] }, tls: ['tls'], nativeTransport: 'quic' }),
   anytls: freezeCapability({ cores: ['sing-box'], transports: { 'sing-box': ['tcp'] }, tls: ['tls'], nativeTransport: 'tcp' }),

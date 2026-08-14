@@ -237,7 +237,8 @@ export async function pollAgent(request, env, storage, payload = {}) {
     coreRssMb: Math.max(0, Number(payload.coreRssMb || 0) || 0),
     cloudflaredRssMb: Math.max(0, Number(payload.cloudflaredRssMb || 0) || 0),
     estimatedCoreRssMb: Math.max(0, Number(payload.estimatedCoreRssMb || 0) || 0),
-    estimatedCloudflaredRssMb: Math.max(0, Number(payload.estimatedCloudflaredRssMb || 0) || 0)
+    estimatedCloudflaredRssMb: Math.max(0, Number(payload.estimatedCloudflaredRssMb || 0) || 0),
+    quickTunnelStatus: ['ready', 'pending', 'not-required'].includes(payload.quickTunnelStatus) ? payload.quickTunnelStatus : 'not-required'
   };
   const heartbeatData = JSON.stringify(heartbeat);
   const heartbeatChanged = !previous || previous.data !== heartbeatData;
@@ -245,6 +246,23 @@ export async function pollAgent(request, env, storage, payload = {}) {
     await storage.db.prepare(`INSERT INTO deployment_heartbeats (deployment_id, data, last_seen_at) VALUES (?, ?, ?)
       ON CONFLICT(deployment_id) DO UPDATE SET data = excluded.data, last_seen_at = excluded.last_seen_at`)
       .bind(deploymentId, heartbeatData, timestamp).run();
+  }
+  if (heartbeat.quickTunnelStatus !== 'not-required') {
+    const repository = createDeploymentRepository(storage);
+    const deployment = await repository.getDeployment(deploymentId);
+    if (deployment) {
+      const capabilities = { ...(deployment.capabilities || {}) };
+      const reason = '临时隧道等待恢复';
+      const reasons = String(capabilities.degradedReason || '').split(';').map(item => item.trim()).filter(Boolean);
+      const nextReasons = heartbeat.quickTunnelStatus === 'pending'
+        ? (reasons.includes(reason) ? reasons : [...reasons, reason])
+        : reasons.filter(item => item !== reason && item !== 'Quick Tunnel is waiting to recover');
+      const nextReason = nextReasons.join('; ');
+      if (nextReason !== String(capabilities.degradedReason || '')) {
+        capabilities.degradedReason = nextReason;
+        await repository.putDeployment({ ...deployment, capabilities, updatedAt: timestamp });
+      }
+    }
   }
   if (payload.heartbeatOnly === true) {
     return { deploymentId, heartbeatAt: timestamp, nextPollSeconds: heartbeat.pollIntervalSeconds, command: null };

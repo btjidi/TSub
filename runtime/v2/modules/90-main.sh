@@ -49,8 +49,9 @@ main() {
     agent) run_agent_loop ;;
     agent-install) install_agent_service "$TSUB_BIN/tsub-proxy.sh" "$TSUB_ETC/runtime.conf" ;;
     edge-probe) edge_probe ;;
+    refresh-quick) load_installed_core; ensure_tunnel_binary; tunnel_refresh_quick ;;
     menu) control_menu ;;
-    restart) plan_runtime; load_installed_core; ensure_tunnel_binary; prepare_service_identity; traffic_checkpoint; service_stop; service_start; health_check; traffic_ensure_rules; traffic_checkpoint; emit_event succeeded "$(i18n_text '重启完成' 'Restart completed')" ;;
+    restart) plan_runtime; load_installed_core; ensure_tunnel_binary; prepare_service_identity; traffic_checkpoint; service_stop; service_start; health_check; tunnel_reconcile_quick || true; push_snapshot || true; traffic_ensure_rules; traffic_checkpoint; emit_event succeeded "$(i18n_text '重启完成' 'Restart completed')" ;;
     rollback) load_installed_core; rollback_runtime; record_runtime_change_time ;;
     uninstall) uninstall_runtime ;;
     *) i18n_die "未知操作: $action" "Unknown operation: $action" ;;

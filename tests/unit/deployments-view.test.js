@@ -583,7 +583,7 @@ describe('TSub Proxy simplified deployment generator', () => {
 
     expect(wrapper.get('#inbound-server-name-0').element.value).toBe('www.cloudflare.com');
     expect(wrapper.get('#inbound-server-name-1').element.value).toBe('');
-    expect(wrapper.get('#inbound-server-name-1').attributes('placeholder')).toBe('tsub.local');
+    expect(wrapper.get('#inbound-server-name-1').attributes('placeholder')).toBe('bing.com');
   });
 
   it('edits transport Host independently from TLS SNI', async () => {

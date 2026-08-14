@@ -47,10 +47,11 @@ build_tunnel_launcher() {
   build_quick_tunnel_metadata
   launcher="$TSUB_TMP/start-tunnels.sh"
   tunnel_metadata="$TSUB_STATE/quick-tunnel.meta"
-  printf '#!/bin/sh\nset -eu\numask 077\n' >"$launcher"
+  printf '#!/bin/sh\nset -eu\numask 077\nstart_filter=${1:-all}\n' >"$launcher"
   count=$(kv_get tunnel_count); count=${count:-0}; index=1
   while [ "$index" -le "$count" ]; do
     mode=$(kv_get "tunnel_${index}_type")
+    printf '[ "$start_filter" = all ] || [ "$start_filter" = %s ] || { index=$((index + 1)); continue; }\n' "$mode" >>"$launcher"
     # Command substitution belongs to the generated launcher.
     # shellcheck disable=SC2016
     printf '[ ! -r %s ] || kill "$(cat %s)" 2>/dev/null || true\n' "$TSUB_STATE/tunnel-supervisor-$index.pid" "$TSUB_STATE/tunnel-supervisor-$index.pid" >>"$launcher"
@@ -288,19 +289,113 @@ tunnel_stop() {
   done
   rm -f "$TSUB_STATE"/tunnel-supervisor-*.pid
   rm -f "$TSUB_STATE/quick-tunnel.hostname" "$TSUB_STATE/quick-tunnel.hostname.nodes.cksum" "$TSUB_STATE/quick-tunnel.hostname.status"
+  rm -f "$TSUB_STATE/quick-tunnel.reconcile.status"
 }
 
 tunnel_start() {
+  start_filter=${1:-all}
   count=$(kv_get tunnel_count); count=${count:-0}
   [ "$count" -gt 0 ] || return 0
   [ -x "$TSUB_STATE/start-tunnels.sh" ] || return 1
-  "$TSUB_STATE/start-tunnels.sh"
+  "$TSUB_STATE/start-tunnels.sh" "$start_filter"
+}
+
+tunnel_stop_quick() {
+  count=$(kv_get tunnel_count); count=${count:-0}; index=1
+  while [ "$index" -le "$count" ]; do
+    if [ "$(kv_get "tunnel_${index}_type")" = quick ]; then
+      for pid_file in "$TSUB_STATE/tunnel-supervisor-$index.pid" "$TSUB_STATE/tunnel-$index.pid" "$TSUB_STATE/quick-tunnel-monitor-$index.pid"; do
+        [ -r "$pid_file" ] || continue
+        managed_pid=$(cat "$pid_file" 2>/dev/null || true)
+        case "$managed_pid" in ''|*[!0-9]*) ;; *) kill "$managed_pid" 2>/dev/null || true ;; esac
+        rm -f "$pid_file"
+      done
+    fi
+    index=$((index + 1))
+  done
+  rm -f "$TSUB_STATE"/tunnel-supervisor-*.pid "$TSUB_STATE/quick-tunnel.hostname" \
+    "$TSUB_STATE/quick-tunnel.hostname.nodes.cksum" "$TSUB_STATE/quick-tunnel.hostname.status" \
+    "$TSUB_STATE/quick-tunnel.reconcile.status"
+}
+
+tunnel_wait_quick_ready() {
+  quick_count=0; quick_index=1; count=$(kv_get tunnel_count); count=${count:-0}
+  while [ "$quick_index" -le "$count" ]; do
+    [ "$(kv_get "tunnel_${quick_index}_type")" = quick ] && quick_count=$((quick_count + 1))
+    quick_index=$((quick_index + 1))
+  done
+  [ "$quick_count" -gt 0 ] || return 0
+  quick_wait=0; quick_limit=${TSUB_QUICK_TUNNEL_WAIT_SECONDS:-60}
+  case "$quick_limit" in ''|*[!0-9]*) quick_limit=60 ;; esac
+  while [ "$quick_wait" -lt "$quick_limit" ]; do
+    quick_ready=true; quick_status=$(cat "$TSUB_STATE/quick-tunnel.hostname.status" 2>/dev/null || true)
+    quick_hostname=$(cat "$TSUB_STATE/quick-tunnel.hostname" 2>/dev/null || true)
+    [ -n "$quick_hostname" ] && [ "$quick_status" = ready ] || quick_ready=false
+    [ "$quick_ready" = true ] && return 0
+    quick_wait=$((quick_wait + 1)); sleep 1
+  done
+  return 1
+}
+
+tunnel_quick_pending() {
+  count=$(kv_get tunnel_count); count=${count:-0}; index=1
+  while [ "$index" -le "$count" ]; do
+    if [ "$(kv_get "tunnel_${index}_type")" = quick ]; then
+      [ "$(cat "$TSUB_STATE/quick-tunnel.hostname.status" 2>/dev/null || true)" = ready ] || return 0
+    fi
+    index=$((index + 1))
+  done
+  return 1
+}
+
+tunnel_reconcile_quick() {
+  tunnel_quick_pending || { printf '%s\n' ready >"$TSUB_STATE/quick-tunnel.reconcile.status"; return 0; }
+  printf '%s\n' pending >"$TSUB_STATE/quick-tunnel.reconcile.status"
+  tunnel_start quick || { i18n_degraded '临时隧道等待恢复' 'Quick Tunnel is waiting to recover'; return 1; }
+  tunnel_wait_quick_ready || { i18n_degraded '临时隧道等待恢复' 'Quick Tunnel is waiting to recover'; return 1; }
+  printf '%s\n' ready >"$TSUB_STATE/quick-tunnel.reconcile.status"
+  return 0
+}
+
+tunnel_refresh_quick() {
+  quick_present=false; count=$(kv_get tunnel_count); count=${count:-0}; index=1
+  while [ "$index" -le "$count" ]; do
+    [ "$(kv_get "tunnel_${index}_type")" = quick ] && quick_present=true
+    index=$((index + 1))
+  done
+  [ "$quick_present" = true ] || { i18n_print '当前未配置临时隧道。' 'No Quick Tunnel is configured.'; return 1; }
+  i18n_print '正在重新获取临时隧道域名，请稍候...' 'Requesting a new Quick Tunnel hostname, please wait...'
+  tunnel_stop_quick
+  printf '%s\n' pending >"$TSUB_STATE/quick-tunnel.reconcile.status"
+  tunnel_start quick || { i18n_degraded '临时隧道启动失败，等待恢复' 'Quick Tunnel failed to start; waiting to recover'; return 1; }
+  tunnel_wait_quick_ready || { i18n_degraded '临时隧道等待恢复' 'Quick Tunnel is waiting to recover'; return 1; }
+  printf '%s\n' ready >"$TSUB_STATE/quick-tunnel.reconcile.status"
+  quick_hostname=$(cat "$TSUB_STATE/quick-tunnel.hostname" 2>/dev/null || true)
+  i18n_print "临时隧道已获取新域名：$quick_hostname" "Quick Tunnel received a new hostname: $quick_hostname"
+  push_snapshot || i18n_degraded '新临时隧道主动推送失败' 'Push failed after the new Quick Tunnel was ready'
+  agent_heartbeat_now || i18n_log WARN '新临时隧道 Agent 心跳上报失败' 'Agent heartbeat failed after the new Quick Tunnel was ready'
+}
+
+tunnel_quick_status() {
+  count=$(kv_get tunnel_count); count=${count:-0}; index=1
+  while [ "$index" -le "$count" ]; do
+    [ "$(kv_get "tunnel_${index}_type")" = quick ] && {
+      status=$(cat "$TSUB_STATE/quick-tunnel.reconcile.status" 2>/dev/null || true)
+      [ "$status" = ready ] && printf ready || printf pending
+      return 0
+    }
+    index=$((index + 1))
+  done
+  printf not-required
 }
 
 tunnel_health_rss() {
+  health_filter=${1:-all}
   count=$(kv_get tunnel_count); count=${count:-0}
   total=0; index=1
   while [ "$index" -le "$count" ]; do
+    tunnel_mode=$(kv_get "tunnel_${index}_type")
+    [ "$health_filter" = all ] || [ "$health_filter" = "$tunnel_mode" ] || { index=$((index + 1)); continue; }
     pid=$(cat "$TSUB_STATE/tunnel-$index.pid" 2>/dev/null || true)
     case "$pid" in ''|*[!0-9]*) return 1 ;; esac
     rss=$(awk '/VmRSS:/ {printf "%d", ($2 + 1023) / 1024; exit}' "/proc/$pid/status" 2>/dev/null || printf 0)

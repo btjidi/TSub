@@ -30,12 +30,14 @@ apply_runtime() {
         fi
         i18n_die "组件更新健康检查失败，已恢复上一核心" "Component update health check failed; the previous core was restored"
       fi
+      tunnel_reconcile_quick || true
       [ -z "$TSUB_PREVIOUS_CORE" ] || printf '%s\n' "$TSUB_PREVIOUS_CORE" >"$TSUB_STATE/core.previous.identity"
       printf '%s\n' "$TSUB_CORE_BIN" >"$TSUB_STATE/core.identity"
       printf '%s\n' "$tunnel_candidate_hash" >"$TSUB_STATE/tunnel.config.hash"
     fi
     export_nodes
     persist_runtime
+    tunnel_reconcile_quick || true
     TSUB_CURRENT_RSS=$(process_rss_mb)
     unchanged_tunnel_rss=$(tunnel_health_rss 2>/dev/null || printf 0)
     TSUB_CURRENT_RSS=$((TSUB_CURRENT_RSS + unchanged_tunnel_rss))
@@ -84,6 +86,7 @@ apply_runtime() {
     fi
     i18n_die "事务切换失败，旧配置已恢复" "Transaction switch failed; the previous configuration was restored"
   fi
+  tunnel_reconcile_quick || true
   export_nodes
   [ -z "$TSUB_PREVIOUS_CORE" ] || printf '%s\n' "$TSUB_PREVIOUS_CORE" >"$TSUB_STATE/core.previous.identity"
   printf '%s\n' "$TSUB_CORE_BIN" >"$TSUB_STATE/core.identity"
@@ -117,6 +120,8 @@ rollback_runtime() {
   firewall_hops_apply "$(cat "$TSUB_STATE/firewall.previous.hops.rules" 2>/dev/null || true)" || true
   service_start
   health_check
+  tunnel_reconcile_quick || true
+  push_snapshot || true
   emit_event succeeded "$(i18n_text '回滚完成' 'Rollback completed')"
 }
 
