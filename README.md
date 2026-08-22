@@ -34,6 +34,46 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 
 构建命令使用 `npm run build`，输出目录使用 `dist`，Node.js 版本使用 22 或更高。Fork 后必须在自己的 Cloudflare 账号中创建并绑定 `TSUB_DB` 或 `TSUB_KV`；仓库中的 `wrangler.toml` 资源 ID 属于示例生产账号，不能直接复用。
 
+### GitHub 授权部署步骤
+
+1. **Fork 仓库**：打开本仓库的 GitHub 页面，点击 **Fork**，建议保持 Fork 为公开仓库。
+2. **创建 Pages 项目**：进入 **Workers 和 Pages → 创建应用程序 → Pages → 导入现有 Git 存储库**。如果先显示 Worker 卡片，点击“想要部署 Pages？开始使用”，然后授权 GitHub 并选择 Fork。
+3. **填写构建设置**：项目名可填写 `tsub`，生产分支为 `main`，构建命令为 `npm run build`，输出目录为 `dist`，Node.js 使用 22 或更高版本。
+4. **创建并绑定存储**：推荐创建 D1 数据库并绑定为 `TSUB_DB`。如果只需要订阅管理，也可以创建 KV 命名空间并绑定为 `TSUB_KV`。绑定名必须完全一致，Fork 必须使用自己的资源 ID。
+5. **配置变量和密钥**：在 **设置 → 变量和密钥** 中选择生产环境。可以手动点击 **添加变量**，也可以点击 **导入 .env**。
+
+手动配置时添加以下 6 项；密码和加密密钥选择 **密钥（Secret）**：
+
+| 名称 | 说明 |
+| --- | --- |
+| `ADMIN_USERNAME` | 管理员账号名，3-32 位 |
+| `ADMIN_PASSWORD` | 管理员密码，至少 8 位、最多 128 位 |
+| `COOKIE_SECRET` | 登录 Cookie 签名密钥 |
+| `DEPLOYMENT_SECRET_KEY` | 代理部署配置密钥 |
+| `SETTINGS_SECRET_KEY` | 设置、通知和外部 API 密钥 |
+| `TSUB_PUBLIC_URL` | 公开 HTTPS 地址，例如 `https://tsub.example.com` |
+
+`.env` 导入模板：
+
+```dotenv
+ADMIN_USERNAME=这里填写管理员账号名
+ADMIN_PASSWORD=这里填写管理员密码（至少8位）
+COOKIE_SECRET=这里填写随机Cookie密钥
+DEPLOYMENT_SECRET_KEY=这里填写随机部署密钥
+SETTINGS_SECRET_KEY=这里填写随机设置密钥
+TSUB_PUBLIC_URL=这里填写公开HTTPS地址
+```
+
+导入后确认目标环境为 **生产（Production）**，敏感项为 **密钥（Secret）**。填写后的 `.env` 不得提交到 GitHub。
+
+6. **部署和验证**：点击 **保存并部署**，等待 `npm run build` 和 Functions 发布完成。打开 `https://你的项目.pages.dev/login` 登录，进入 TSub 的 **设置 → 系统设置**，确认活动存储为 D1 或 KV；D1 模式还应显示远程 Agent 和部署命令能力。
+
+![Pages 构建设置](docs/assets/screenshots/cloudflare/06-build-settings.png)
+![部署成功](docs/assets/screenshots/cloudflare/13-deploy-success.png)
+![首次登录](docs/assets/screenshots/cloudflare/14-first-login.png)
+
+完整的 D1/KV 创建、绑定、截图和故障排查见[完整 GitHub 授权部署教程](docs/QUICK_START.md)。
+
 服务器主控支持 Docker Compose 和 Debian/Ubuntu/Alpine 裸机安装，默认由非 root Web 服务配合独立 root 执行器工作。参见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)和[总体架构](docs/ARCHITECTURE.md)。
 
 ## 本地开发
