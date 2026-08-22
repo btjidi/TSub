@@ -15,8 +15,6 @@
 
 打开 <https://github.com/btjidi/TSub>，点击 **Fork**，选择自己的 GitHub 账号和仓库名称。部署前确认 Fork 仓库可以公开访问，例如直接打开 `https://github.com/<你的账号>/<你的仓库>`。
 
-![Fork TSub 仓库](assets/screenshots/cloudflare/01-fork-repository.png)
-
 Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私有仓库需要额外的 GitHub 权限和 Cloudflare 计划支持；本教程按公开 Fork 编写。
 
 ## 2. 在 Cloudflare 创建项目
@@ -26,8 +24,6 @@ Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私�
 3. 点击 GitHub 授权按钮，在 GitHub 授权页允许 Cloudflare 访问仓库列表；如果选择“仅选定仓库”，必须勾选你的 TSub Fork。
 4. 返回 Cloudflare 后选择该 Fork，点击 **Begin setup** 或 **Install & deploy**。
 
-![Cloudflare 控制台](assets/screenshots/cloudflare/02-cloudflare-dashboard.png)
-![GitHub 授权结果](assets/screenshots/cloudflare/04-github-authorization.png)
 ![选择 TSub 仓库](assets/screenshots/cloudflare/05-select-repository.png)
 
 授权只授予仓库读取和构建所需权限。部署完成后可以在 GitHub 的 **Settings → Applications** 中撤销 Cloudflare 授权。

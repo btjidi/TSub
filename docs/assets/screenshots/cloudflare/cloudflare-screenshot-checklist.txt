@@ -2,10 +2,7 @@ TSub Cloudflare GitHub deployment screenshot checklist
 
 Capture each item as one screenshot after the page is settled. Use a consistent desktop viewport and the Simplified Chinese interface when possible.
 
-01-fork-repository.png     GitHub TSub repository with the Fork action visible
-02-cloudflare-dashboard.png Cloudflare dashboard with Workers & Pages visible
 03-create-project.png       Create application / Git repository choice
-04-github-authorization.png GitHub authorization and repository access scope
 05-select-repository.png    The selected public TSub fork
 06-build-settings.png       Framework, build command, output directory, and Node.js version
 07-create-d1.png            D1 database creation form (D1 path)

@@ -15,8 +15,6 @@ This guide deploys TSub from a GitHub fork through the Cloudflare Git integratio
 
 Open <https://github.com/btjidi/TSub>, click **Fork**, and choose your GitHub account and repository name. Confirm that the fork is publicly reachable at `https://github.com/<your-account>/<your-repository>`.
 
-![Fork TSub repository](assets/screenshots/cloudflare/01-fork-repository.png)
-
 Cloudflare only lists repositories available to the authorized GitHub account. Private repositories may require additional GitHub permissions and Cloudflare plan support; this guide uses a public fork.
 
 ## 2. Create the Cloudflare project
@@ -26,8 +24,6 @@ Cloudflare only lists repositories available to the authorized GitHub account. P
 3. Authorize GitHub. If you choose selected repositories, grant access to your TSub fork.
 4. Return to Cloudflare, select the fork, and click **Begin setup** or **Install & deploy**.
 
-![Cloudflare dashboard](assets/screenshots/cloudflare/02-cloudflare-dashboard.png)
-![GitHub authorization result](assets/screenshots/cloudflare/04-github-authorization.png)
 ![Select the TSub repository](assets/screenshots/cloudflare/05-select-repository.png)
 
 The authorization only needs repository access for builds. You can revoke it later from GitHub **Settings → Applications**.
