@@ -74,7 +74,43 @@ TSUB_PUBLIC_URL=这里填写公开HTTPS地址
 
 完整的 D1/KV 创建、绑定、截图和故障排查见[完整 GitHub 授权部署教程](docs/QUICK_START.md)。
 
-服务器主控支持 Docker Compose 和 Debian/Ubuntu/Alpine 裸机安装，默认由非 root Web 服务配合独立 root 执行器工作。参见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)和[总体架构](docs/ARCHITECTURE.md)。
+## 服务器部署
+
+服务器部署运行的是完整的 TSub 主控，适合需要 SQLite/PostgreSQL、远程 Agent 或本机执行器的场景。支持 Docker Compose 和 Debian/Ubuntu/Alpine 裸机安装；Web 主控默认使用非 root 用户运行，root 执行器仅在启用本机代理控制时安装。
+
+### Docker Compose（推荐）
+
+要求 Linux `amd64`/`arm64`、Docker Engine、Compose v2，以及一个已经指向服务器的域名。先获取源码并生成 `.env`：
+
+```bash
+git clone https://github.com/btjidi/TSub.git
+cd TSub
+TSUB_DOMAIN=tsub.example.com sh scripts/init-controller-env.sh
+docker compose config
+docker compose up -d --build
+docker compose ps
+```
+
+初始化脚本会生成管理员密码和三个独立加密密钥，并只在终端显示一次密码；请立即保存。Compose 对外提供 `80/443`，内部主控端口 `8787` 不应暴露到公网。验证部署：
+
+```bash
+curl -I https://tsub.example.com/login
+docker compose logs --tail=100 controller caddy
+```
+
+### Debian/Ubuntu/Alpine 裸机
+
+裸机方式需要 Node.js 22、npm、Git、SQLite 原生依赖和 systemd/OpenRC。安装器会创建受限的 `tsub-controller` 用户、生成环境文件并注册服务：
+
+```bash
+git clone https://github.com/btjidi/TSub.git
+cd TSub
+TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
+```
+
+部署前放行 `80/TCP`、`443/TCP`（需要 HTTP/3 时再放行 `443/UDP`），不要开放 `8787`。首次登录后在“设置 → 系统设置”确认活动存储，并立即导出备份。
+
+完整的环境变量、HTTPS、执行器、PostgreSQL、多实例、升级和备份步骤见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 
 ## 本地开发
 
