@@ -80,6 +80,10 @@ Never switch existing data by changing bindings or environment variables alone. 
 
 In **Settings → Variables and Secrets**, add these values for production. Encrypt sensitive values and never commit them to GitHub or `wrangler.toml`.
 
+### Method A: Create variables manually
+
+Click **Add variable**, enter each name and value, choose **Secret** for the password and three encryption keys, and save. Complete all six rows in the table before deploying.
+
 | Name | Required | Purpose |
 | --- | --- | --- |
 | `ADMIN_USERNAME` | No | Administrator username, 3-32 characters; defaults to `admin` |
@@ -89,7 +93,7 @@ In **Settings → Variables and Secrets**, add these values for production. Encr
 | `SETTINGS_SECRET_KEY` | Recommended | Separate AES-GCM key for WebDAV, notifications, Cron, and External API Secrets |
 | `TSUB_PUBLIC_URL` | Recommended | Public HTTPS URL, for example `https://tsub.example.com` |
 
-### `.env` import template
+### Method B: Import an `.env` template
 
 In Cloudflare's Variables and Secrets section, click **Import .env**, paste this template, and replace every placeholder. The template contains names only; generate all `replace-with-...` values yourself and never commit the completed file to GitHub.
 

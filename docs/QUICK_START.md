@@ -80,6 +80,10 @@ KV 基础模式支持订阅、节点、Profile、一次性命令和主动推送�
 
 在项目的 **设置 → 变量和密钥（Settings → Variables and Secrets）** 中为生产环境添加以下值。敏感值选择“加密（Encrypt）”，不要写入 GitHub 或 `wrangler.toml`。
 
+### 方式 A：手动创建
+
+点击 **添加变量（Add variable）**，逐项填写名称和值；密码和三个加密密钥的类型选择 **密钥（Secret）**，填写后点击保存。推荐先完成下面表格中的 6 项，再进行部署。
+
 | 名称 | 必需 | 建议值/用途 |
 | --- | --- | --- |
 | `ADMIN_USERNAME` | 否 | 管理员账号名（3-32 位），默认 `admin` |
@@ -89,7 +93,7 @@ KV 基础模式支持订阅、节点、Profile、一次性命令和主动推送�
 | `SETTINGS_SECRET_KEY` | 建议 | WebDAV、通知、Cron 和 External API Secret 的独立 AES-GCM 密钥 |
 | `TSUB_PUBLIC_URL` | 建议 | TSub 的公开 HTTPS 地址，例如 `https://tsub.example.com` |
 
-### `.env` 导入模板
+### 方式 B：导入 `.env` 模板
 
 可以在 Cloudflare 的“变量和密钥”区域点击 **导入 .env（Import .env）**，粘贴下面模板后逐项替换“这里填写……”占位符。所有用户名、密码和密钥都必须由你自己填写；不要把填写后的文件提交到 GitHub。
 
