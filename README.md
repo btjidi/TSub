@@ -28,9 +28,9 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 | --- | --- |
 | ![我的订阅](docs/assets/screenshots/my-subscriptions.png) | ![代理部署记录](docs/assets/screenshots/proxy-deployment-records.png) |
 
-| 代理部署 | 设置 |
+| 代理部署生成器 | 设置 |
 | --- | --- |
-| ![代理部署](docs/assets/screenshots/proxy-deployments.png) | ![设置](docs/assets/screenshots/settings.png) |
+| ![代理部署生成器](docs/assets/screenshots/proxy-deployments.png) | ![设置](docs/assets/screenshots/settings.png) |
 
 ## Cloudflare Pages 部署教程
 
