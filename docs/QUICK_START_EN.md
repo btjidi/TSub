@@ -1,85 +1,115 @@
 [简体中文](QUICK_START.md)
 
-# Quick Start
+# GitHub Authorization Deployment
+
+This guide deploys TSub from a GitHub fork through the Cloudflare Git integration. D1 full mode is recommended; KV basic mode is suitable for lightweight subscription management.
 
 ## Prerequisites
 
-- A Cloudflare account, a Pages project, and either a KV namespace or a D1 database.
-- Node.js 22 LTS or later for local builds and the server controller.
-- An administrator password of at least eight characters, a stable Cookie secret, and a separate deployment encryption key.
-- In KV mode the control plane never connects to servers. In D1 and server full modes, server agents actively poll for commands.
+- A Cloudflare account that can create a Workers/Pages project, D1 database, and KV namespace.
+- A GitHub account. Fork this repository and keep the fork public for the path below.
+- An administrator password of at least eight characters and three different random Secrets.
+- A stable HTTPS public URL if you use D1 full mode.
 
-## Cloudflare Pages common steps
+## 1. Fork the repository
 
-1. Fork or import the repository and create a Pages project.
-2. Set the build command to `npm run build` and the output directory to `dist`.
-3. Bind storage using one of the three procedures below.
-4. Configure these variables or secrets:
+Open <https://github.com/btjidi/TSub>, click **Fork**, and choose your GitHub account and repository name. Confirm that the fork is publicly reachable at `https://github.com/<your-account>/<your-repository>`.
+
+Cloudflare only lists repositories available to the authorized GitHub account. Private repositories may require additional GitHub permissions and Cloudflare plan support; this guide uses a public fork.
+
+## 2. Create the Cloudflare project
+
+1. Sign in at <https://dash.cloudflare.com/>.
+2. Open **Workers & Pages**, choose **Create application**, and choose the Git repository flow (the button may be labeled **Continue with GitHub**).
+3. Authorize GitHub. If you choose selected repositories, grant access to your TSub fork.
+4. Return to Cloudflare, select the fork, and click **Begin setup** or **Install & deploy**.
+
+The authorization only needs repository access for builds. You can revoke it later from GitHub **Settings → Applications**.
+
+## 3. Configure the build
+
+Use these project settings:
+
+| Setting | Value |
+| --- | --- |
+| Framework preset | `Vite` or `None` |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Root directory | Repository root (empty or `/`) |
+| Node.js version | `22` or later |
+
+Save the project before deploying if you still need to add bindings or variables.
+
+## 4. Choose storage
+
+Binding names are part of TSub's runtime contract: the application reads `TSUB_DB` and `TSUB_KV`. Do not bind two empty stores unless you intentionally set the initial storage policy.
+
+### Recommended: D1 full mode
+
+1. Open Cloudflare **Storage & databases → D1**, choose **Create database**, and create an empty database.
+2. In the TSub project, open **Settings → Bindings** and add a D1 Database binding.
+3. Set the variable name to `TSUB_DB`, select the new database, and save.
+4. Do not add `TSUB_KV` or set `TSUB_INITIAL_STORAGE`.
+
+The first request idempotently creates missing tables, indexes, and the unique `storage_control` record. No manual `schema.sql` step is required. D1 full mode enables proxy deployments, remote agents, command queues, and live heartbeats.
+
+### Optional: KV basic mode
+
+1. Open **Storage & databases → KV**, choose **Create namespace**, and create a namespace.
+2. Add a KV Namespace binding in the TSub project.
+3. Set the variable name to `TSUB_KV`, select the new namespace, and save.
+4. Do not add `TSUB_DB` or set `TSUB_INITIAL_STORAGE`.
+
+KV basic mode supports subscriptions, nodes, Profiles, one-time commands, and active push. It does not support remote agents, deployment commands, or live heartbeats.
+
+### Existing KV to D1
+
+Never switch existing data by changing bindings or environment variables alone. Keep `TSUB_KV`, create and bind `TSUB_DB`, redeploy, export a backup, and run the verified KV-to-D1 migration under Settings → System. TSub locks writes, copies records, verifies counts and the SHA-256 digest, and switches atomically.
+
+## 5. Configure variables and Secrets
+
+In **Settings → Variables and Secrets**, add these values for production. Encrypt sensitive values and never commit them to GitHub or `wrangler.toml`.
 
 | Name | Required | Purpose |
 | --- | --- | --- |
 | `ADMIN_USERNAME` | No | Administrator username; defaults to `admin` |
-| `ADMIN_PASSWORD` | Yes | Initial administrator password |
-| `COOKIE_SECRET` | Yes | Login Cookie signing |
-| `DEPLOYMENT_SECRET_KEY` | For deployments | AES-GCM deployment configuration key |
-| `SETTINGS_SECRET_KEY` | Recommended | Separate AES-GCM key for WebDAV, Telegram, Cron, and External API secrets; falls back to `DEPLOYMENT_SECRET_KEY` |
-| `TSUB_PUBLIC_URL` | Recommended | Public HTTPS control-plane URL |
+| `ADMIN_PASSWORD` | Yes | Initial administrator password, at least 8 characters |
+| `COOKIE_SECRET` | Yes | Independent random value for login Cookie signing |
+| `DEPLOYMENT_SECRET_KEY` | For deployments | Independent AES-GCM deployment configuration key |
+| `SETTINGS_SECRET_KEY` | Recommended | Separate AES-GCM key for WebDAV, notifications, Cron, and External API Secrets |
+| `TSUB_PUBLIC_URL` | Recommended | Public HTTPS URL, for example `https://tsub.example.com` |
 
-See [Proxy Deployment](PROXY_DEPLOYMENT_EN.md) for core version, URL, and SHA-256 variables.
+For compatibility, missing `SETTINGS_SECRET_KEY` falls back to `DEPLOYMENT_SECRET_KEY`, but new installations should set a separate value. Store all three encryption Secrets offline; ciphertext cannot be recovered from the database without the original keys.
 
-### KV basic installation
+## 6. Deploy and verify
 
-1. Create a KV namespace and bind it to the Pages project as `TSUB_KV`.
-2. Do not bind `TSUB_DB` or set `TSUB_INITIAL_STORAGE`.
-3. Deploy into KV basic mode. One-time commands, active push, and subscriptions are available; remote agents, commands, and live heartbeats are not.
+1. Click **Save and Deploy** and wait for dependency installation, `npm run build`, and the publish step.
+2. Open the assigned `*.pages.dev` URL and go to `/login`.
+3. Sign in with `ADMIN_USERNAME` (or `admin`) and `ADMIN_PASSWORD`.
+4. Open **Settings → System** and confirm the active D1 or KV storage and capability state.
+5. Change the administrator credentials, sign in again, and configure backups, notifications, and the public page.
+6. Add a source or node, create a Profile under My Subscriptions, and verify its output link.
 
-### D1 full installation
+In D1 mode, verify that remote agents and deployment commands are available. In KV mode, those controls should be visibly unavailable rather than reporting success.
 
-1. Create an empty D1 database and bind it to the Pages project as `TSUB_DB`.
-2. Neither `TSUB_KV` nor `TSUB_INITIAL_STORAGE` is required.
-3. On the first request TSub idempotently creates missing tables and indexes, inserts the single `storage_control` record, and starts in D1 full mode.
+## 7. Forks and `wrangler.toml` resource IDs
 
-[schema.sql](../schema.sql) remains available for pre-deployment auditing or optional manual initialization, but it is not required. If initialization fails, TSub returns `503 storage_initialization_failed` with a `requestId` and never falls back to empty storage.
+The repository's `wrangler.toml` contains KV/D1 IDs for a controlled example production account. A fork must not run the maintainer's `npm run deploy:pages` or reuse those IDs.
 
-### Migrate an existing KV installation to D1
+For Cloudflare Git deployments, use the `TSUB_DB`/`TSUB_KV` bindings configured in the project. If Wrangler reports that a resource belongs to another account, replace or remove the example IDs in the fork and use the Cloudflare dashboard bindings.
 
-1. Keep the existing `TSUB_KV`, create D1, bind it as `TSUB_DB`, and redeploy.
-2. Export a backup, sign in, and confirm under Settings → System that KV remains active.
-3. Start the D1 migration. TSub locks writes, copies business and system records, verifies counts and the SHA-256 digest, and switches atomically only after verification.
-4. Verify sign-in, subscriptions, deployments, and Cron. Keep KV as a rollback target if desired. The switch-back action is disabled when `TSUB_KV` is not bound.
+## Troubleshooting
 
-A new project with both empty bindings defaults to KV. Set `TSUB_INITIAL_STORAGE=d1` to choose D1. This variable is used only for the initial dual-binding decision; conflicting data requires an explicit `kv` or `d1`, while an existing `storage_control` always remains authoritative. Never migrate existing data by editing ordinary settings or environment variables alone.
+- **The repository is missing after GitHub authorization**: review Cloudflare's access under GitHub **Settings → Applications**, then re-authorize the fork.
+- **Build failure**: verify the repository root, `npm run build`, `dist`, and Node.js 22+; fix the first error in the deployment log.
+- **The app shows basic mode unexpectedly**: check that the binding name is exactly `TSUB_DB` or `TSUB_KV`, then redeploy.
+- **`storage_initialization_failed` on the first D1 request**: check the D1 binding, account permissions, and deployment log; do not switch stores without a backup.
+- **Login immediately expires**: keep `COOKIE_SECRET` stable, use HTTPS, and preserve the forwarded protocol.
+- **Public URLs are wrong**: set `TSUB_PUBLIC_URL` to the real HTTPS URL, redeploy, and check public-page settings.
+- **The fork references the original account**: replace or remove the example resource IDs and bind your own Cloudflare resources.
 
-## First sign-in
+## Screenshot checklist
 
-Open `/login` after deployment, or use the configured custom login path. Usernames are case-insensitive. Recommended first steps:
-
-1. Verify storage under Settings → System.
-2. Change administrator credentials and sign in again.
-3. Configure WebDAV backup and notifications.
-4. Add sources, nodes, and Profiles.
-5. Generate isolated demo data only when documentation examples are needed.
-
-## Server controller
-
-The server controller supports Docker Compose and bare-metal deployment. Docker includes Caddy but does not install the host executor by default. The bare-metal installer registers the unprivileged controller and root executor, while the reverse proxy remains an explicit step. See [Server Controller Deployment](SERVER_DEPLOYMENT_EN.md) for DNS, firewall, HTTPS, database, executor, backup, upgrade, rollback, and uninstall procedures.
-
-## Create a subscription
-
-Add an upstream URL under Subscription Management and refresh its node metadata. Add individual share links under Node Management. Then create a Profile under My Subscriptions, select its sources, and copy an output link for the target client.
-
-## Create a proxy deployment
-
-Enter a deployment name, choose protocols, and leave ports empty for secure random assignment. Confirm the host-level risks, generate the one-time deployment command, and run it in the target server shell. The terminal prints nodes, the local server subscription, and the control-plane mirror. The default control command is `tsub`.
-
-## Local verification
-
-```bash
-npm ci
-npm run test:run
-npm run runtime:check
-npm run docs:check
-npm run build
-```
+Cloudflare labels vary by account, region, and product rollout. Capture the pages listed in `docs/assets/screenshots/cloudflare/cloudflare-screenshot-checklist.txt`, and redact account IDs, email addresses, domains, passwords, Tokens, Cookies, and private GitHub details. Real Cloudflare-session screenshots are not included until they can be captured from a signed-in browser.
 
 More: [User Guide](USER_GUIDE_EN.md) · [Operations](OPERATIONS_EN.md) · [Security](SECURITY_EN.md)

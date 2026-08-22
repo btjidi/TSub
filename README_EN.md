@@ -28,17 +28,11 @@ TSub is a subscription and proxy-node management platform for Cloudflare Pages o
 | --- | --- |
 | ![My subscriptions](docs/assets/screenshots/my-subscriptions.png) | ![Proxy deployments](docs/assets/screenshots/proxy-deployments.png) |
 
-## Cloudflare quick deployment
+## Cloudflare GitHub deployment
 
-1. Connect the repository to Cloudflare Pages.
-2. Use `npm run build` and publish the `dist` directory.
-3. Choose storage: bind only KV as `TSUB_KV` for basic mode, or only D1 as `TSUB_DB` for full mode. A D1-only installation creates its schema on the first request and needs neither KV nor a manual SQL step.
-4. Set `ADMIN_PASSWORD`, `COOKIE_SECRET`, and `DEPLOYMENT_SECRET_KEY`; a separate `SETTINGS_SECRET_KEY` is recommended. `ADMIN_USERNAME` is optional.
-5. Sign in after deployment and finish storage, notification, backup, and public-page configuration.
+Fork this repository first, then authorize GitHub in Cloudflare and select your public fork. See the complete [GitHub authorization deployment guide](docs/QUICK_START_EN.md) for build settings, D1/KV bindings, Secrets, first sign-in, and troubleshooting.
 
-Do not switch an existing KV installation by changing bindings alone. Bind both `TSUB_KV` and `TSUB_DB`, redeploy, then run the verified KV-to-D1 migration under Settings → System. [schema.sql](schema.sql) remains available for optional pre-initialization and auditing.
-
-See [Quick Start](docs/QUICK_START_EN.md) for the complete procedure.
+Use `npm run build` as the build command, `dist` as the output directory, and Node.js 22 or later. A fork must create and bind its own `TSUB_DB` or `TSUB_KV` resources; the IDs in `wrangler.toml` belong to the example production account and must not be reused.
 
 The server controller supports Docker Compose and bare-metal Debian, Ubuntu, or Alpine. Its web process is unprivileged and delegates host changes to a separate root executor. See [Server Controller Deployment](docs/SERVER_DEPLOYMENT_EN.md) and [Architecture](docs/ARCHITECTURE_EN.md).
 

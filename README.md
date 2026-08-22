@@ -28,17 +28,11 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 | --- | --- |
 | ![我的订阅](docs/assets/screenshots/my-subscriptions.png) | ![代理部署](docs/assets/screenshots/proxy-deployments.png) |
 
-## Cloudflare 快速部署
+## Cloudflare GitHub 授权部署
 
-1. 将仓库连接到 Cloudflare Pages。
-2. 构建命令使用 `npm run build`，输出目录使用 `dist`。
-3. 选择存储：基础模式只绑定 KV 为 `TSUB_KV`；完整模式只绑定 D1 为 `TSUB_DB`。纯 D1 首次请求会自动建表，无需先绑定 KV 或手工执行 SQL。
-4. 配置 `ADMIN_PASSWORD`、`COOKIE_SECRET`、`DEPLOYMENT_SECRET_KEY`，建议额外配置独立的 `SETTINGS_SECRET_KEY`，可选配置 `ADMIN_USERNAME`。
-5. 部署后使用管理员账号和密码登录，再从设置页完成存储、通知、备份与公开页面配置。
+推荐先 Fork 本仓库，再在 Cloudflare 中授权 GitHub 并选择自己的公开 Fork。完整的逐步配置、D1/KV 绑定、Secrets、首次登录和故障排查见[GitHub 授权部署教程](docs/QUICK_START.md)。
 
-已有 KV 数据的项目不要仅靠修改绑定切换存储。先同时绑定 `TSUB_KV` 和 `TSUB_DB`，重新部署后从“设置 → 系统设置”执行带摘要校验的 KV→D1 迁移。[schema.sql](schema.sql) 仅用于可选的预初始化和审计。
-
-详细步骤见[快速开始](docs/QUICK_START.md)。
+构建命令使用 `npm run build`，输出目录使用 `dist`，Node.js 版本使用 22 或更高。Fork 后必须在自己的 Cloudflare 账号中创建并绑定 `TSUB_DB` 或 `TSUB_KV`；仓库中的 `wrangler.toml` 资源 ID 属于示例生产账号，不能直接复用。
 
 服务器主控支持 Docker Compose 和 Debian/Ubuntu/Alpine 裸机安装，默认由非 root Web 服务配合独立 root 执行器工作。参见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)和[总体架构](docs/ARCHITECTURE.md)。
 

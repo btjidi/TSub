@@ -1,85 +1,115 @@
 [English](QUICK_START_EN.md)
 
-# 快速开始
+# GitHub 授权部署
 
-## 前置条件
+本文面向没有现成 Cloudflare 项目的用户，指导你从 GitHub Fork 开始，通过 Cloudflare 控制台的 GitHub 授权部署 TSub。D1 完整模式是推荐路径；KV 基础模式适合只需要订阅管理的轻量场景。
 
-- Cloudflare 账号、Pages 项目，以及 KV 命名空间或 D1 数据库。
-- Node.js 22 LTS 或更高版本，用于本地构建和服务器主控。
-- 一个至少 8 位的管理员密码、稳定的 Cookie 密钥，以及独立的部署加密密钥。
-- KV 模式下主控不会连接服务器；D1 与服务器完整模式可由服务器 Agent 主动轮询命令。
+## 部署前准备
 
-## Cloudflare Pages 公共步骤
+- Cloudflare 账号，并能创建 Workers/Pages 项目、D1 数据库和 KV Namespace。
+- GitHub 账号。建议将本仓库 Fork 到自己的账号，并保持仓库为公开仓库。
+- 管理员密码至少 8 位；请另外准备三个互不相同的随机 Secret。
+- 如果使用 D1 完整模式，建议准备一个稳定的 HTTPS 公开地址。
 
-1. Fork 或导入仓库，创建 Pages 项目。
-2. 构建命令填写 `npm run build`，输出目录填写 `dist`。
-3. 按下面三种方式之一绑定存储。
-4. 配置以下变量或 Secret：
+## 1. Fork 仓库
 
-| 名称 | 必需 | 用途 |
-| --- | --- | --- |
-| `ADMIN_USERNAME` | 否 | 管理员账号，默认 `admin` |
-| `ADMIN_PASSWORD` | 是 | 初始管理员密码 |
-| `COOKIE_SECRET` | 是 | 登录 Cookie 签名 |
-| `DEPLOYMENT_SECRET_KEY` | 代理部署需要 | AES-GCM 部署配置密钥 |
-| `SETTINGS_SECRET_KEY` | 建议 | WebDAV、Telegram、Cron 和 External API Secret 的独立 AES-GCM 密钥；缺失时兼容使用 `DEPLOYMENT_SECRET_KEY` |
-| `TSUB_PUBLIC_URL` | 建议 | 主控公开 HTTPS 地址 |
+打开 <https://github.com/btjidi/TSub>，点击 **Fork**，选择自己的 GitHub 账号和仓库名称。部署前确认 Fork 仓库可以公开访问，例如直接打开 `https://github.com/<你的账号>/<你的仓库>`。
 
-代理核心的版本、下载地址和 SHA-256 变量见[代理部署](PROXY_DEPLOYMENT.md)。
+Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私有仓库需要额外的 GitHub 权限和 Cloudflare 计划支持；本教程按公开 Fork 编写。
 
-### KV 基础直装
+## 2. 在 Cloudflare 创建项目
 
-1. 创建 KV 命名空间，在 Pages 的设置 → 绑定中将它绑定为 `TSUB_KV`。
-2. 不绑定 `TSUB_DB`，也不配置 `TSUB_INITIAL_STORAGE`。
-3. 部署后系统直接使用 KV 基础模式。一次性命令、主动推送和订阅可用；远程 Agent、命令与实时心跳不可用。
+1. 登录 <https://dash.cloudflare.com/>。
+2. 打开 **Workers & Pages**，选择 **Create application**，再选择从 Git 仓库创建项目（界面可能显示 **Continue with GitHub**）。
+3. 点击 GitHub 授权按钮，在 GitHub 授权页允许 Cloudflare 访问仓库列表；如果选择“仅选定仓库”，必须勾选你的 TSub Fork。
+4. 返回 Cloudflare 后选择该 Fork，点击 **Begin setup** 或 **Install & deploy**。
 
-### D1 完整直装
+授权只授予仓库读取和构建所需权限。部署完成后可以在 GitHub 的 **Settings → Applications** 中撤销 Cloudflare 授权。
 
-1. 创建一个空 D1 数据库，在 Pages 的设置 → 绑定中将它绑定为 `TSUB_DB`。
-2. 不需要绑定 `TSUB_KV`，也不需要配置 `TSUB_INITIAL_STORAGE`。
-3. 部署后首次请求会幂等创建缺失表和索引、写入唯一的 `storage_control`，并直接启用 D1 完整模式。
+## 3. 填写构建设置
 
-[schema.sql](../schema.sql) 可用于上线前审计或手工预初始化，但不是 D1 直装的必需步骤。若 D1 初始化失败，主控返回 `503 storage_initialization_failed` 和 `requestId`，不会降级到空存储。
+在项目设置中填写：
+
+| 设置 | 值 |
+| --- | --- |
+| Framework preset | `Vite` 或 `None` |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Root directory | 仓库根目录（留空或填写 `/`） |
+| Node.js version | `22` 或更高版本 |
+
+保存后先不要急着部署，下一节先创建并绑定存储。若 Cloudflare 要求环境变量才能开始构建，可先保存项目，再从 **Settings → Variables and Secrets** 添加本教程列出的值。
+
+## 4. 选择存储模式
+
+每个绑定名称必须完全一致：应用代码读取的是 `TSUB_DB` 和 `TSUB_KV`。全新项目不要同时绑定空 D1 和空 KV，除非你明确设置首次存储策略。
+
+### 推荐：D1 完整模式
+
+1. 打开 Cloudflare **Storage & databases → D1**，点击 **Create database**，创建一个空数据库。
+2. 回到 TSub 项目的 **Settings → Bindings**，添加 D1 Database binding。
+3. 变量名填写 `TSUB_DB`，选择刚创建的数据库并保存。
+4. 不添加 `TSUB_KV`，也不设置 `TSUB_INITIAL_STORAGE`。
+
+部署后的首次请求会幂等创建缺失表、索引和唯一的 `storage_control` 记录，不需要手工执行 `schema.sql`。D1 完整模式支持代理部署、远程 Agent、命令队列和实时心跳。
+
+### 可选：KV 基础模式
+
+1. 打开 Cloudflare **Storage & databases → KV**，点击 **Create namespace**。
+2. 回到 TSub 项目的 **Settings → Bindings**，添加 KV Namespace binding。
+3. 变量名填写 `TSUB_KV`，选择刚创建的 Namespace 并保存。
+4. 不添加 `TSUB_DB`，也不设置 `TSUB_INITIAL_STORAGE`。
+
+KV 基础模式支持订阅、节点、Profile、一次性命令和主动推送，但不支持远程 Agent、部署命令和实时心跳。需要这些能力时请使用 D1。
 
 ### 已有 KV 迁移到 D1
 
-1. 保留原 `TSUB_KV`，新建 D1 并绑定为 `TSUB_DB`，然后重新部署。
-2. 先导出备份，再登录“设置 → 系统设置”，确认当前活动存储仍为 KV。
-3. 点击迁移到 D1。系统会加写锁、复制数据和系统凭据、核对数量与 SHA-256 摘要，成功后才原子切换。
-4. 验证登录、订阅、部署记录和 Cron 后再决定是否保留 KV 作为回切目标。未绑定 KV 时，“切回 KV”会禁用。
+不要只修改绑定名称或环境变量来切换已有数据。保留原 `TSUB_KV`，创建并绑定 `TSUB_DB` 后重新部署；登录 TSub，在 **设置 → 系统设置** 导出备份并执行 KV→D1 迁移。系统会加写锁、复制记录、核对数量和 SHA-256 摘要，校验成功后才原子切换。
 
-全新项目若同时绑定空 KV 和空 D1，默认选择 KV；可设置 `TSUB_INITIAL_STORAGE=d1` 选择 D1。该变量只用于首次双绑定选择：两侧数据冲突时必须明确设置 `kv` 或 `d1`，已有 `storage_control` 后它不再改变活动存储。不要通过普通设置或只修改环境变量迁移已有数据。
+## 5. 配置变量和 Secrets
 
-## 首次登录
+在项目的 **Settings → Variables and Secrets** 中为生产环境添加以下值。敏感值选择 **Encrypt**，不要写入 GitHub 或 `wrangler.toml`。
 
-部署完成后访问 `/login`。如果设置了自定义登录路径，则使用对应路径。输入管理员账号和密码；账号不区分大小写。首次进入建议：
+| 名称 | 必需 | 建议值/用途 |
+| --- | --- | --- |
+| `ADMIN_USERNAME` | 否 | 管理员账号，默认 `admin` |
+| `ADMIN_PASSWORD` | 是 | 至少 8 位的初始管理员密码 |
+| `COOKIE_SECRET` | 是 | 登录 Cookie 签名用的独立随机值 |
+| `DEPLOYMENT_SECRET_KEY` | 代理部署需要 | AES-GCM 部署配置密钥，使用独立随机值 |
+| `SETTINGS_SECRET_KEY` | 建议 | WebDAV、通知、Cron 和 External API Secret 的独立 AES-GCM 密钥 |
+| `TSUB_PUBLIC_URL` | 建议 | TSub 的公开 HTTPS 地址，例如 `https://tsub.example.com` |
 
-1. 在“设置 → 系统设置”验证存储类型。
-2. 修改管理员凭据并重新登录。
-3. 配置 WebDAV 备份与通知。
-4. 添加订阅源、节点和 Profile。
-5. 需要文档演示时生成隔离演示数据；它不会进入公开订阅或备份。
+缺少 `SETTINGS_SECRET_KEY` 时，旧配置会兼容使用 `DEPLOYMENT_SECRET_KEY`，但新部署建议始终设置独立值。三个加密 Secret 必须离线保存；只有数据库而没有原 Secret，部署和设置密文无法恢复。
 
-## 服务器主控
+## 6. 部署和首次验证
 
-服务器主控支持 Docker Compose 和裸机两种方式。Docker 自带 Caddy，但默认不安装宿主机执行器；裸机安装器同时注册非 root 主控和 root 执行器，但反向代理需单独配置。完整的 DNS、防火墙、HTTPS、数据库、本机执行器、备份、升级、回滚和卸载步骤见[服务器主控部署](SERVER_DEPLOYMENT.md)。
+1. 点击 **Save and Deploy**，等待依赖安装、`npm run build` 和 Pages/Workers 发布完成。
+2. 打开 Cloudflare 分配的 `*.pages.dev` 地址，进入 `/login`。
+3. 使用 `ADMIN_USERNAME`（未设置则为 `admin`）和 `ADMIN_PASSWORD` 登录。
+4. 打开 **设置 → 系统设置**，确认活动存储为 D1 或 KV，并确认平台能力与所选模式一致。
+5. 立即修改管理员凭据并重新登录，然后配置第一份备份、通知和公开页面设置。
+6. 添加一个订阅源或手动节点，在“我的订阅”生成 Profile，验证输出链接可访问。
 
-## 创建第一条订阅
+D1 模式还应在“代理部署”中确认远程 Agent 和命令入口可用。KV 模式中这些入口应显示为不可用，而不是报告虚假的成功状态。
 
-在“订阅管理”添加上游 URL，刷新节点信息；在“节点管理”添加单条分享链接；然后在“我的订阅”新建 Profile 并选择来源。复制 Profile 链接时选择目标客户端。
+## 7. Fork 与 `wrangler.toml` 资源 ID
 
-## 创建代理部署
+仓库内的 `wrangler.toml` 包含示例生产账号的 KV/D1 ID，供维护者的受控发布脚本校验使用。Fork 到自己的账号后，不要直接执行维护者的 `npm run deploy:pages`，也不要把这些 ID 当作自己的资源。
 
-在“代理部署”填写部署名称，选择协议，端口可留空随机生成。确认风险后生成一次性部署命令，并在目标服务器的 Shell 中执行。安装完成后终端输出节点、服务器本地订阅和主控镜像地址；默认控制命令为 `tsub`。
+通过 Cloudflare Git 集成部署时，以项目设置中的 `TSUB_DB`/`TSUB_KV` 绑定为准。若 Wrangler 报告资源不属于当前账号，请将 Fork 中的绑定 ID 替换为自己的资源，或移除旧绑定后完全使用 Cloudflare 控制台绑定，再重新部署。
 
-## 本地验证
+## 常见问题
 
-```bash
-npm ci
-npm run test:run
-npm run runtime:check
-npm run docs:check
-npm run build
-```
+- **GitHub 授权后看不到仓库**：在 GitHub **Settings → Applications** 检查 Cloudflare 的授权范围，重新授予对 Fork 的访问权限。
+- **构建失败**：确认根目录、`npm run build`、输出目录 `dist` 和 Node.js 22+；查看部署日志中的首个错误。
+- **功能显示为基础模式**：检查绑定名称是否严格为 `TSUB_DB` 或 `TSUB_KV`，并确认修改后已重新部署。
+- **D1 首次访问返回 `storage_initialization_failed`**：检查 D1 绑定、账号权限和部署日志；不要在没有备份的情况下切换到另一种存储。
+- **登录后立即失效**：确认 `COOKIE_SECRET` 没有变化，公开地址使用 HTTPS，且反向代理正确传递协议。
+- **公开链接地址不正确**：设置 `TSUB_PUBLIC_URL` 为实际公开 HTTPS 地址并重新部署，再在设置页检查公开页面配置。
+- **Fork 部署引用了原账号资源**：替换或移除 `wrangler.toml` 中的示例资源 ID，使用自己的 Cloudflare 绑定。
+
+## 截图清单
+
+Cloudflare 控制台会随账号、地区和产品界面更新。截图应按 `docs/assets/screenshots/cloudflare/cloudflare-screenshot-checklist.txt` 的清单采集，并遮挡账号 ID、邮箱、域名、密码、Token、Cookie 和 GitHub 私有信息。当前仓库未包含真实 Cloudflare 会话截图；请在已登录的 Cloudflare 控制台中按清单补采后再提交图片。
 
 更多信息：[用户指南](USER_GUIDE.md) · [运维手册](OPERATIONS.md) · [安全模型](SECURITY.md)
