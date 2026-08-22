@@ -82,8 +82,8 @@ KV 基础模式支持订阅、节点、Profile、一次性命令和主动推送�
 
 | 名称 | 必需 | 建议值/用途 |
 | --- | --- | --- |
-| `ADMIN_USERNAME` | 否 | 管理员账号，默认 `admin` |
-| `ADMIN_PASSWORD` | 是 | 至少 8 位的初始管理员密码 |
+| `ADMIN_USERNAME` | 否 | 管理员账号名（3-32 位），默认 `admin` |
+| `ADMIN_PASSWORD` | 是 | 管理员密码，至少 8 位、最多 128 位 |
 | `COOKIE_SECRET` | 是 | 登录 Cookie 签名用的独立随机值 |
 | `DEPLOYMENT_SECRET_KEY` | 代理部署需要 | AES-GCM 部署配置密钥，使用独立随机值 |
 | `SETTINGS_SECRET_KEY` | 建议 | WebDAV、通知、Cron 和 External API Secret 的独立 AES-GCM 密钥 |
@@ -94,8 +94,8 @@ KV 基础模式支持订阅、节点、Profile、一次性命令和主动推送�
 可以在 Cloudflare 的“变量和密钥”区域点击 **导入 .env（Import .env）**，粘贴下面模板后逐项替换“这里填写……”占位符。所有用户名、密码和密钥都必须由你自己填写；不要把填写后的文件提交到 GitHub。
 
 ```dotenv
-ADMIN_USERNAME=这里填写用户名
-ADMIN_PASSWORD=这里填写密码
+ADMIN_USERNAME=这里填写管理员账号名
+ADMIN_PASSWORD=这里填写管理员密码（至少8位）
 COOKIE_SECRET=这里填写随机Cookie密钥
 DEPLOYMENT_SECRET_KEY=这里填写随机部署密钥
 SETTINGS_SECRET_KEY=这里填写随机设置密钥

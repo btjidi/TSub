@@ -82,8 +82,8 @@ In **Settings → Variables and Secrets**, add these values for production. Encr
 
 | Name | Required | Purpose |
 | --- | --- | --- |
-| `ADMIN_USERNAME` | No | Administrator username; defaults to `admin` |
-| `ADMIN_PASSWORD` | Yes | Initial administrator password, at least 8 characters |
+| `ADMIN_USERNAME` | No | Administrator username, 3-32 characters; defaults to `admin` |
+| `ADMIN_PASSWORD` | Yes | Administrator password, 8-128 characters |
 | `COOKIE_SECRET` | Yes | Independent random value for login Cookie signing |
 | `DEPLOYMENT_SECRET_KEY` | For deployments | Independent AES-GCM deployment configuration key |
 | `SETTINGS_SECRET_KEY` | Recommended | Separate AES-GCM key for WebDAV, notifications, Cron, and External API Secrets |
