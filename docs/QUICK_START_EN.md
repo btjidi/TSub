@@ -89,6 +89,21 @@ In **Settings → Variables and Secrets**, add these values for production. Encr
 | `SETTINGS_SECRET_KEY` | Recommended | Separate AES-GCM key for WebDAV, notifications, Cron, and External API Secrets |
 | `TSUB_PUBLIC_URL` | Recommended | Public HTTPS URL, for example `https://tsub.example.com` |
 
+### `.env` import template
+
+In Cloudflare's Variables and Secrets section, click **Import .env**, paste this template, and replace every placeholder. The template contains names only; generate all `replace-with-...` values yourself and never commit the completed file to GitHub.
+
+```dotenv
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=replace-with-a-new-admin-password
+COOKIE_SECRET=replace-with-a-random-cookie-secret
+DEPLOYMENT_SECRET_KEY=replace-with-a-random-deployment-key
+SETTINGS_SECRET_KEY=replace-with-a-random-settings-key
+TSUB_PUBLIC_URL=https://your-project.pages.dev
+```
+
+After import, confirm the target is **Production**, sensitive entries are stored as **Secrets**, and `TSUB_PUBLIC_URL` is stored as a regular text variable. Never expose these values in screenshots, logs, or the repository.
+
 For compatibility, missing `SETTINGS_SECRET_KEY` falls back to `DEPLOYMENT_SECRET_KEY`, but new installations should set a separate value. Store all three encryption Secrets offline; ciphertext cannot be recovered from the database without the original keys.
 
 ![Configure variables and secrets](assets/screenshots/cloudflare/11-configure-secrets.png)

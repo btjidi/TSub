@@ -89,6 +89,21 @@ KV 基础模式支持订阅、节点、Profile、一次性命令和主动推送�
 | `SETTINGS_SECRET_KEY` | 建议 | WebDAV、通知、Cron 和 External API Secret 的独立 AES-GCM 密钥 |
 | `TSUB_PUBLIC_URL` | 建议 | TSub 的公开 HTTPS 地址，例如 `https://tsub.example.com` |
 
+### `.env` 导入模板
+
+可以在 Cloudflare 的“变量和密钥”区域点击 **导入 .env（Import .env）**，粘贴下面模板后逐项替换占位符。模板只用于填写名称，所有 `replace-with-...` 值都必须由你自己生成；不要把填写后的文件提交到 GitHub。
+
+```dotenv
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=replace-with-a-new-admin-password
+COOKIE_SECRET=replace-with-a-random-cookie-secret
+DEPLOYMENT_SECRET_KEY=replace-with-a-random-deployment-key
+SETTINGS_SECRET_KEY=replace-with-a-random-settings-key
+TSUB_PUBLIC_URL=https://your-project.pages.dev
+```
+
+导入后确认目标环境为 **生产（Production）**，敏感项显示为 **密钥（Secret）**，`TSUB_PUBLIC_URL` 可以作为普通文本变量保存。不要在截图、日志或仓库中显示这些值。
+
 缺少 `SETTINGS_SECRET_KEY` 时，旧配置会兼容使用 `DEPLOYMENT_SECRET_KEY`，但新部署建议始终设置独立值。三个加密 Secret 必须离线保存；只有数据库而没有原 Secret，部署和设置密文无法恢复。
 
 ![配置变量和 Secrets](assets/screenshots/cloudflare/11-configure-secrets.png)
