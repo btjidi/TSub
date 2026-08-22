@@ -6,7 +6,7 @@
 
 ## 部署前准备
 
-- Cloudflare 账号，并能创建 Workers/Pages 项目、D1 数据库和 KV Namespace。
+- Cloudflare 账号，并能创建 Workers 和 Pages 项目、D1 数据库和 KV 命名空间。
 - GitHub 账号。建议将本仓库 Fork 到自己的账号，并保持仓库为公开仓库。
 - 管理员密码至少 8 位；请另外准备三个互不相同的随机 Secret。
 - 如果使用 D1 完整模式，建议准备一个稳定的 HTTPS 公开地址。
@@ -20,13 +20,13 @@ Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私�
 ## 2. 在 Cloudflare 创建项目
 
 1. 登录 <https://dash.cloudflare.com/>。
-2. 打开 **Workers & Pages → Create application → Pages → Import existing Git repository**（如果先显示 Worker 创建卡片，点击底部“想要部署 Pages？开始使用”）。界面也可能显示 **Continue with GitHub**。
+2. 打开 **Workers 和 Pages → 创建应用程序 → Pages → 导入现有 Git 存储库**（如果先显示 Worker 创建卡片，点击底部“想要部署 Pages？开始使用”）。英文界面对应 **Workers & Pages → Create application → Pages → Import existing Git repository**，也可能显示 **Continue with GitHub**。
 3. 点击 GitHub 授权按钮，在 GitHub 授权页允许 Cloudflare 访问仓库列表；如果选择“仅选定仓库”，必须勾选你的 TSub Fork。
-4. 返回 Cloudflare 后选择该 Fork，点击 **Begin setup** 或 **Install & deploy**。
+4. 返回 Cloudflare 后选择该 Fork，点击 **开始设置（Begin setup）**；某些界面显示 **Install & deploy**。
 
 ![选择 TSub 仓库](assets/screenshots/cloudflare/05-select-repository.png)
 
-授权只授予仓库读取和构建所需权限。部署完成后可以在 GitHub 的 **Settings → Applications** 中撤销 Cloudflare 授权。
+授权只授予仓库读取和构建所需权限。部署完成后可以在 GitHub 的 **Settings → Applications（设置 → 应用）** 中撤销 Cloudflare 授权。
 
 ## 3. 填写构建设置
 
@@ -40,7 +40,7 @@ Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私�
 | Root directory | 仓库根目录（留空或填写 `/`） |
 | Node.js version | `22` 或更高版本 |
 
-保存后先不要急着部署，下一节先创建并绑定存储。若 Cloudflare 要求环境变量才能开始构建，可先保存项目，再从 **Settings → Variables and Secrets** 添加本教程列出的值。
+保存后先不要急着部署，下一节先创建并绑定存储。若 Cloudflare 要求环境变量才能开始构建，可先保存项目，再从 **设置 → 变量和密钥（Settings → Variables and Secrets）** 添加本教程列出的值。
 
 ![Pages 构建设置](assets/screenshots/cloudflare/06-build-settings.png)
 
@@ -50,8 +50,8 @@ Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私�
 
 ### 推荐：D1 完整模式
 
-1. 打开 Cloudflare **Storage & databases → D1**，点击 **Create database**，创建一个空数据库。
-2. 回到 TSub 项目的 **Settings → Bindings**，添加 D1 Database binding。
+1. 打开 Cloudflare **存储和数据库 → D1 SQLite 数据库**，点击 **创建数据库（Create database）**，创建一个空数据库。
+2. 回到 TSub 项目的 **设置 → 绑定（Settings → Bindings）**，点击“添加”，选择 D1 数据库。
 3. 变量名填写 `TSUB_DB`，选择刚创建的数据库并保存。
 4. 不添加 `TSUB_KV`，也不设置 `TSUB_INITIAL_STORAGE`。
 
@@ -62,8 +62,8 @@ Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私�
 
 ### 可选：KV 基础模式
 
-1. 打开 Cloudflare **Storage & databases → KV**，点击 **Create namespace**。
-2. 回到 TSub 项目的 **Settings → Bindings**，添加 KV Namespace binding。
+1. 打开 Cloudflare **存储和数据库 → Workers KV**，点击“创建命名空间（Create namespace）”。
+2. 回到 TSub 项目的 **设置 → 绑定（Settings → Bindings）**，点击“添加”，选择 KV 命名空间。
 3. 变量名填写 `TSUB_KV`，选择刚创建的 Namespace 并保存。
 4. 不添加 `TSUB_DB`，也不设置 `TSUB_INITIAL_STORAGE`。
 
@@ -78,7 +78,7 @@ KV 基础模式支持订阅、节点、Profile、一次性命令和主动推送�
 
 ## 5. 配置变量和 Secrets
 
-在项目的 **Settings → Variables and Secrets** 中为生产环境添加以下值。敏感值选择 **Encrypt**，不要写入 GitHub 或 `wrangler.toml`。
+在项目的 **设置 → 变量和密钥（Settings → Variables and Secrets）** 中为生产环境添加以下值。敏感值选择“加密（Encrypt）”，不要写入 GitHub 或 `wrangler.toml`。
 
 | 名称 | 必需 | 建议值/用途 |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ KV 基础模式支持订阅、节点、Profile、一次性命令和主动推送�
 
 ## 6. 部署和首次验证
 
-1. 点击 **Save and Deploy**，等待依赖安装、`npm run build` 和 Pages/Workers 发布完成。
+1. 点击 **保存并部署（Save and Deploy）**，等待依赖安装、`npm run build` 和 Pages Functions 发布完成。
 2. 打开 Cloudflare 分配的 `*.pages.dev` 地址，进入 `/login`。
 3. 使用 `ADMIN_USERNAME`（未设置则为 `admin`）和 `ADMIN_PASSWORD` 登录。
 4. 打开 **设置 → 系统设置**，确认活动存储为 D1 或 KV，并确认平台能力与所选模式一致。
