@@ -28,6 +28,10 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 | --- | --- |
 | ![我的订阅](docs/assets/screenshots/my-subscriptions.png) | ![代理部署](docs/assets/screenshots/proxy-deployments.png) |
 
+| 代理部署记录 | 设置 |
+| --- | --- |
+| ![代理部署记录](docs/assets/screenshots/proxy-deployment-records.png) | ![设置](docs/assets/screenshots/settings.png) |
+
 ## Cloudflare GitHub 授权部署
 
 推荐先 Fork 本仓库，再在 Cloudflare 中授权 GitHub 并选择自己的公开 Fork。完整的逐步配置、D1/KV 绑定、Secrets、首次登录和故障排查见[GitHub 授权部署教程](docs/QUICK_START.md)。
