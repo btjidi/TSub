@@ -141,6 +141,7 @@ For Cloudflare Git deployments, use the `TSUB_DB`/`TSUB_KV` bindings configured 
 - **Build failure**: verify the repository root, `npm run build`, `dist`, and Node.js 22+; fix the first error in the deployment log.
 - **The app shows basic mode unexpectedly**: check that the binding name is exactly `TSUB_DB` or `TSUB_KV`, then redeploy.
 - **`storage_initialization_failed` on the first D1 request**: check the D1 binding, account permissions, and deployment log; do not switch stores without a backup.
+- **Password is rejected after adding variables**: confirm the variables are under **Production** and trigger a new deployment; Cloudflare does not inject new variables into an already completed deployment. The username must be 3-32 lowercase ASCII letters, digits, dots, underscores, or hyphens; it defaults to `admin`. Passwords must be 8-128 characters with no leading or trailing spaces.
 - **Login immediately expires**: keep `COOKIE_SECRET` stable, use HTTPS, and preserve the forwarded protocol.
 - **Public URLs are wrong**: set `TSUB_PUBLIC_URL` to the real HTTPS URL, redeploy, and check public-page settings.
 - **The fork references the original account**: replace or remove the example resource IDs and bind your own Cloudflare resources.
