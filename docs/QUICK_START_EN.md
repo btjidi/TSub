@@ -15,14 +15,20 @@ This guide deploys TSub from a GitHub fork through the Cloudflare Git integratio
 
 Open <https://github.com/btjidi/TSub>, click **Fork**, and choose your GitHub account and repository name. Confirm that the fork is publicly reachable at `https://github.com/<your-account>/<your-repository>`.
 
+![Fork TSub repository](assets/screenshots/cloudflare/01-fork-repository.png)
+
 Cloudflare only lists repositories available to the authorized GitHub account. Private repositories may require additional GitHub permissions and Cloudflare plan support; this guide uses a public fork.
 
 ## 2. Create the Cloudflare project
 
 1. Sign in at <https://dash.cloudflare.com/>.
-2. Open **Workers & Pages**, choose **Create application**, and choose the Git repository flow (the button may be labeled **Continue with GitHub**).
+2. Open **Workers & Pages → Create application → Pages → Import existing Git repository**. If the first screen shows the Worker cards, click **Want to deploy Pages? Get started**. The button may also be labeled **Continue with GitHub**.
 3. Authorize GitHub. If you choose selected repositories, grant access to your TSub fork.
 4. Return to Cloudflare, select the fork, and click **Begin setup** or **Install & deploy**.
+
+![Cloudflare dashboard](assets/screenshots/cloudflare/02-cloudflare-dashboard.png)
+![GitHub authorization result](assets/screenshots/cloudflare/04-github-authorization.png)
+![Select the TSub repository](assets/screenshots/cloudflare/05-select-repository.png)
 
 The authorization only needs repository access for builds. You can revoke it later from GitHub **Settings → Applications**.
 
@@ -40,6 +46,8 @@ Use these project settings:
 
 Save the project before deploying if you still need to add bindings or variables.
 
+![Pages build settings](assets/screenshots/cloudflare/06-build-settings.png)
+
 ## 4. Choose storage
 
 Binding names are part of TSub's runtime contract: the application reads `TSUB_DB` and `TSUB_KV`. Do not bind two empty stores unless you intentionally set the initial storage policy.
@@ -51,6 +59,9 @@ Binding names are part of TSub's runtime contract: the application reads `TSUB_D
 3. Set the variable name to `TSUB_DB`, select the new database, and save.
 4. Do not add `TSUB_KV` or set `TSUB_INITIAL_STORAGE`.
 
+![Create D1 database](assets/screenshots/cloudflare/07-create-d1.png)
+![Bind D1 database](assets/screenshots/cloudflare/08-bind-d1.png)
+
 The first request idempotently creates missing tables, indexes, and the unique `storage_control` record. No manual `schema.sql` step is required. D1 full mode enables proxy deployments, remote agents, command queues, and live heartbeats.
 
 ### Optional: KV basic mode
@@ -59,6 +70,9 @@ The first request idempotently creates missing tables, indexes, and the unique `
 2. Add a KV Namespace binding in the TSub project.
 3. Set the variable name to `TSUB_KV`, select the new namespace, and save.
 4. Do not add `TSUB_DB` or set `TSUB_INITIAL_STORAGE`.
+
+![Create KV namespace](assets/screenshots/cloudflare/09-create-kv.png)
+![Bind KV namespace](assets/screenshots/cloudflare/10-bind-kv.png)
 
 KV basic mode supports subscriptions, nodes, Profiles, one-time commands, and active push. It does not support remote agents, deployment commands, or live heartbeats.
 
@@ -81,6 +95,8 @@ In **Settings → Variables and Secrets**, add these values for production. Encr
 
 For compatibility, missing `SETTINGS_SECRET_KEY` falls back to `DEPLOYMENT_SECRET_KEY`, but new installations should set a separate value. Store all three encryption Secrets offline; ciphertext cannot be recovered from the database without the original keys.
 
+![Configure variables and secrets](assets/screenshots/cloudflare/11-configure-secrets.png)
+
 ## 6. Deploy and verify
 
 1. Click **Save and Deploy** and wait for dependency installation, `npm run build`, and the publish step.
@@ -90,7 +106,13 @@ For compatibility, missing `SETTINGS_SECRET_KEY` falls back to `DEPLOYMENT_SECRE
 5. Change the administrator credentials, sign in again, and configure backups, notifications, and the public page.
 6. Add a source or node, create a Profile under My Subscriptions, and verify its output link.
 
+![Deployment started](assets/screenshots/cloudflare/12-deploy-started.png)
+![Deployment succeeded](assets/screenshots/cloudflare/13-deploy-success.png)
+![First login](assets/screenshots/cloudflare/14-first-login.png)
+
 In D1 mode, verify that remote agents and deployment commands are available. In KV mode, those controls should be visibly unavailable rather than reporting success.
+
+![Storage verification](assets/screenshots/cloudflare/15-storage-verification.png)
 
 ## 7. Forks and `wrangler.toml` resource IDs
 
@@ -110,6 +132,6 @@ For Cloudflare Git deployments, use the `TSUB_DB`/`TSUB_KV` bindings configured 
 
 ## Screenshot checklist
 
-Cloudflare labels vary by account, region, and product rollout. Capture the pages listed in `docs/assets/screenshots/cloudflare/cloudflare-screenshot-checklist.txt`, and redact account IDs, email addresses, domains, passwords, Tokens, Cookies, and private GitHub details. Real Cloudflare-session screenshots are not included until they can be captured from a signed-in browser.
+Cloudflare labels vary by account, region, and product rollout. The pages listed in `docs/assets/screenshots/cloudflare/cloudflare-screenshot-checklist.txt` are included with account IDs, email addresses, passwords, Tokens, Cookies, and private GitHub details redacted. The public deployment URL is for demonstration only; use your own URL and secrets in production.
 
 More: [User Guide](USER_GUIDE_EN.md) · [Operations](OPERATIONS_EN.md) · [Security](SECURITY_EN.md)
