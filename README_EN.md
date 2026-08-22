@@ -28,7 +28,7 @@ TSub is a subscription and proxy-node management platform for Cloudflare Pages o
 | --- | --- |
 | ![My subscriptions](docs/assets/screenshots/my-subscriptions.png) | ![Proxy deployments](docs/assets/screenshots/proxy-deployments.png) |
 
-## Cloudflare GitHub deployment
+## Cloudflare Pages Deployment Guide
 
 Fork this repository first, then authorize GitHub in Cloudflare and select your public fork. See the complete [GitHub authorization deployment guide](docs/QUICK_START_EN.md) for build settings, D1/KV bindings, Secrets, first sign-in, and troubleshooting.
 
