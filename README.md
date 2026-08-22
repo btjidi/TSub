@@ -125,10 +125,6 @@ TSUB_PUBLIC_URL=这里填写公开HTTPS地址
 
 点击 **保存并部署（Save and Deploy）**，等待依赖安装、`npm run build` 和 Functions 发布完成。打开 `https://你的项目.pages.dev/login`，使用管理员账号登录，再进入 TSub **设置 → 系统设置**确认活动存储。D1 模式还应显示远程 Agent 和部署命令能力。
 
-![部署开始](docs/assets/screenshots/cloudflare/12-deploy-started.png)
-![部署成功](docs/assets/screenshots/cloudflare/13-deploy-success.png)
-![首次登录](docs/assets/screenshots/cloudflare/14-first-login.png)
-
 ### 常见问题
 
 - GitHub 授权后看不到仓库：检查 GitHub **Settings → Applications** 中 Cloudflare 的授权范围。
