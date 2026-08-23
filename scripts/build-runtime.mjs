@@ -4,7 +4,9 @@ import path from 'node:path';
 import { PROTOCOL_CAPABILITIES } from '../shared/deployment-capabilities.js';
 
 const root = process.cwd();
-const runtimeVersion = '1.0.0';
+const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+const runtimeVersion = String(packageJson.version || '').trim();
+if (!/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(runtimeVersion)) throw new Error(`Invalid package version: ${runtimeVersion}`);
 const modulesDir = path.join(root, 'runtime', 'v2', 'modules');
 const outputDir = path.join(root, 'public', 'proxy', 'v2');
 const generatedDir = path.join(root, 'functions', 'generated');

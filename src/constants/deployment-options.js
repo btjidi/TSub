@@ -1,4 +1,5 @@
 import { PROTOCOL_CAPABILITIES } from '../../shared/deployment-capabilities.js';
+import packageJson from '../../package.json';
 
 const labels = { vless: 'VLESS', trojan: 'Trojan', vmess: 'VMess', hysteria2: 'Hysteria2', tuic: 'TUIC v5', anytls: 'AnyTLS', shadowsocks: 'Shadowsocks 2022', socks5: 'SOCKS5', naive: 'NaiveProxy' };
 
@@ -29,4 +30,4 @@ export const DEPLOYMENT_ACTIONS = [
   ['rollback', 'deployments.actions.rollback'], ['uninstall', 'deployments.actions.uninstall']
 ];
 
-export const RUNTIME_VERSION = '1.0.0';
+export const RUNTIME_VERSION = packageJson.version;
