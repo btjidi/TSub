@@ -3,7 +3,7 @@
 import { Miniflare } from 'miniflare';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ensureD1Schema, SettingsCache } from '../../functions/storage-adapter.js';
-import { advanceStorageMigration, getStorageMigration, startStorageMigration } from '../../functions/services/storage-migration-service.js';
+import { advanceStorageMigration, getStorageMigration, getStorageStatus, startStorageMigration } from '../../functions/services/storage-migration-service.js';
 
 describe('server storage migration', () => {
   let miniflare; let sqlite; let postgres; let env;
@@ -73,4 +73,11 @@ describe('server storage migration', () => {
     await finish(resumed.id);
     expect(env.TSUB_STORAGE_TYPE).toBe('postgres');
   }, 30_000);
+
+  it('exposes the active migration in storage status', async () => {
+    const started = await startStorageMigration(env, 'postgres');
+    const status = await getStorageStatus(env);
+    expect(status.migrationStatus).toBe('running');
+    expect(status.migration).toMatchObject({ id: started.id, source: 'sqlite', target: 'postgres', phase: 'preflight' });
+  });
 });

@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
 import { useToastStore } from '../../../stores/toast.js';
 import { useSessionStore } from '../../../stores/session.js';
 import Input from '../../ui/Input.vue';
@@ -38,6 +39,24 @@ const demoData = ref({ version: 1, seededAt: null, counts: { subscriptions: 0, n
 const isUpdatingDemoData = ref(false);
 const storageStatus = ref({ platform: 'cloudflare', activeStorage: props.settings.storageType || 'kv', bindings: {} });
 const isSwitchingStorage = ref(false);
+const activeMigration = ref(null);
+const migrationError = ref('');
+const migrationStartedAt = ref(null);
+const migrationElapsedSeconds = ref(0);
+let migrationClock = null;
+const migrationPhaseLabel = computed(() => {
+  const phase = activeMigration.value?.phase || 'preflight';
+  return t(`systemSettings.migrationPhases.${phase}`);
+});
+const migrationElapsedLabel = computed(() => {
+  const seconds = migrationElapsedSeconds.value;
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+});
+const migrationCountsLabel = computed(() => Object.entries(activeMigration.value?.data?.counts || {})
+  .filter(([, value]) => Number.isFinite(Number(value)))
+  .map(([key, value]) => `${key}: ${value}`)
+  .join(' · '));
+const migrationOverlayVisible = computed(() => Boolean(activeMigration.value && (isSwitchingStorage.value || migrationError.value)));
 const storageOptions = computed(() => storageStatus.value.platform === 'server'
   ? [{ value: 'sqlite', label: t('systemSettings.sqliteStorage') }, { value: 'postgres', label: t('systemSettings.postgresStorage') }]
   : [{ value: 'kv', label: t('systemSettings.kvStorage') }, { value: 'd1', label: t('systemSettings.d1DatabaseRecommended') }]);
@@ -49,31 +68,92 @@ const loadStorageStatus = async () => {
     const data = statusBody?.data;
     if (statusResponse.ok && statusBody.success && data && !Array.isArray(data) && typeof data.activeStorage === 'string') {
       storageStatus.value = { ...storageStatus.value, ...data, bindings: data.bindings && typeof data.bindings === 'object' ? data.bindings : {} };
+      if (data.migrationStatus === 'running' && data.migration) {
+        activeMigration.value = data.migration;
+        migrationStartedAt.value = Date.parse(data.migration.createdAt) || Date.now();
+        migrationElapsedSeconds.value = Math.max(0, Math.floor((Date.now() - migrationStartedAt.value) / 1000));
+      } else if (data.migrationStatus === 'missing') {
+        migrationError.value = t('systemSettings.migrationStateMissing');
+      }
     }
   } catch {}
 };
 
-const switchStorage = async target => {
-  if (!window.confirm(t('systemSettings.storageSwitchConfirm', { target: target.toUpperCase() }))) return;
+const startMigrationClock = migration => {
+  activeMigration.value = migration;
+  migrationStartedAt.value ||= Date.now();
+  migrationElapsedSeconds.value = Math.max(0, Math.floor((Date.now() - migrationStartedAt.value) / 1000));
+  clearInterval(migrationClock);
+  migrationClock = setInterval(() => {
+    migrationElapsedSeconds.value = Math.max(0, Math.floor((Date.now() - migrationStartedAt.value) / 1000));
+  }, 1000);
+};
+
+const stopMigrationClock = () => {
+  clearInterval(migrationClock);
+  migrationClock = null;
+};
+
+const advanceMigration = async migration => {
   isSwitchingStorage.value = true;
+  migrationError.value = '';
+  startMigrationClock(migration);
   try {
-    const startResponse = await fetch('/api/storage/migrations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target }) });
-    const startBody = await startResponse.json();
-    if (!startResponse.ok || !startBody.success) throw new Error(startBody.message || startBody.error || t('systemSettings.updateFailed'));
-    let migration = startBody.data;
     for (let attempt = 0; attempt < 180 && migration.phase !== 'complete'; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       const response = await fetch(`/api/storage/migrations/${encodeURIComponent(migration.id)}/advance`, { method: 'POST' });
       const body = await response.json();
       if (!response.ok || !body.success) throw new Error(body.message || body.error || t('systemSettings.updateFailed'));
       migration = body.data;
+      activeMigration.value = migration;
     }
     if (migration.phase !== 'complete') throw new Error(t('systemSettings.storageSwitchTimeout'));
-    showToast(t('systemSettings.storageSwitchSuccess', { target: target.toUpperCase() }), 'success');
+    storageStatus.value = { ...storageStatus.value, activeStorage: migration.target, control: { ...(storageStatus.value.control || {}), activeStorage: migration.target, state: 'idle' }, migration: null, migrationStatus: 'idle' };
+    activeMigration.value = null;
+    stopMigrationClock();
+    showToast(t('systemSettings.storageSwitchSuccess', { target: migration.target.toUpperCase() }), 'success');
     window.location.reload();
-  } catch (error) { showToast(t('systemSettings.requestFailed', { message: error.message }), 'error'); }
-  finally { isSwitchingStorage.value = false; }
+  } catch (error) {
+    migrationError.value = error.message;
+    showToast(t('systemSettings.requestFailed', { message: error.message }), 'error');
+  } finally { isSwitchingStorage.value = false; }
 };
+
+const switchStorage = async target => {
+  if (!window.confirm(t('systemSettings.storageSwitchConfirm', { target: target.toUpperCase() }))) return;
+  try {
+    const startResponse = await fetch('/api/storage/migrations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target }) });
+    const startBody = await startResponse.json();
+    if (!startResponse.ok || !startBody.success) throw new Error(startBody.message || startBody.error || t('systemSettings.updateFailed'));
+    await advanceMigration(startBody.data);
+  } catch (error) { showToast(t('systemSettings.requestFailed', { message: error.message }), 'error'); }
+};
+
+const resumeMigration = () => {
+  if (activeMigration.value) advanceMigration(activeMigration.value);
+};
+
+const dismissMigration = () => {
+  migrationError.value = '';
+  activeMigration.value = null;
+  stopMigrationClock();
+};
+
+const handleMigrationBeforeUnload = event => {
+  if (!isSwitchingStorage.value) return;
+  event.preventDefault();
+  event.returnValue = t('systemSettings.migrationLeaveWarning');
+};
+
+watch(isSwitchingStorage, switching => {
+  if (switching) window.addEventListener('beforeunload', handleMigrationBeforeUnload);
+  else window.removeEventListener('beforeunload', handleMigrationBeforeUnload);
+});
+
+onBeforeRouteLeave(() => {
+  if (!isSwitchingStorage.value) return true;
+  return window.confirm(t('systemSettings.migrationLeaveConfirm'));
+});
 
 const loadCredentialMetadata = async () => {
   try {
@@ -132,6 +212,11 @@ const clearDemoData = async () => {
 onMounted(() => props.category === 'data'
   ? Promise.all([loadDemoData(), loadStorageStatus()])
   : loadCredentialMetadata());
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleMigrationBeforeUnload);
+  stopMigrationClock();
+});
 
 const ensureExternalApiDefaults = (settings) => {
   if (!settings.externalApi || typeof settings.externalApi !== 'object') {
@@ -303,6 +388,32 @@ const copySchema = async () => {
 </script>
 
 <template>
+    <Teleport to="body">
+        <div v-if="migrationOverlayVisible" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" data-testid="storage-migration-overlay">
+            <div class="w-full max-w-lg rounded-2xl border border-white/15 bg-white p-6 shadow-2xl dark:bg-gray-900">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
+                        <svg v-if="!migrationError" class="h-6 w-6 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                        <svg v-else class="h-6 w-6" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5m0 4h.01M10.3 3.8 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.8a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ migrationError ? t('systemSettings.migrationFailedTitle') : t('systemSettings.migrationOverlayTitle', { target: activeMigration?.target?.toUpperCase() }) }}</h2>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ migrationError || t('systemSettings.migrationOverlayHint') }}</p>
+                    </div>
+                </div>
+                <div class="mt-5 grid grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm dark:border-white/10 dark:bg-white/5">
+                    <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('systemSettings.migrationPhaseLabel') }}</p><p class="mt-1 font-medium text-gray-900 dark:text-white">{{ migrationPhaseLabel }}</p></div>
+                    <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('systemSettings.migrationElapsedLabel') }}</p><p class="mt-1 font-medium text-gray-900 dark:text-white">{{ migrationElapsedLabel }}</p></div>
+                </div>
+                <p v-if="migrationCountsLabel" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ t('systemSettings.migrationCountsLabel') }}：{{ migrationCountsLabel }}</p>
+                <p v-if="!migrationError" class="mt-4 text-xs text-amber-700 dark:text-amber-300">{{ t('systemSettings.migrationLeaveWarning') }}</p>
+                <div v-if="migrationError" class="mt-5 flex flex-wrap justify-end gap-3">
+                    <button type="button" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:text-gray-200 dark:hover:bg-white/5" @click="dismissMigration">{{ t('systemSettings.migrationReturn') }}</button>
+                    <button type="button" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" @click="resumeMigration">{{ t('systemSettings.migrationResume') }}</button>
+                </div>
+            </div>
+        </div>
+    </Teleport>
     <div class="space-y-8">
         <div v-if="category === 'security' && settings.secretStatus?.keySource === 'deployment-fallback'" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
             {{ t('systemSettings.settingsSecretFallback') }}
@@ -356,6 +467,14 @@ const copySchema = async () => {
                 </div>
             </div>
             <div class="space-y-3">
+                <div v-if="activeMigration && !isSwitchingStorage" class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10" data-testid="storage-migration-recovery">
+                    <p class="text-sm font-medium text-amber-900 dark:text-amber-200">{{ t('systemSettings.migrationResumeTitle') }}</p>
+                    <p class="mt-1 text-xs text-amber-800/80 dark:text-amber-200/80">{{ t('systemSettings.migrationResumeDesc', { phase: migrationPhaseLabel }) }}</p>
+                    <button type="button" class="mt-3 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700" @click="resumeMigration">{{ t('systemSettings.migrationResume') }}</button>
+                </div>
+                <div v-else-if="storageStatus.migrationStatus === 'missing'" class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200" data-testid="storage-migration-missing">
+                    {{ t('systemSettings.migrationStateMissing') }}
+                </div>
                 <div v-for="option in storageOptions" :key="option.value" class="flex items-center">
                     <input type="radio" :value="option.value" :checked="storageStatus.activeStorage === option.value" disabled class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600 dark:bg-gray-800">
                     <span class="ml-3 text-sm dark:text-gray-300">{{ option.label }}</span>

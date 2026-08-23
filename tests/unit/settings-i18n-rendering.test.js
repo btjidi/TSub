@@ -325,6 +325,37 @@ describe('settings page English translations', () => {
     }
   });
 
+  it('shows a manual resume action for an interrupted storage migration', async () => {
+    vi.stubGlobal('fetch', vi.fn(async url => {
+      if (url === '/api/storage/status') {
+        return new Response(JSON.stringify({
+          success: true,
+          data: {
+            platform: 'cloudflare', activeStorage: 'kv', migrationStatus: 'running',
+            migration: { id: 'migration-test', source: 'kv', target: 'd1', phase: 'drain', createdAt: new Date().toISOString(), data: {} },
+            bindings: { d1: true, kv: true }
+          }
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ success: true, data: {} }), { headers: { 'Content-Type': 'application/json' } });
+    }));
+    try {
+      const wrapper = mount(SystemSettings, {
+        props: {
+          category: 'data', settings: { storageType: 'kv', externalApi: { enabled: false, tokens: [] } },
+          exportBackup: vi.fn(), importBackup: vi.fn(), handleReset: vi.fn()
+        },
+        ...englishMountOptions()
+      });
+      await flushPromises();
+      expect(wrapper.find('[data-testid="storage-migration-recovery"]').exists()).toBe(true);
+      expect(wrapper.text()).toContain('Unfinished migration detected');
+      expect(wrapper.find('[data-testid="storage-migration-overlay"]').exists()).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows external API configured state without rendering the saved token', () => {
     const wrapper = mount(SystemSettings, {
       props: {

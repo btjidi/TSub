@@ -44,10 +44,20 @@ async function writeMigration(db, migration) {
 export async function getStorageStatus(env) {
   const activeStorage = await StorageFactory.getStorageType(env);
   const control = await readStorageControl(env);
+  let migration = null;
+  let migrationStatus = 'idle';
+  if (control?.state === 'migrating') {
+    migration = control.data?.migrationId
+      ? await readMigration(env.TSUB_DB || env.TSUB_SQL_DB, control.data.migrationId)
+      : null;
+    migrationStatus = migration ? 'running' : 'missing';
+  }
   return {
     platform: env.TSUB_PLATFORM === 'server' ? 'server' : 'cloudflare',
     activeStorage,
     control: control || { activeStorage, state: 'idle', epoch: 1 },
+    migration,
+    migrationStatus,
     bindings: {
       kv: Boolean(StorageFactory.resolveKV(env)), d1: Boolean(env.TSUB_DB),
       sqlite: Boolean(env.TSUB_PLATFORM === 'server' && env.TSUB_SERVER_DATABASES?.sqlite),
