@@ -27,9 +27,9 @@ function loginRequest(body) {
 async function legacyVerifier(password) {
   const salt = new Uint8Array(16).fill(7);
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 100000 }, key, 256));
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 50000 }, key, 256));
   const encode = bytes => btoa(String.fromCharCode(...bytes));
-  return { algorithm: 'PBKDF2-SHA256', iterations: 100000, salt: encode(salt), hash: encode(bits) };
+  return { algorithm: 'PBKDF2-SHA256', iterations: 50000, salt: encode(salt), hash: encode(bits) };
 }
 
 describe('administrator username and password credentials', () => {
@@ -47,7 +47,7 @@ describe('administrator username and password credentials', () => {
     const raw = kv.dump('SYSTEM_ADMIN_CREDENTIALS_V1');
     expect(raw).not.toContain('replacement-password');
     expect(JSON.parse(raw)).toMatchObject({ mode: 'override', username: 'ops.admin', passwordVerifier: { algorithm: 'PBKDF2-SHA256' }, authVersion: 2 });
-    expect(JSON.parse(raw).passwordVerifier.iterations).toBe(600000);
+    expect(JSON.parse(raw).passwordVerifier.iterations).toBe(100000);
     expect(await verifyAdminCredentials(env, 'ops.admin', 'replacement-password')).toBe(true);
     expect(await verifyAdminCredentials(env, 'admin', 'environment-password')).toBe(false);
     expect(await getAdminCredentialMetadata(env)).toMatchObject({ usernameSource: 'kv', passwordSource: 'kv', authVersion: 2 });
@@ -66,7 +66,7 @@ describe('administrator username and password credentials', () => {
     const env = { TSUB_KV: kv };
     expect(await verifyAdminCredentials(env, 'admin', 'legacy-hashed-password')).toBe(true);
     const upgraded = JSON.parse(kv.dump('SYSTEM_ADMIN_CREDENTIALS_V1'));
-    expect(upgraded.passwordVerifier.iterations).toBe(600000);
+    expect(upgraded.passwordVerifier.iterations).toBe(100000);
     expect(upgraded.authVersion).toBe(4);
   });
 

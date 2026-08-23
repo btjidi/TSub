@@ -170,7 +170,10 @@ export async function getCookieSecret(env) {
  */
 const ADMIN_CREDENTIALS_KEY = 'SYSTEM_ADMIN_CREDENTIALS_V1';
 const LEGACY_ADMIN_PASSWORD_KEY = 'SYSTEM_ADMIN_PASSWORD';
-const PBKDF2_ITERATIONS = 600000;
+// Cloudflare Workers limits Web Crypto PBKDF2 to 100,000 iterations.
+// Keeping the work factor within that limit prevents credential updates from
+// failing with a runtime OperationError on Pages Functions.
+const PBKDF2_ITERATIONS = 100000;
 const USERNAME_PATTERN = /^[a-z0-9._-]{3,32}$/;
 
 export function normalizeAdminUsername(value) {
@@ -214,7 +217,7 @@ async function buildPasswordVerifier(password) {
 async function verifyPasswordHash(password, verifier) {
     if (!verifier || verifier.algorithm !== 'PBKDF2-SHA256') return false;
     const iterations = Number(verifier.iterations);
-    if (!Number.isInteger(iterations) || iterations < 10000 || iterations > 1000000) return false;
+    if (!Number.isInteger(iterations) || iterations < 10000 || iterations > PBKDF2_ITERATIONS) return false;
     try {
         const expected = base64ToBytes(verifier.hash);
         const actual = await derivePasswordHash(password, base64ToBytes(verifier.salt), iterations);
