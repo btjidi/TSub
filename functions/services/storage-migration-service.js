@@ -70,7 +70,19 @@ export async function startStorageMigration(env, target) {
     throw Object.assign(new Error(`Server storage ${target} is not configured`), { status: 400 });
   }
   const currentControl = await readStorageControl(env);
-  if (currentControl?.state === 'migrating') throw Object.assign(new Error('Another storage migration is running'), { status: 409 });
+  if (currentControl?.state === 'migrating') {
+    const activeMigration = currentControl.data?.migrationId
+      ? await readMigration(db, currentControl.data.migrationId)
+      : null;
+    const resumablePhases = new Set(['preflight', 'drain', 'copy', 'verify', 'switch']);
+    if (activeMigration?.target === target && resumablePhases.has(activeMigration.phase)) {
+      // A browser refresh or interrupted poll can leave the migration lock in
+      // place. Returning the active record lets the caller resume its advance
+      // loop without copying data a second time or discarding the lock.
+      return activeMigration;
+    }
+    throw Object.assign(new Error('Another storage migration is running'), { status: 409 });
+  }
   const id = randomId();
   const now = new Date().toISOString();
   const migration = { id, source, target, phase: 'preflight', createdAt: now, data: { counts: null, digest: null } };

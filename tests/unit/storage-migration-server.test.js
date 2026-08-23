@@ -64,4 +64,13 @@ describe('server storage migration', () => {
     expect(env.TSUB_STORAGE_TYPE).toBe('sqlite');
     expect(await sqlite.prepare('SELECT data FROM profiles WHERE id = ?').bind('profile-1').first()).toBeTruthy();
   }, 30_000);
+
+  it('resumes an interrupted migration for the same target', async () => {
+    const first = await startStorageMigration(env, 'postgres');
+    const resumed = await startStorageMigration(env, 'postgres');
+    expect(resumed.id).toBe(first.id);
+    expect(resumed.phase).toBe('preflight');
+    await finish(resumed.id);
+    expect(env.TSUB_STORAGE_TYPE).toBe('postgres');
+  }, 30_000);
 });
