@@ -5,11 +5,11 @@ compatibility_flags = ["nodejs_compat"]
 
 [[kv_namespaces]]
 binding = "TSUB_KV"
-id = "c005f8e68de24d5298f5661b681d563d"
+id = "0e61a23bc7134422b65c9823387f8dc5"
 
 # Replace the resource IDs for another Cloudflare account. Secrets remain
 # managed in the Cloudflare Pages dashboard.
 [[d1_databases]]
 binding = "TSUB_DB"
 database_name = "tsub-production"
-database_id = "eccffa4b-61fb-4406-ab33-64e24bc4bc18"
+database_id = "d76ac66d-27c0-486d-adf1-142c8b19caa4"

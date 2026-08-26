@@ -11,10 +11,9 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.1**
-- 修复 nanoid 与 js-yaml 已公开的安全漏洞。
-- 升级 DOMPurify、Wrangler、Miniflare、Undici 与 brace-expansion，依赖审计归零。
-- 统一应用、前端与代理运行时的版本来源。`;
+    const localChangelog = `**TSub 1.0.2**
+- 修复 Cloudflare Pages 生产环境的 KV 与 D1 资源绑定。
+- 保留 1.0.1 的依赖安全升级，依赖审计保持为零。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {
