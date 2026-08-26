@@ -47,6 +47,12 @@ main() {
     traffic) traffic_ensure_rules; traffic_checkpoint ;;
     push) push_snapshot ;;
     agent) run_agent_loop ;;
+    update-runtime)
+      agent_update_sha=''
+      agent_maybe_update_runtime force no-reload
+      [ -n "$agent_update_sha" ] && [ "$(sha256_file "$TSUB_BIN/tsub-proxy.sh")" = "$agent_update_sha" ] \
+        || i18n_die 'Runtime 更新失败，当前版本保持不变' 'Runtime update failed; the current version was preserved'
+      ;;
     agent-install) install_agent_service "$TSUB_BIN/tsub-proxy.sh" "$TSUB_ETC/runtime.conf" ;;
     edge-probe) edge_probe ;;
     refresh-quick) load_installed_core; ensure_tunnel_binary; tunnel_refresh_quick ;;

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='1.0.4'
+TSUB_RUNTIME_VERSION='1.0.5'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -195,7 +195,7 @@ atomic_install() {
 }
 
 runtime_action_requires_lock() {
-  case "$1" in apply|update|repair|restart|rollback|uninstall) return 0 ;; *) return 1 ;; esac
+  case "$1" in apply|update|update-runtime|repair|restart|rollback|uninstall) return 0 ;; *) return 1 ;; esac
 }
 
 acquire_runtime_operation_lock() {
@@ -2404,6 +2404,7 @@ agent_maybe_update_runtime() {
   printf '%s\n' "$agent_update_now" >"$TSUB_TMP/runtime.update-checked-at"
   atomic_install "$TSUB_TMP/runtime.update-checked-at" "$agent_update_checked_file" 600
   i18n_log INFO "Runtime 已更新到 $agent_update_version，正在重新加载 Agent" "Runtime updated to $agent_update_version; reloading the agent"
+  [ "${2:-}" = no-reload ] && return 0
   rm -rf "$TSUB_TMP"
   trap - 0 1 2 15
   exec /bin/sh "$agent_update_target" agent
@@ -2562,7 +2563,7 @@ agent_execute_transfer() {
 
 agent_execute_command() {
   agent_command_id=$1 agent_action=$2 agent_lease=$3
-  case "$agent_action" in apply|update|reinstall|restart|repair|status|list|doctor|rollback|uninstall|transfer-controller|edge-probe) ;; *) return 2 ;; esac
+  case "$agent_action" in apply|update|update-runtime|reinstall|restart|repair|status|list|doctor|rollback|uninstall|transfer-controller|edge-probe) ;; *) return 2 ;; esac
   agent_config="$TSUB_TMP/agent-command.conf"
   curl -fsS --connect-timeout 10 --max-time 60 \
     -H "Authorization: Bearer $TSUB_AGENT_TOKEN" -H "X-TSub-Lease: $agent_lease" \
@@ -2594,10 +2595,16 @@ agent_execute_command() {
     else
       agent_report "$agent_command_id" "$agent_lease" succeeded "$agent_action" 'command completed'
       agent_poll_once true >/dev/null 2>&1 || true
-      case "$agent_action" in apply|update|reinstall)
-        # Report completion first, then replace this Agent with the verified Runtime.
-        agent_maybe_update_runtime force
-        ;;
+      case "$agent_action" in
+        update-runtime)
+          rm -rf "$TSUB_TMP"
+          trap - 0 1 2 15
+          exec /bin/sh "$TSUB_BIN/tsub-proxy.sh" agent
+          ;;
+        apply|update|reinstall)
+          # Report completion first, then replace this Agent with the verified Runtime.
+          agent_maybe_update_runtime force
+          ;;
       esac
     fi
   else
@@ -4099,6 +4106,12 @@ main() {
     traffic) traffic_ensure_rules; traffic_checkpoint ;;
     push) push_snapshot ;;
     agent) run_agent_loop ;;
+    update-runtime)
+      agent_update_sha=''
+      agent_maybe_update_runtime force no-reload
+      [ -n "$agent_update_sha" ] && [ "$(sha256_file "$TSUB_BIN/tsub-proxy.sh")" = "$agent_update_sha" ] \
+        || i18n_die 'Runtime 更新失败，当前版本保持不变' 'Runtime update failed; the current version was preserved'
+      ;;
     agent-install) install_agent_service "$TSUB_BIN/tsub-proxy.sh" "$TSUB_ETC/runtime.conf" ;;
     edge-probe) edge_probe ;;
     refresh-quick) load_installed_core; ensure_tunnel_binary; tunnel_refresh_quick ;;

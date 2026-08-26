@@ -192,7 +192,7 @@ atomic_install() {
 }
 
 runtime_action_requires_lock() {
-  case "$1" in apply|update|repair|restart|rollback|uninstall) return 0 ;; *) return 1 ;; esac
+  case "$1" in apply|update|update-runtime|repair|restart|rollback|uninstall) return 0 ;; *) return 1 ;; esac
 }
 
 acquire_runtime_operation_lock() {

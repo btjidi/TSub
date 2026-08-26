@@ -1,11 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { handleDeployAddressProbe, handleDeployBootstrap, handleDeployEvents, handleDeployPrepare, handleDeployPush, handleDeployQuickTunnelCallback, handleDeployRunScript, handleDeploySubscription, handleDeploymentDefaultsRequest, handleDeploymentsRequest, normalizeDeploymentClientNodeUrl } from '../../functions/modules/deployment-handler.js';
+import { deploymentConstants, handleDeployAddressProbe, handleDeployBootstrap, handleDeployEvents, handleDeployPrepare, handleDeployPush, handleDeployQuickTunnelCallback, handleDeployRunScript, handleDeploySubscription, handleDeploymentDefaultsRequest, handleDeploymentsRequest, normalizeDeploymentClientNodeUrl } from '../../functions/modules/deployment-handler.js';
 import { decryptDeploymentConfig, encryptDeploymentConfig } from '../../functions/modules/deployment-crypto.js';
 
 function createKv(initial = {}) {
   const values = new Map(Object.entries(initial).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]));
   return { async get(key) { return values.get(key) ?? null; }, async put(key, value) { values.set(key, value); }, async delete(key) { values.delete(key); }, dump(key) { const value = values.get(key); return value ? JSON.parse(value) : null; } };
 }
+
+describe('Runtime version update compatibility', () => {
+  it('requires the Agent action introduced in Runtime 1.0.5', () => {
+    expect(deploymentConstants.runtimeSupportsVersionUpdate('1.0.0')).toBe(false);
+    expect(deploymentConstants.runtimeSupportsVersionUpdate('1.0.4')).toBe(false);
+    expect(deploymentConstants.runtimeSupportsVersionUpdate('1.0.5')).toBe(true);
+    expect(deploymentConstants.runtimeSupportsVersionUpdate('1.1.0')).toBe(true);
+    expect(deploymentConstants.runtimeSupportsVersionUpdate('2.0.0')).toBe(true);
+  });
+});
 
 function createEnv() {
   return {

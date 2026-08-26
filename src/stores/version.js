@@ -11,10 +11,10 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.4**
-- 公共仓库移除生效的 wrangler.toml，解除 Pages 控制台绑定锁定。
-- Fork 统一通过 Cloudflare Pages 控制台绑定自己的存储资源。
-- 维护者生产目标改用 Git 忽略的本地配置或环境变量。`;
+    const localChangelog = `**TSub 1.0.5**
+- 代理部署记录新增“更新版本”远程操作。
+- TSub Proxy Runtime 支持校验后原子更新并重新加载 Agent。
+- 旧 Agent 会明确提示先重新安装，不会自动覆盖服务器配置。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

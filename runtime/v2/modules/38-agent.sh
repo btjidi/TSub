@@ -58,6 +58,7 @@ agent_maybe_update_runtime() {
   printf '%s\n' "$agent_update_now" >"$TSUB_TMP/runtime.update-checked-at"
   atomic_install "$TSUB_TMP/runtime.update-checked-at" "$agent_update_checked_file" 600
   i18n_log INFO "Runtime 已更新到 $agent_update_version，正在重新加载 Agent" "Runtime updated to $agent_update_version; reloading the agent"
+  [ "${2:-}" = no-reload ] && return 0
   rm -rf "$TSUB_TMP"
   trap - 0 1 2 15
   exec /bin/sh "$agent_update_target" agent
@@ -216,7 +217,7 @@ agent_execute_transfer() {
 
 agent_execute_command() {
   agent_command_id=$1 agent_action=$2 agent_lease=$3
-  case "$agent_action" in apply|update|reinstall|restart|repair|status|list|doctor|rollback|uninstall|transfer-controller|edge-probe) ;; *) return 2 ;; esac
+  case "$agent_action" in apply|update|update-runtime|reinstall|restart|repair|status|list|doctor|rollback|uninstall|transfer-controller|edge-probe) ;; *) return 2 ;; esac
   agent_config="$TSUB_TMP/agent-command.conf"
   curl -fsS --connect-timeout 10 --max-time 60 \
     -H "Authorization: Bearer $TSUB_AGENT_TOKEN" -H "X-TSub-Lease: $agent_lease" \
@@ -248,10 +249,16 @@ agent_execute_command() {
     else
       agent_report "$agent_command_id" "$agent_lease" succeeded "$agent_action" 'command completed'
       agent_poll_once true >/dev/null 2>&1 || true
-      case "$agent_action" in apply|update|reinstall)
-        # Report completion first, then replace this Agent with the verified Runtime.
-        agent_maybe_update_runtime force
-        ;;
+      case "$agent_action" in
+        update-runtime)
+          rm -rf "$TSUB_TMP"
+          trap - 0 1 2 15
+          exec /bin/sh "$TSUB_BIN/tsub-proxy.sh" agent
+          ;;
+        apply|update|reinstall)
+          # Report completion first, then replace this Agent with the verified Runtime.
+          agent_maybe_update_runtime force
+          ;;
       esac
     fi
   else

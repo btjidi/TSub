@@ -27,12 +27,17 @@ const TOKEN_TTL_MS = 30 * 60 * 1000;
 const CALLBACK_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_CALLBACK_BYTES = 256 * 1024;
 const MAX_NODES = 1000;
-const ACTIONS = new Set(['plan', 'apply', 'reinstall', 'status', 'list', 'update', 'restart', 'repair', 'doctor', 'rollback', 'uninstall']);
+const ACTIONS = new Set(['plan', 'apply', 'reinstall', 'status', 'list', 'update', 'update-runtime', 'restart', 'repair', 'doctor', 'rollback', 'uninstall']);
 const REMOTE_ACTIONS = new Set([...ACTIONS].filter(action => action !== 'reinstall').concat('transfer-controller'));
-const CONFIRMED_ACTIONS = new Set(['apply', 'reinstall', 'update', 'repair', 'restart', 'rollback', 'uninstall']);
+const CONFIRMED_ACTIONS = new Set(['apply', 'reinstall', 'update', 'update-runtime', 'repair', 'restart', 'rollback', 'uninstall']);
 const FINAL_STATUSES = new Set(['succeeded', 'failed']);
 const TRAFFIC_BACKENDS = new Set(['nftables', 'iptables', 'core-singbox', 'core-xray', 'unavailable']);
 const isRowStorage = storage => [STORAGE_TYPES.D1, STORAGE_TYPES.SQLITE, STORAGE_TYPES.POSTGRES].includes(storage.type);
+
+function runtimeSupportsVersionUpdate(version) {
+  const parts = String(version || '').replace(/^v/i, '').split('.').map(value => Number.parseInt(value, 10) || 0);
+  return (parts[0] || 0) > 1 || ((parts[0] || 0) === 1 && ((parts[1] || 0) > 0 || (parts[2] || 0) >= 5));
+}
 
 export function normalizeDeploymentClientNodeUrl(value) {
   try {
@@ -394,8 +399,8 @@ function operationConfirmation(action, deploymentName, outputLanguage = 'zh-CN')
   if (!CONFIRMED_ACTIONS.has(action)) return '';
   const language = normalizeOutputLanguage(outputLanguage);
   const actionLabel = language === 'en-US'
-    ? { apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', repair: 'Repair Deployment', restart: 'Restart Service', rollback: 'Rollback Deployment', uninstall: 'Uninstall Deployment' }[action]
-    : { apply: '安装节点', reinstall: '重新安装', update: '更新配置', repair: '修复部署', restart: '重启服务', rollback: '回滚部署', uninstall: '卸载部署' }[action];
+    ? { apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', 'update-runtime': 'Update Version', repair: 'Repair Deployment', restart: 'Restart Service', rollback: 'Rollback Deployment', uninstall: 'Uninstall Deployment' }[action]
+    : { apply: '安装节点', reinstall: '重新安装', update: '更新配置', 'update-runtime': '更新版本', repair: '修复部署', restart: '重启服务', rollback: '回滚部署', uninstall: '卸载部署' }[action];
   const prompt = language === 'en-US'
     ? `About to run "${actionLabel}" for ${deploymentName}. Enter Y to confirm: `
     : `即将在服务器执行“${actionLabel}”：${deploymentName}。输入 Y 确认：`;
@@ -1036,7 +1041,7 @@ function buildDeployPrepareScript(request, operation, deployment) {
   const outputLanguage = normalizeOutputLanguage(operation.outputLanguage);
   const prepareText = outputLanguage === 'en-US' ? {
     actionLabels: {
-      apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', repair: 'Repair Deployment', restart: 'Restart Service',
+      apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', 'update-runtime': 'Update Version', repair: 'Repair Deployment', restart: 'Restart Service',
       rollback: 'Rollback Deployment', uninstall: 'Uninstall Deployment', plan: 'Check Deployment', status: 'View Status',
       list: 'Show Nodes', doctor: 'Diagnose Deployment'
     },
@@ -1044,7 +1049,7 @@ function buildDeployPrepareScript(request, operation, deployment) {
     canceled: 'Operation canceled.', missingToken: 'Missing one-time deployment token.', missingDownloader: 'curl or wget must be installed.'
   } : {
     actionLabels: {
-      apply: '安装节点', reinstall: '重新安装', update: '更新配置', repair: '修复部署', restart: '重启服务',
+      apply: '安装节点', reinstall: '重新安装', update: '更新配置', 'update-runtime': '更新版本', repair: '修复部署', restart: '重启服务',
       rollback: '回滚部署', uninstall: '卸载部署', plan: '预检部署', status: '查看状态',
       list: '显示节点', doctor: '诊断部署'
     },
@@ -2221,6 +2226,19 @@ export async function handleDeploymentsRequest(request, env, path) {
       const timestamp = nowIso();
       const operation = { id: randomId('op'), deploymentId: deployment.id, action, status: 'pending', delivery: 'agent', outputLanguage: normalizeOutputLanguage(body.outputLanguage), events: [], createdAt: timestamp, updatedAt: timestamp, expiresAt: new Date(Date.now() + TOKEN_TTL_MS).toISOString() };
       try {
+        if (action === 'update-runtime') {
+          const agentState = await listAgentState(storage, deployment.id);
+          const runtimeVersion = agentState.heartbeat?.runtimeVersion || '';
+          if (!runtimeSupportsVersionUpdate(runtimeVersion)) {
+            const message = operation.outputLanguage === 'en-US'
+              ? 'This Agent version does not support Update Version. Reinstall the deployment first.'
+              : '当前 Agent 版本不支持“更新版本”，请先执行“重新安装”。';
+            operation.status = 'failed'; operation.message = message; operation.completedAt = timestamp;
+            operation.events = [{ at: timestamp, status: 'failed', stage: 'unsupported-runtime', message, resources: { runtimeVersion } }];
+            await writeOperation(storage, operation);
+            return createJsonResponse({ success: false, error: 'runtime_update_unsupported', message, data: { operation: publicOperation(operation) } }, 409);
+          }
+        }
         if (action === 'update' && body.config) {
           const { currentRevision, nextDeployment } = await prepareDeploymentUpdate(storage, deployment, body, env, operation.id);
           operation.configRevision = nextDeployment.configRevision;
@@ -2257,4 +2275,4 @@ export async function handleDeploymentsRequest(request, env, path) {
   return createErrorResponse('API route not found', 404);
 }
 
-export const deploymentConstants = { RUNTIME_MANIFEST, TOKEN_TTL_MS, CALLBACK_TTL_MS, MAX_CALLBACK_BYTES, MAX_NODES };
+export const deploymentConstants = { RUNTIME_MANIFEST, TOKEN_TTL_MS, CALLBACK_TTL_MS, MAX_CALLBACK_BYTES, MAX_NODES, runtimeSupportsVersionUpdate };

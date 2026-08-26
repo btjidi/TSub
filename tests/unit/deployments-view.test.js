@@ -1266,7 +1266,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
     await flushPromises();
 
-    for (const [label, action] of [['更新核心', 'update'], ['重启', 'restart'], ['修复', 'repair'], ['回滚', 'rollback'], ['卸载', 'uninstall']]) {
+    for (const [label, action] of [['更新核心', 'update'], ['更新版本', 'update-runtime'], ['重启', 'restart'], ['修复', 'repair'], ['回滚', 'rollback'], ['卸载', 'uninstall']]) {
       const callsBefore = createDeploymentCommand.mock.calls.length;
       await wrapper.findAll('button').find(button => button.text() === label).trigger('click');
       const confirmDialog = document.querySelector('[data-testid="deployment-operation-confirm-dialog"]');

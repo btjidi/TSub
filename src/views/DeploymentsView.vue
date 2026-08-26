@@ -105,7 +105,7 @@ const remoteMenuAlignment = ref('right');
 const deploymentInfoPopoverKey = ref('');
 const output = reactive({ curl: '', wget: '', diagnosticCurl: '', diagnosticWget: '', expiresAt: '', client: 'wget', diagnostic: false });
 const operationOutput = reactive({ curl: '', wget: '', diagnosticCurl: '', diagnosticWget: '', expiresAt: '', client: 'wget', diagnostic: false, deploymentName: '', action: '' });
-const confirmedOperationActions = new Set(['update', 'restart', 'repair', 'rollback', 'uninstall']);
+const confirmedOperationActions = new Set(['update', 'update-runtime', 'restart', 'repair', 'rollback', 'uninstall']);
 const deploymentPollIntervalMs = 5000;
 const heartbeatRefreshIntervalMs = 30000;
 let deploymentPollTimer = 0;
@@ -165,7 +165,7 @@ const pendingOperationMessage = computed(() => {
   if (pendingOperation.value.action === 'uninstall') return t('deployments.confirm.uninstall', { name: pendingOperation.value.deployment.name });
   return t('deployments.confirm.operation', {
     name: pendingOperation.value.deployment.name,
-    action: t(`deployments.actions.${pendingOperation.value.action}`)
+    action: operationActionText(pendingOperation.value.action)
   });
 });
 const estimatedCore = computed(() => {
@@ -1360,13 +1360,13 @@ async function generateRemoteCommand(deployment, action) {
   if (action === 'uninstall') {
     const entered = window.prompt(t('deployments.remote.typeName', { name: deployment.name }), '');
     if (entered !== deployment.name) return;
-  } else if (!window.confirm(t('deployments.remote.confirm', { action: t(`deployments.actions.${action}`), name: deployment.name }))) return;
+  } else if (!window.confirm(t('deployments.remote.confirm', { action: operationActionText(action), name: deployment.name }))) return;
   loading.value = true;
   try {
     await createRemoteDeploymentCommand(deployment.id, action, { outputLanguage: locale.value });
     toast.showToast(t('deployments.remote.queued'), 'success');
     await refreshDeployments();
-  } catch (error) { toast.showToast(error?.data?.message || t('deployments.remote.failed'), 'error'); }
+  } catch (error) { toast.showToast(error?.data?.message || t('deployments.remote.failed'), 'error'); await refreshDeployments(); }
   finally { loading.value = false; }
 }
 
@@ -1458,6 +1458,7 @@ function statusClass(status) {
   }[status] || 'text-gray-600 border-gray-300 dark:border-white/15 dark:text-gray-300';
 }
 function statusText(status) { return t(`deployments.status.${status}`) === `deployments.status.${status}` ? status : t(`deployments.status.${status}`); }
+function operationActionText(action) { const key = action === 'update-runtime' ? 'updateRuntime' : action; const value = t(`deployments.actions.${key}`); return value === `deployments.actions.${key}` ? action : value; }
 function deploymentStatusText(deployment) {
   if (deployment.status === 'running') return t('deployments.status.online');
   return deployment.pendingReason === 'config' && deployment.status === 'pending'
@@ -1854,8 +1855,8 @@ onBeforeUnmount(() => {
           <div v-else-if="operationsError" class="space-y-3 py-8 text-center text-sm text-red-600"><p>{{ t('deployments.operationHistory.error') }}</p><button type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" @click="loadOperations(operationsDeployment?.id)">{{ t('deployments.operationHistory.retry') }}</button></div>
           <div v-else-if="!operations.length" class="py-10 text-center text-sm text-gray-500">{{ t('deployments.operationHistory.empty') }}</div>
           <div v-else class="max-h-[min(70vh,680px)] overflow-y-auto">
-            <div class="hidden overflow-x-auto md:block"><table class="w-full text-left text-sm"><thead class="bg-gray-50 text-xs text-gray-500 dark:bg-white/5"><tr><th class="p-3">{{ t('deployments.table.action') }}</th><th class="p-3">{{ t('common.status') }}</th><th class="p-3">{{ t('deployments.table.startedAt') }}</th><th class="p-3">{{ t('deployments.table.completedAt') }}</th><th class="p-3">{{ t('deployments.table.stage') }}</th><th class="p-3">{{ t('deployments.table.host') }}</th><th class="p-3">{{ t('deployments.table.resources') }}</th><th class="p-3">{{ t('deployments.table.result') }}</th></tr></thead><tbody><tr v-for="operation in operations" :key="operation.id" class="border-t dark:border-white/10"><td class="p-3 font-mono">{{ operation.action }}</td><td class="p-3">{{ statusText(operation.status) }}</td><td class="whitespace-nowrap p-3">{{ formatDate(operationStartedAt(operation)) || t('deployments.table.notRecorded') }}</td><td class="whitespace-nowrap p-3">{{ formatDate(operationCompletedAt(operation)) || (['pending','claimed','running'].includes(operation.status) ? t('deployments.operationHistory.current') : t('deployments.table.notRecorded')) }}</td><td class="p-3">{{ operation.events?.at(-1)?.stage || '-' }}</td><td class="p-3">{{ operationHostname(operation) }}</td><td class="p-3">{{ operationResources(operation) }}</td><td class="max-w-xs truncate p-3" :title="operationResult(operation)">{{ operationResult(operation) }}</td></tr></tbody></table></div>
-            <div class="space-y-3 md:hidden"><article v-for="operation in operations" :key="operation.id" class="rounded-lg border p-3 dark:border-white/10"><div class="flex items-center justify-between gap-2"><strong class="font-mono text-xs">{{ operation.action }}</strong><span class="text-xs" :class="statusClass(operation.status)">{{ statusText(operation.status) }}</span></div><dl class="mt-2 space-y-1 text-xs"><div><dt class="inline text-gray-500">{{ t('deployments.table.startedAt') }}：</dt><dd class="inline">{{ formatDate(operationStartedAt(operation)) || t('deployments.table.notRecorded') }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.completedAt') }}：</dt><dd class="inline">{{ formatDate(operationCompletedAt(operation)) || (['pending','claimed','running'].includes(operation.status) ? t('deployments.operationHistory.current') : t('deployments.table.notRecorded')) }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.stage') }}：</dt><dd class="inline">{{ operation.events?.at(-1)?.stage || '-' }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.host') }}：</dt><dd class="inline break-words">{{ operationHostname(operation) }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.resources') }}：</dt><dd class="inline break-words">{{ operationResources(operation) }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.result') }}：</dt><dd class="inline break-words">{{ operationResult(operation) }}</dd></div></dl></article></div>
+            <div class="hidden overflow-x-auto md:block"><table class="w-full text-left text-sm"><thead class="bg-gray-50 text-xs text-gray-500 dark:bg-white/5"><tr><th class="p-3">{{ t('deployments.table.action') }}</th><th class="p-3">{{ t('common.status') }}</th><th class="p-3">{{ t('deployments.table.startedAt') }}</th><th class="p-3">{{ t('deployments.table.completedAt') }}</th><th class="p-3">{{ t('deployments.table.stage') }}</th><th class="p-3">{{ t('deployments.table.host') }}</th><th class="p-3">{{ t('deployments.table.resources') }}</th><th class="p-3">{{ t('deployments.table.result') }}</th></tr></thead><tbody><tr v-for="operation in operations" :key="operation.id" class="border-t dark:border-white/10"><td class="p-3 font-mono">{{ operationActionText(operation.action) }}</td><td class="p-3">{{ statusText(operation.status) }}</td><td class="whitespace-nowrap p-3">{{ formatDate(operationStartedAt(operation)) || t('deployments.table.notRecorded') }}</td><td class="whitespace-nowrap p-3">{{ formatDate(operationCompletedAt(operation)) || (['pending','claimed','running'].includes(operation.status) ? t('deployments.operationHistory.current') : t('deployments.table.notRecorded')) }}</td><td class="p-3">{{ operation.events?.at(-1)?.stage || '-' }}</td><td class="p-3">{{ operationHostname(operation) }}</td><td class="p-3">{{ operationResources(operation) }}</td><td class="max-w-xs truncate p-3" :title="operationResult(operation)">{{ operationResult(operation) }}</td></tr></tbody></table></div>
+            <div class="space-y-3 md:hidden"><article v-for="operation in operations" :key="operation.id" class="rounded-lg border p-3 dark:border-white/10"><div class="flex items-center justify-between gap-2"><strong class="font-mono text-xs">{{ operationActionText(operation.action) }}</strong><span class="text-xs" :class="statusClass(operation.status)">{{ statusText(operation.status) }}</span></div><dl class="mt-2 space-y-1 text-xs"><div><dt class="inline text-gray-500">{{ t('deployments.table.startedAt') }}：</dt><dd class="inline">{{ formatDate(operationStartedAt(operation)) || t('deployments.table.notRecorded') }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.completedAt') }}：</dt><dd class="inline">{{ formatDate(operationCompletedAt(operation)) || (['pending','claimed','running'].includes(operation.status) ? t('deployments.operationHistory.current') : t('deployments.table.notRecorded')) }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.stage') }}：</dt><dd class="inline">{{ operation.events?.at(-1)?.stage || '-' }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.host') }}：</dt><dd class="inline break-words">{{ operationHostname(operation) }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.resources') }}：</dt><dd class="inline break-words">{{ operationResources(operation) }}</dd></div><div><dt class="inline text-gray-500">{{ t('deployments.table.result') }}：</dt><dd class="inline break-words">{{ operationResult(operation) }}</dd></div></dl></article></div>
           </div>
         </div>
       </div>

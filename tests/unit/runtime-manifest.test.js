@@ -28,7 +28,7 @@ describe('generated TSub Proxy v2', () => {
   it('serializes mutating runtime actions and releases stale operation locks', async () => {
     const common = await readFile('runtime/v2/modules/00-common.sh', 'utf8');
     const main = await readFile('runtime/v2/modules/90-main.sh', 'utf8');
-    expect(common).toContain('apply|update|repair|restart|rollback|uninstall) return 0');
+    expect(common).toContain('apply|update|update-runtime|repair|restart|rollback|uninstall) return 0');
     expect(common).toContain('TSUB_OPERATION_LOCK_WAIT_SECONDS:-1800');
     expect(common).toContain('kill -0 "$runtime_lock_pid"');
     expect(common).toContain('rmdir "$TSUB_OPERATION_LOCK"');
@@ -37,6 +37,15 @@ describe('generated TSub Proxy v2', () => {
     expect(main).toContain('acquire_runtime_operation_lock "$action"');
     expect(main).toContain("trap 'cleanup_runtime' EXIT");
     expect(main).toContain("trap 'exit 130' HUP INT TERM");
+  });
+
+  it('supports the dedicated update-version Agent action', async () => {
+    const agent = await readFile('runtime/v2/modules/38-agent.sh', 'utf8');
+    const main = await readFile('runtime/v2/modules/90-main.sh', 'utf8');
+    expect(agent).toContain('apply|update|update-runtime|reinstall');
+    expect(agent).toContain('exec /bin/sh "$TSUB_BIN/tsub-proxy.sh" agent');
+    expect(main).toContain('update-runtime)');
+    expect(main).toContain('Runtime 更新失败，当前版本保持不变');
   });
 
   it('reports host and cgroup Swap without adding it to available memory', async () => {
