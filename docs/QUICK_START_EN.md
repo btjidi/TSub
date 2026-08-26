@@ -51,12 +51,16 @@ Save the project before deploying if you still need to add bindings or variables
 
 Binding names are part of TSub's runtime contract: the application reads `TSUB_DB` and `TSUB_KV`. Do not bind two empty stores unless you intentionally set the initial storage policy.
 
+![Cloudflare Pages binding settings](assets/screenshots/cloudflare/16-bindings-settings.png)
+
 ### Recommended: D1 full mode
 
 1. Open Cloudflare **Storage & databases → D1**, choose **Create database**, and create an empty database.
-2. In the TSub project, open **Settings → Bindings** and add a D1 Database binding.
+2. In the TSub project, open **Settings → Bindings**, confirm **Add** is enabled, and add a D1 Database binding.
 3. Set the variable name to `TSUB_DB`, select the new database, and save.
 4. Do not add `TSUB_KV` or set `TSUB_INITIAL_STORAGE`.
+
+Completion check: the binding list contains a D1 resource named `TSUB_DB`.
 
 ![Create D1 database](assets/screenshots/cloudflare/07-create-d1.png)
 ![Bind D1 database](assets/screenshots/cloudflare/08-bind-d1.png)
@@ -69,6 +73,8 @@ The first request idempotently creates missing tables, indexes, and the unique `
 2. Add a KV Namespace binding in the TSub project.
 3. Set the variable name to `TSUB_KV`, select the new namespace, and save.
 4. Do not add `TSUB_DB` or set `TSUB_INITIAL_STORAGE`.
+
+Completion check: the binding list contains a KV namespace named `TSUB_KV`.
 
 ![Create KV namespace](assets/screenshots/cloudflare/09-create-kv.png)
 ![Bind KV namespace](assets/screenshots/cloudflare/10-bind-kv.png)

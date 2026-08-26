@@ -51,12 +51,16 @@ Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私�
 
 每个绑定名称必须完全一致：应用代码读取的是 `TSUB_DB` 和 `TSUB_KV`。全新项目不要同时绑定空 D1 和空 KV，除非你明确设置首次存储策略。
 
+![Cloudflare Pages 绑定设置](assets/screenshots/cloudflare/16-bindings-settings.png)
+
 ### 推荐：D1 完整模式
 
 1. 打开 Cloudflare **存储和数据库 → D1 SQLite 数据库**，点击 **创建数据库（Create database）**，创建一个空数据库。
-2. 回到 TSub 项目的 **设置 → 绑定（Settings → Bindings）**，点击“添加”，选择 D1 数据库。
+2. 回到 TSub 项目的 **设置 → 绑定（Settings → Bindings）**，确认“添加”按钮可用，点击“添加”，选择 D1 数据库。
 3. 变量名填写 `TSUB_DB`，选择刚创建的数据库并保存。
 4. 不添加 `TSUB_KV`，也不设置 `TSUB_INITIAL_STORAGE`。
+
+完成判定：绑定列表出现名称为 `TSUB_DB` 的 D1 数据库。
 
 ![创建 D1 数据库](assets/screenshots/cloudflare/07-create-d1.png)
 ![绑定 D1 数据库](assets/screenshots/cloudflare/08-bind-d1.png)
@@ -69,6 +73,8 @@ Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私�
 2. 回到 TSub 项目的 **设置 → 绑定（Settings → Bindings）**，点击“添加”，选择 KV 命名空间。
 3. 变量名填写 `TSUB_KV`，选择刚创建的 Namespace 并保存。
 4. 不添加 `TSUB_DB`，也不设置 `TSUB_INITIAL_STORAGE`。
+
+完成判定：绑定列表出现名称为 `TSUB_KV` 的 KV 命名空间。
 
 ![创建 KV Namespace](assets/screenshots/cloudflare/09-create-kv.png)
 ![绑定 KV Namespace](assets/screenshots/cloudflare/10-bind-kv.png)
