@@ -40,11 +40,13 @@ Use these project settings:
 | Root directory | Repository root (empty or `/`) |
 | Node.js version | `22` or later |
 
-Save the project before deploying if you still need to add bindings or variables.
+When the form is complete, click **Save and deploy** and wait for the first build to finish. The Pages project and its **Bindings** settings are created after this first deployment; after adding storage bindings and variables, deploy once more so the values are injected into Functions.
 
 ![Pages build settings](assets/screenshots/cloudflare/06-build-settings.png)
 
 ## 4. Choose storage
+
+After the first deployment succeeds, return to the project **Settings** page and follow the storage steps below. Do not use the first build to determine whether D1/KV is active.
 
 > [!CAUTION]
 > Storage configuration now uses **Cloudflare dashboard bindings**. The public repository no longer ships an active `wrangler.toml` because Pages locks dashboard bindings whenever that file is detected. Select resources owned by your account under Pages **Settings → Bindings**; older forks should remove their existing `wrangler.toml`.
@@ -91,7 +93,7 @@ In **Settings → Variables and Secrets**, add these values for production. Encr
 
 ### Method A: Create variables manually
 
-Click **Add variable**, enter each name and value, choose **Secret** for the password and three encryption keys, and save. Complete all six rows in the table before deploying.
+Click **Add variable**, enter each name and value, choose **Secret** for the password and three encryption keys, and save. Complete all six rows before the second deployment.
 
 | Name | Required | Purpose |
 | --- | --- | --- |
