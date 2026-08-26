@@ -11,8 +11,8 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.3**
-- 公共 wrangler.toml 移除账号专属 KV/D1 资源 ID。
+    const localChangelog = `**TSub 1.0.4**
+- 公共仓库移除生效的 wrangler.toml，解除 Pages 控制台绑定锁定。
 - Fork 统一通过 Cloudflare Pages 控制台绑定自己的存储资源。
 - 维护者生产目标改用 Git 忽略的本地配置或环境变量。`;
 

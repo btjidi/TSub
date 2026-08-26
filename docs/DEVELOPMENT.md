@@ -30,7 +30,7 @@ npm run pages:verify
 npm run deploy:pages
 ```
 
-维护者发布前，将 `scripts/pages-production-target.example.json` 复制为 Git 忽略的 `scripts/pages-production-target.local.json` 并填写生产项目、KV 和 D1 信息；也可使用对应的 `TSUB_PAGES_*` 环境变量。公共 `wrangler.toml` 不得包含账号资源 ID，Pages 的运行时资源统一在 Cloudflare 控制台绑定。
+维护者发布前，将 `scripts/pages-production-target.example.json` 复制为 Git 忽略的 `scripts/pages-production-target.local.json` 并填写生产项目、KV 和 D1 信息；也可使用对应的 `TSUB_PAGES_*` 环境变量。公共仓库不提供生效的 `wrangler.toml`，`wrangler.example.toml` 仅供本地参考；Pages 的构建与运行时资源统一在 Cloudflare 控制台配置。
 
 Runtime 源修改后必须重新运行 `runtime:build`，并将生成脚本、清单和 SHA-256 一起提交。不要手工编辑生成脚本。
 

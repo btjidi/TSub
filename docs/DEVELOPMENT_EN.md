@@ -30,7 +30,7 @@ npm run pages:verify
 npm run deploy:pages
 ```
 
-Before a maintainer deploys, copy `scripts/pages-production-target.example.json` to the Git-ignored `scripts/pages-production-target.local.json` and fill in the production project, KV, and D1 details; the corresponding `TSUB_PAGES_*` environment variables are also supported. The public `wrangler.toml` must contain no account resource IDs. Bind Pages runtime resources in the Cloudflare dashboard.
+Before a maintainer deploys, copy `scripts/pages-production-target.example.json` to the Git-ignored `scripts/pages-production-target.local.json` and fill in the production project, KV, and D1 details; the corresponding `TSUB_PAGES_*` environment variables are also supported. The public repository ships no active `wrangler.toml`; `wrangler.example.toml` is local reference only. Configure Pages builds and runtime resources in the Cloudflare dashboard.
 
 After changing Runtime source, run `runtime:build` and commit the generated script, manifest, and SHA-256 together. Do not edit the generated script manually.
 

@@ -64,9 +64,9 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 ### 4. 创建并绑定存储
 
 > [!CAUTION]
-> 存储配置方式已改为 **Cloudflare 控制台绑定**。请在 Pages **设置 → 绑定** 中选择自己的 KV/D1 资源，禁止在公共 `wrangler.toml` 中添加账号专属资源 ID。旧 Fork 更新后也应删除历史 KV/D1 配置段。
+> 存储配置方式已改为 **Cloudflare 控制台绑定**。公共仓库不再提供生效的 `wrangler.toml`，因为 Pages 检测到该文件后会锁定控制台绑定。请在 Pages **设置 → 绑定** 中选择自己的 KV/D1 资源；旧 Fork 更新后也应删除原有 `wrangler.toml`。
 
-绑定名称是 TSub 的运行时契约，必须严格使用 `TSUB_DB` 或 `TSUB_KV`。公共仓库的 `wrangler.toml` 不包含任何账号资源 ID，每个 Fork 都必须在自己的 Cloudflare Pages 项目中完成绑定。
+绑定名称是 TSub 的运行时契约，必须严格使用 `TSUB_DB` 或 `TSUB_KV`。`wrangler.example.toml` 只供本地参考，每个 Fork 都必须在自己的 Cloudflare Pages 项目中完成绑定。
 
 #### D1 完整模式（推荐）
 
@@ -134,7 +134,7 @@ TSUB_PUBLIC_URL=这里填写公开HTTPS地址
 - 构建失败：确认构建命令为 `npm run build`、输出目录为 `dist`、Node.js 为 22+。
 - 修改变量后密码错误：确认变量在 Production 环境并重新部署；新变量不会注入旧部署。账号必须是 3-32 位小写字母、数字、点、下划线或连字符，未设置时使用 `admin`；密码为 8-128 位且不能有首尾空格。
 - D1 首次访问返回 `storage_initialization_failed`：检查绑定名、D1 权限和部署日志。
-- 从旧版本更新后仍提示资源不存在：同步最新 `wrangler.toml`，确认其中没有 `[[kv_namespaces]]` 或 `[[d1_databases]]`，再在 Pages **设置 → 绑定** 中选择自己的资源并重新部署。
+- 从旧版本更新后仍提示资源不存在或控制台绑定被锁定：同步上游删除原有 `wrangler.toml`，等待一次部署完成，再在 Pages **设置 → 绑定** 中选择自己的资源并重新部署。
 
 更多截图和迁移细节见 [QUICK_START.md](docs/QUICK_START.md)，英文版见 [QUICK_START_EN.md](docs/QUICK_START_EN.md)。
 

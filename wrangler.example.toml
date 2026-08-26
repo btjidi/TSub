@@ -1,0 +1,7 @@
+name = "tsub"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-07-29"
+compatibility_flags = ["nodejs_compat"]
+
+# Local Wrangler reference only. Do not rename this file to wrangler.toml in a
+# Cloudflare Pages Git deployment that uses dashboard-managed bindings.

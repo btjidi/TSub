@@ -33,9 +33,9 @@ TSub is a subscription and proxy-node management platform for Cloudflare Pages o
 Fork this repository first, then authorize GitHub in Cloudflare and select your public fork. See the complete [GitHub authorization deployment guide](docs/QUICK_START_EN.md) for build settings, D1/KV bindings, Secrets, first sign-in, and troubleshooting.
 
 > [!CAUTION]
-> Storage configuration now uses **Cloudflare dashboard bindings**. Select resources owned by your account under Pages **Settings → Bindings**. Never add account-specific KV/D1 IDs to the public `wrangler.toml`; older forks must remove legacy resource sections after syncing.
+> Storage configuration now uses **Cloudflare dashboard bindings**. The public repository no longer ships an active `wrangler.toml` because Pages locks dashboard bindings whenever that file is detected. Select resources owned by your account under Pages **Settings → Bindings**; older forks must remove their existing `wrangler.toml` after syncing.
 
-Use `npm run build` as the build command, `dist` as the output directory, and Node.js 22 or later. The public `wrangler.toml` contains no account-specific resource IDs. Every fork must create and bind its own `TSUB_DB` or `TSUB_KV` resources in its Cloudflare Pages project.
+Use `npm run build` as the build command, `dist` as the output directory, and Node.js 22 or later. `wrangler.example.toml` is local reference only. Every fork must create and bind its own `TSUB_DB` or `TSUB_KV` resources in its Cloudflare Pages project.
 
 The server controller supports Docker Compose and bare-metal Debian, Ubuntu, or Alpine. Its web process is unprivileged and delegates host changes to a separate root executor. See [Server Controller Deployment](docs/SERVER_DEPLOYMENT_EN.md) and [Architecture](docs/ARCHITECTURE_EN.md).
 

@@ -47,7 +47,7 @@ Save the project before deploying if you still need to add bindings or variables
 ## 4. Choose storage
 
 > [!CAUTION]
-> Storage configuration now uses **Cloudflare dashboard bindings**. Select resources owned by your account under Pages **Settings → Bindings**. Never add account-specific KV/D1 IDs to the public `wrangler.toml`. Older forks should first remove legacy `[[kv_namespaces]]` and `[[d1_databases]]` sections.
+> Storage configuration now uses **Cloudflare dashboard bindings**. The public repository no longer ships an active `wrangler.toml` because Pages locks dashboard bindings whenever that file is detected. Select resources owned by your account under Pages **Settings → Bindings**; older forks should remove their existing `wrangler.toml`.
 
 Binding names are part of TSub's runtime contract: the application reads `TSUB_DB` and `TSUB_KV`. Do not bind two empty stores unless you intentionally set the initial storage policy.
 
@@ -134,11 +134,11 @@ In D1 mode, verify that remote agents and deployment commands are available. In 
 
 ## 7. Forks, dashboard bindings, and maintainer deploys
 
-The public `wrangler.toml` contains only the project name, build output directory, compatibility date, and compatibility flags. It contains no Cloudflare Account ID, KV Namespace ID, or D1 Database ID, so syncing upstream cannot import the maintainer's resources.
+The public repository contains no active `wrangler.toml`. `wrangler.example.toml` is local reference only and contains no Cloudflare Account ID, KV Namespace ID, or D1 Database ID. This prevents both maintainer-resource leakage and the Pages dashboard binding lock.
 
-For Cloudflare Git deployments, select resources owned by your account under Pages **Settings → Bindings** and use `TSUB_DB`/`TSUB_KV` as the binding names. Do not write those resource IDs back to `wrangler.toml`.
+For Cloudflare Git deployments, select resources owned by your account under Pages **Settings → Bindings** and use `TSUB_DB`/`TSUB_KV` as the binding names. Do not create a repository `wrangler.toml`.
 
-Forks upgrading from an older version should remove any legacy `[[kv_namespaces]]` and `[[d1_databases]]` sections from `wrangler.toml`, preserve their dashboard bindings, and redeploy.
+Forks upgrading from an older version should remove their existing `wrangler.toml`, let the version without that file deploy once, then add storage bindings again in the dashboard and redeploy.
 
 Before a maintainer runs `npm run pages:verify` or `npm run deploy:pages`, copy `scripts/pages-production-target.example.json` to the Git-ignored `scripts/pages-production-target.local.json` and fill in the production resources. Environment variables are also supported: `TSUB_PAGES_PROJECT_NAME`, `TSUB_PAGES_PROJECT_SUBDOMAIN`, `TSUB_KV_NAMESPACE_ID`, `TSUB_D1_DATABASE_ID`, `TSUB_D1_DATABASE_NAME`, and `CLOUDFLARE_ACCOUNT_ID`. Supply the API token only through `CLOUDFLARE_API_TOKEN`; never store it in the target file.
 
@@ -151,7 +151,7 @@ Before a maintainer runs `npm run pages:verify` or `npm run deploy:pages`, copy 
 - **Password is rejected after adding variables**: confirm the variables are under **Production** and trigger a new deployment; Cloudflare does not inject new variables into an already completed deployment. The username must be 3-32 lowercase ASCII letters, digits, dots, underscores, or hyphens; it defaults to `admin`. Passwords must be 8-128 characters with no leading or trailing spaces.
 - **Login immediately expires**: keep `COOKIE_SECRET` stable, use HTTPS, and preserve the forwarded protocol.
 - **Public URLs are wrong**: set `TSUB_PUBLIC_URL` to the real HTTPS URL, redeploy, and check public-page settings.
-- **An older fork references the original account**: sync the public `wrangler.toml` or remove its KV/D1 sections, bind resources owned by your account in Cloudflare, and redeploy.
+- **An older fork references the original account or dashboard bindings are locked**: sync upstream to remove the existing `wrangler.toml`, bind resources owned by your account in Cloudflare, and redeploy.
 
 ## Screenshot checklist
 
