@@ -32,17 +32,19 @@ Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私�
 
 在项目设置中填写：
 
-| 设置 | 值 |
+| 设置项（Cloudflare 中文界面） | 填写值 |
 | --- | --- |
-| Framework preset | `Vite` 或 `None` |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-| Root directory | 仓库根目录（留空或填写 `/`） |
-| Node.js version | `22` 或更高版本 |
+| 框架预设（Framework preset） | `Vite` 或 `None` |
+| 构建命令（Build command） | `npm run build` |
+| 构建输出目录（Build output directory） | `dist` |
+| 根目录（Root directory） | 仓库根目录（留空或填写 `/`） |
+| Node.js 版本（Node.js version） | `22` 或更高版本 |
 
 填写完成后点击 **保存并部署（Save and deploy）**，先让 Pages 完成第一次构建。Pages 项目创建完成后，才能在项目设置中看到可用的“绑定”区域；绑定存储和变量后还需要再次部署，配置才会注入 Functions 运行时。
 
 ![Pages 构建设置](assets/screenshots/cloudflare/06-build-settings.png)
+
+填写完成后点击页面底部 **保存并部署（Save and deploy）**。完成判定：部署页出现首次构建记录并进入“构建中/成功”状态。首次部署成功后，再继续下一节配置 D1/KV 绑定。
 
 ## 4. 选择存储模式
 

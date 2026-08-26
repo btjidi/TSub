@@ -44,6 +44,8 @@ When the form is complete, click **Save and deploy** and wait for the first buil
 
 ![Pages build settings](assets/screenshots/cloudflare/06-build-settings.png)
 
+After completing the form, click **Save and deploy** at the bottom of the page. Completion check: the Deployments page shows the first build as queued, building, or successful. After that first deployment succeeds, continue to the next section to configure D1/KV bindings.
+
 ## 4. Choose storage
 
 After the first deployment succeeds, return to the project **Settings** page and follow the storage steps below. Do not use the first build to determine whether D1/KV is active.
