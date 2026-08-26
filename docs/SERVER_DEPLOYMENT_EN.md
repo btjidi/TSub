@@ -268,4 +268,4 @@ First uninstall same-host proxy deployments through the controller and export a 
 - **Local executor offline**: inspect the Unix socket, `/run/tsub/executor.conf`, executor service, and Runtime permissions.
 - **Compose cannot reach PostgreSQL**: do not use container-local `127.0.0.1`; use a resolvable database hostname or a service on the same Compose network.
 
-Related: [Quick Start](QUICK_START_EN.md) · [Architecture](ARCHITECTURE_EN.md) · [Security](SECURITY_EN.md) · [Operations](OPERATIONS_EN.md)
+Related: [Cloudflare Pages deployment tutorial](../README_EN.md#cloudflare-pages-deployment-guide) · [Architecture](ARCHITECTURE_EN.md) · [Security](SECURITY_EN.md) · [Operations](OPERATIONS_EN.md)

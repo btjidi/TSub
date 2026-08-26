@@ -275,4 +275,4 @@ sudo sh scripts/install-controller.sh
 - **本机执行器离线**：检查 Socket、`/run/tsub/executor.conf`、执行器服务和 Runtime 权限。
 - **Compose 无法连接 PostgreSQL**：不要使用容器内的 `127.0.0.1`，改用可解析的数据库主机名或同一 Compose 网络中的服务名。
 
-相关文档：[快速开始](QUICK_START.md) · [总体架构](ARCHITECTURE.md) · [安全模型](SECURITY.md) · [运维手册](OPERATIONS.md)
+相关文档：[Cloudflare Pages 部署教程](../README.md#cloudflare-pages-部署教程) · [总体架构](ARCHITECTURE.md) · [安全模型](SECURITY.md) · [运维手册](OPERATIONS.md)

@@ -4,7 +4,6 @@ import path from 'node:path';
 const root = process.cwd();
 const pairs = [
   ['README.md', 'README_EN.md'],
-  ['docs/QUICK_START.md', 'docs/QUICK_START_EN.md'],
   ['docs/USER_GUIDE.md', 'docs/USER_GUIDE_EN.md'],
   ['docs/PROXY_DEPLOYMENT.md', 'docs/PROXY_DEPLOYMENT_EN.md'],
   ['docs/SERVER_DEPLOYMENT.md', 'docs/SERVER_DEPLOYMENT_EN.md'],

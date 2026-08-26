@@ -30,7 +30,7 @@ TSub is a subscription and proxy-node management platform for Cloudflare Pages o
 
 ## Cloudflare Pages Deployment Guide
 
-Fork this repository first, then authorize GitHub in Cloudflare and select your public fork. See the complete [GitHub authorization deployment guide](docs/QUICK_START_EN.md) for build settings, D1/KV bindings, Secrets, first sign-in, and troubleshooting.
+Fork this repository first, then authorize GitHub in Cloudflare and select your public fork. This README contains the complete deployment tutorial for build settings, D1/KV bindings, Secrets, first sign-in, and troubleshooting.
 
 > [!CAUTION]
 > Storage configuration now uses **Cloudflare dashboard bindings**. The public repository no longer ships an active `wrangler.toml` because Pages locks dashboard bindings whenever that file is detected. Select resources owned by your account under Pages **Settings → Bindings**; older forks must remove their existing `wrangler.toml` after syncing.
@@ -56,7 +56,7 @@ npm run dev:server -- --ip 127.0.0.1 --kv TSUB_KV --persist-to .wrangler/state-l
 
 ## Documentation
 
-- [Quick Start](docs/QUICK_START_EN.md)
+- [Cloudflare Pages deployment tutorial](#cloudflare-pages-deployment-guide)
 - [User Guide](docs/USER_GUIDE_EN.md)
 - [Proxy Deployment](docs/PROXY_DEPLOYMENT_EN.md)
 - [Server Controller Deployment](docs/SERVER_DEPLOYMENT_EN.md)

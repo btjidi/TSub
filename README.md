@@ -138,7 +138,7 @@ TSUB_PUBLIC_URL=这里填写公开HTTPS地址
 - D1 首次访问返回 `storage_initialization_failed`：检查绑定名、D1 权限和部署日志。
 - 从旧版本更新后仍提示资源不存在或控制台绑定被锁定：同步上游删除原有 `wrangler.toml`，等待一次部署完成，再在 Pages **设置 → 绑定** 中选择自己的资源并重新部署。
 
-更多截图和迁移细节见 [QUICK_START.md](docs/QUICK_START.md)，英文版见 [QUICK_START_EN.md](docs/QUICK_START_EN.md)。
+本 README 即为完整 Cloudflare Pages 部署教程；英文入口见 [README_EN.md](README_EN.md)。
 
 ## 服务器部署
 
@@ -195,7 +195,7 @@ npm run dev:server -- --ip 127.0.0.1 --kv TSUB_KV --persist-to .wrangler/state-l
 
 ## 文档
 
-- [快速开始](docs/QUICK_START.md)
+- [Cloudflare Pages 部署教程](#cloudflare-pages-部署教程)
 - [用户指南](docs/USER_GUIDE.md)
 - [代理部署](docs/PROXY_DEPLOYMENT.md)
 - [服务器主控部署](docs/SERVER_DEPLOYMENT.md)
