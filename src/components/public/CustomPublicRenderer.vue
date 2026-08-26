@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router';
 import { useThemeStore } from '../../stores/theme.js';
 import { parseCustomPageSource } from '../../utils/custom-page-source.js';
 import { sanitizeHtml as sanitizeUserHtml } from '../../utils/html-sanitizer.js';
+import packageJson from '../../../package.json';
 
 const route = useRoute();
 const themeStore = useThemeStore();
@@ -99,7 +100,7 @@ const renderedHtml = computed(() => {
   // 1. 文本占位符替换
   const nodeCount = props.profiles.reduce((sum, p) => sum + (p.subscriptionCount || 0) + (p.manualNodeCount || 0), 0);
   const textVars = {
-    version: '1.0.0',
+    version: packageJson.version,
     title: props.config?.hero?.title1 || '',
     description: props.config?.hero?.description || '',
     profile_count: props.profiles.length,

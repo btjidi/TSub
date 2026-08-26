@@ -11,11 +11,10 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.0**
-- 集成订阅管理、转换、Profile、备份、通知和代理部署能力。
-- 使用自主 POSIX Shell 实现的 TSub Proxy 代理部署程序。
-- 新增 cgroup 资源规划、事务回滚、最小权限服务、ACME、Cloudflared 与内置 WARP。
-- 新增 AES-GCM 配置、双令牌、阶段事件、资源回传及节点自动同步。`;
+    const localChangelog = `**TSub 1.0.1**
+- 修复 nanoid 与 js-yaml 已公开的安全漏洞。
+- 升级 DOMPurify、Wrangler、Miniflare、Undici 与 brace-expansion，依赖审计归零。
+- 统一应用、前端与代理运行时的版本来源。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {
