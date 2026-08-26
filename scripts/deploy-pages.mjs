@@ -8,10 +8,43 @@ import path from 'node:path';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-export function parseWranglerBindings(source) {
-  const kv = source.match(/\[\[kv_namespaces\]\][\s\S]*?binding\s*=\s*"TSUB_KV"[\s\S]*?id\s*=\s*"([^"]+)"/);
-  const d1 = source.match(/\[\[d1_databases\]\][\s\S]*?binding\s*=\s*"TSUB_DB"[\s\S]*?database_name\s*=\s*"([^"]+)"[\s\S]*?database_id\s*=\s*"([^"]+)"/);
-  return { kvNamespaceId: kv?.[1] || '', d1DatabaseName: d1?.[1] || '', d1DatabaseId: d1?.[2] || '' };
+const targetFields = ['accountId', 'projectName', 'projectSubdomain', 'kvBinding', 'kvNamespaceId', 'd1Binding', 'd1DatabaseId', 'd1DatabaseName'];
+
+function validateTarget(target) {
+  const normalized = Object.fromEntries(targetFields.map(field => [field, String(target?.[field] || '').trim()]));
+  const missing = targetFields.filter(field => !normalized[field]);
+  if (missing.length) {
+    throw new Error(`Pages production target is incomplete (${missing.join(', ')}). Configure scripts/pages-production-target.local.json or TSUB_PAGES_* environment variables`);
+  }
+  return normalized;
+}
+
+export function pagesTargetFromEnv(env = process.env) {
+  return validateTarget({
+    accountId: env.CLOUDFLARE_ACCOUNT_ID,
+    projectName: env.TSUB_PAGES_PROJECT_NAME,
+    projectSubdomain: env.TSUB_PAGES_PROJECT_SUBDOMAIN,
+    kvBinding: env.TSUB_KV_BINDING || 'TSUB_KV',
+    kvNamespaceId: env.TSUB_KV_NAMESPACE_ID,
+    d1Binding: env.TSUB_D1_BINDING || 'TSUB_DB',
+    d1DatabaseId: env.TSUB_D1_DATABASE_ID,
+    d1DatabaseName: env.TSUB_D1_DATABASE_NAME
+  });
+}
+
+export async function loadPagesTarget({ rootDir = root, env = process.env, read = readFile } = {}) {
+  const configuredPath = String(env.TSUB_PAGES_TARGET_FILE || '').trim();
+  const targetPath = configuredPath
+    ? path.resolve(rootDir, configuredPath)
+    : path.join(rootDir, 'scripts', 'pages-production-target.local.json');
+  try {
+    return validateTarget(JSON.parse(await read(targetPath, 'utf8')));
+  } catch (error) {
+    if (configuredPath || error?.code !== 'ENOENT') {
+      throw new Error(`Unable to load Pages production target from ${targetPath}: ${error.message}`);
+    }
+    return pagesTargetFromEnv(env);
+  }
 }
 
 function directJsonRequest(url, token) {
@@ -73,13 +106,9 @@ function bindingId(project, group, binding) {
   return value?.namespace_id || value?.id || value?.database_id || '';
 }
 
-export async function verifyPagesTarget({ target, wrangler, accountId, token, proxy = '', request = cloudflareJson }) {
+export async function verifyPagesTarget({ target, accountId, token, proxy = '', request = cloudflareJson }) {
   if (!token) throw new Error('CLOUDFLARE_API_TOKEN is required');
   if (accountId !== target.accountId) throw new Error('Cloudflare Account ID does not match the reviewed production target');
-  const local = parseWranglerBindings(wrangler);
-  if (local.kvNamespaceId !== target.kvNamespaceId || local.d1DatabaseId !== target.d1DatabaseId || local.d1DatabaseName !== target.d1DatabaseName) {
-    throw new Error('wrangler.toml KV/D1 bindings do not match the reviewed production target');
-  }
   const base = `/accounts/${target.accountId}`;
   const [project, kv, d1] = await Promise.all([
     request(`${base}/pages/projects/${encodeURIComponent(target.projectName)}`, token, proxy),
@@ -98,15 +127,11 @@ export async function verifyPagesTarget({ target, wrangler, accountId, token, pr
 }
 
 async function main() {
-  const [targetSource, wrangler] = await Promise.all([
-    readFile(path.join(root, 'scripts/pages-production-target.json'), 'utf8'),
-    readFile(path.join(root, 'wrangler.toml'), 'utf8')
-  ]);
-  const target = JSON.parse(targetSource);
+  const target = await loadPagesTarget();
   const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
   const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
   const proxy = String(process.env.HTTPS_PROXY || process.env.https_proxy || '').trim();
-  const verified = await verifyPagesTarget({ target, wrangler, accountId, token, proxy });
+  const verified = await verifyPagesTarget({ target, accountId, token, proxy });
   process.stdout.write(`Pages target verified: ${verified.projectName} (${verified.subdomain})\n`);
   if (!process.argv.includes('--deploy')) return;
   const deploy = wranglerDeployCommand();

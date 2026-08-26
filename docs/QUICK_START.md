@@ -46,6 +46,9 @@ Cloudflare 的 GitHub 授权只会显示授权账号能够访问的仓库。私�
 
 ## 4. 选择存储模式
 
+> [!CAUTION]
+> 存储配置方式已改为 **Cloudflare 控制台绑定**。请在 Pages **设置 → 绑定** 中选择自己的 KV/D1 资源，禁止在公共 `wrangler.toml` 中添加账号专属资源 ID。旧 Fork 更新后应先删除历史 `[[kv_namespaces]]`、`[[d1_databases]]` 配置段。
+
 每个绑定名称必须完全一致：应用代码读取的是 `TSUB_DB` 和 `TSUB_KV`。全新项目不要同时绑定空 D1 和空 KV，除非你明确设置首次存储策略。
 
 ### 推荐：D1 完整模式
@@ -129,11 +132,15 @@ D1 模式还应在“代理部署”中确认远程 Agent 和命令入口可用�
 
 ![存储类型验证](assets/screenshots/cloudflare/15-storage-verification.png)
 
-## 7. Fork 与 `wrangler.toml` 资源 ID
+## 7. Fork、控制台绑定与维护者发布
 
-仓库内的 `wrangler.toml` 包含示例生产账号的 KV/D1 ID，供维护者的受控发布脚本校验使用。Fork 到自己的账号后，不要直接执行维护者的 `npm run deploy:pages`，也不要把这些 ID 当作自己的资源。
+公共仓库的 `wrangler.toml` 只包含项目名、构建输出目录、兼容日期和兼容标志，不包含 Cloudflare Account ID、KV Namespace ID 或 D1 Database ID。Fork 用户同步上游版本时不会继承维护者资源。
 
-通过 Cloudflare Git 集成部署时，以项目设置中的 `TSUB_DB`/`TSUB_KV` 绑定为准。若 Wrangler 报告资源不属于当前账号，请将 Fork 中的绑定 ID 替换为自己的资源，或移除旧绑定后完全使用 Cloudflare 控制台绑定，再重新部署。
+通过 Cloudflare Git 集成部署时，必须在 Pages **设置 → 绑定** 中选择自己账号的资源，并使用 `TSUB_DB`/`TSUB_KV` 作为绑定名。不要把资源 ID 写回 `wrangler.toml`。
+
+从旧版本更新的 Fork 应删除 `wrangler.toml` 中历史遗留的 `[[kv_namespaces]]` 和 `[[d1_databases]]` 段，保留控制台绑定后重新部署。
+
+维护者执行 `npm run pages:verify` 或 `npm run deploy:pages` 前，将 `scripts/pages-production-target.example.json` 复制为被 Git 忽略的 `scripts/pages-production-target.local.json` 并填写生产资源。也可以设置 `TSUB_PAGES_PROJECT_NAME`、`TSUB_PAGES_PROJECT_SUBDOMAIN`、`TSUB_KV_NAMESPACE_ID`、`TSUB_D1_DATABASE_ID`、`TSUB_D1_DATABASE_NAME` 和 `CLOUDFLARE_ACCOUNT_ID`。API Token 只通过 `CLOUDFLARE_API_TOKEN` 提供，不得写入配置文件。
 
 ## 常见问题
 
@@ -144,7 +151,7 @@ D1 模式还应在“代理部署”中确认远程 Agent 和命令入口可用�
 - **添加变量后仍提示密码错误**：确认变量位于 **生产（Production）** 环境，并重新触发一次部署；Cloudflare 不会把新变量 retroactively 注入已经完成的旧部署。登录账号必须是 3-32 位小写字母、数字、点、下划线或连字符，未设置时使用 `admin`；密码必须为 8-128 位且不能有首尾空格。
 - **登录后立即失效**：确认 `COOKIE_SECRET` 没有变化，公开地址使用 HTTPS，且反向代理正确传递协议。
 - **公开链接地址不正确**：设置 `TSUB_PUBLIC_URL` 为实际公开 HTTPS 地址并重新部署，再在设置页检查公开页面配置。
-- **Fork 部署引用了原账号资源**：替换或移除 `wrangler.toml` 中的示例资源 ID，使用自己的 Cloudflare 绑定。
+- **旧 Fork 部署引用了原账号资源**：同步最新公共 `wrangler.toml` 或删除其中的 KV/D1 段，在 Cloudflare 控制台绑定自己的资源后重新部署。
 
 ## 截图清单
 

@@ -30,6 +30,8 @@ npm run pages:verify
 npm run deploy:pages
 ```
 
+维护者发布前，将 `scripts/pages-production-target.example.json` 复制为 Git 忽略的 `scripts/pages-production-target.local.json` 并填写生产项目、KV 和 D1 信息；也可使用对应的 `TSUB_PAGES_*` 环境变量。公共 `wrangler.toml` 不得包含账号资源 ID，Pages 的运行时资源统一在 Cloudflare 控制台绑定。
+
 Runtime 源修改后必须重新运行 `runtime:build`，并将生成脚本、清单和 SHA-256 一起提交。不要手工编辑生成脚本。
 
 ## 代码约定
@@ -58,6 +60,6 @@ Repository 契约必须覆盖 KV、D1、SQLite 和 PostgreSQL。Miniflare 验证
 5. `npm run build`
 6. Node 服务 HTTP 冒烟、`docker compose config`、Docker 构建与 PostgreSQL 测试
 7. ShellCheck、dash/BusyBox ash、本机执行器权限与 Secret 扫描
-8. Pages 发布必须使用 `npm run deploy:pages`；脚本会先核对生产 Account ID、项目子域名、KV ID 和 D1 ID，禁止直接运行裸 `wrangler pages deploy`
+8. Pages 发布必须使用 `npm run deploy:pages`；脚本从本地忽略配置或环境变量读取目标，并核对生产 Account ID、项目子域名及控制台 KV/D1 绑定，禁止直接运行裸 `wrangler pages deploy`
 9. 生成演示数据和截图，人工检查桌面/移动端
 10. 提交并推送 `origin/main`

@@ -34,6 +34,8 @@ dev-dist
 # Cloudflare
 .wrangler/
 .dev.vars
+/scripts/pages-production-target.json
+/scripts/pages-production-target.local.json
 
 # IDEs and editors
 /.idea

@@ -1,0 +1,10 @@
+{
+  "accountId": "your-cloudflare-account-id",
+  "projectName": "your-pages-project",
+  "projectSubdomain": "your-pages-project.pages.dev",
+  "kvBinding": "TSUB_KV",
+  "kvNamespaceId": "your-kv-namespace-id",
+  "d1Binding": "TSUB_DB",
+  "d1DatabaseId": "your-d1-database-id",
+  "d1DatabaseName": "your-d1-database-name"
+}

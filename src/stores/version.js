@@ -11,9 +11,10 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.2**
-- 修复 Cloudflare Pages 生产环境的 KV 与 D1 资源绑定。
-- 保留 1.0.1 的依赖安全升级，依赖审计保持为零。`;
+    const localChangelog = `**TSub 1.0.3**
+- 公共 wrangler.toml 移除账号专属 KV/D1 资源 ID。
+- Fork 统一通过 Cloudflare Pages 控制台绑定自己的存储资源。
+- 维护者生产目标改用 Git 忽略的本地配置或环境变量。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

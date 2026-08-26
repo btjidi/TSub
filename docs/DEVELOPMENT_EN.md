@@ -30,6 +30,8 @@ npm run pages:verify
 npm run deploy:pages
 ```
 
+Before a maintainer deploys, copy `scripts/pages-production-target.example.json` to the Git-ignored `scripts/pages-production-target.local.json` and fill in the production project, KV, and D1 details; the corresponding `TSUB_PAGES_*` environment variables are also supported. The public `wrangler.toml` must contain no account resource IDs. Bind Pages runtime resources in the Cloudflare dashboard.
+
 After changing Runtime source, run `runtime:build` and commit the generated script, manifest, and SHA-256 together. Do not edit the generated script manually.
 
 ## Conventions
@@ -58,6 +60,6 @@ Formal documents exist in language pairs and link to each other at the top. `npm
 5. `npm run build`
 6. Run Node HTTP smoke, `docker compose config`, Docker build, and PostgreSQL tests
 7. Run ShellCheck, dash/BusyBox ash, executor permission, and secret scans
-8. Publish Pages through `npm run deploy:pages`; it verifies the production Account ID, project subdomain, KV ID, and D1 ID first. Do not invoke bare `wrangler pages deploy`
+8. Publish Pages through `npm run deploy:pages`; it reads the target from ignored local configuration or environment variables and verifies the production Account ID, project subdomain, and dashboard KV/D1 bindings. Do not invoke bare `wrangler pages deploy`
 9. Generate demo data and screenshots, then inspect desktop/mobile output
 10. Commit and push `origin/main`

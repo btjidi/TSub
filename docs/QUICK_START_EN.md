@@ -46,6 +46,9 @@ Save the project before deploying if you still need to add bindings or variables
 
 ## 4. Choose storage
 
+> [!CAUTION]
+> Storage configuration now uses **Cloudflare dashboard bindings**. Select resources owned by your account under Pages **Settings → Bindings**. Never add account-specific KV/D1 IDs to the public `wrangler.toml`. Older forks should first remove legacy `[[kv_namespaces]]` and `[[d1_databases]]` sections.
+
 Binding names are part of TSub's runtime contract: the application reads `TSUB_DB` and `TSUB_KV`. Do not bind two empty stores unless you intentionally set the initial storage policy.
 
 ### Recommended: D1 full mode
@@ -129,11 +132,15 @@ In D1 mode, verify that remote agents and deployment commands are available. In 
 
 ![Storage verification](assets/screenshots/cloudflare/15-storage-verification.png)
 
-## 7. Forks and `wrangler.toml` resource IDs
+## 7. Forks, dashboard bindings, and maintainer deploys
 
-The repository's `wrangler.toml` contains KV/D1 IDs for a controlled example production account. A fork must not run the maintainer's `npm run deploy:pages` or reuse those IDs.
+The public `wrangler.toml` contains only the project name, build output directory, compatibility date, and compatibility flags. It contains no Cloudflare Account ID, KV Namespace ID, or D1 Database ID, so syncing upstream cannot import the maintainer's resources.
 
-For Cloudflare Git deployments, use the `TSUB_DB`/`TSUB_KV` bindings configured in the project. If Wrangler reports that a resource belongs to another account, replace or remove the example IDs in the fork and use the Cloudflare dashboard bindings.
+For Cloudflare Git deployments, select resources owned by your account under Pages **Settings → Bindings** and use `TSUB_DB`/`TSUB_KV` as the binding names. Do not write those resource IDs back to `wrangler.toml`.
+
+Forks upgrading from an older version should remove any legacy `[[kv_namespaces]]` and `[[d1_databases]]` sections from `wrangler.toml`, preserve their dashboard bindings, and redeploy.
+
+Before a maintainer runs `npm run pages:verify` or `npm run deploy:pages`, copy `scripts/pages-production-target.example.json` to the Git-ignored `scripts/pages-production-target.local.json` and fill in the production resources. Environment variables are also supported: `TSUB_PAGES_PROJECT_NAME`, `TSUB_PAGES_PROJECT_SUBDOMAIN`, `TSUB_KV_NAMESPACE_ID`, `TSUB_D1_DATABASE_ID`, `TSUB_D1_DATABASE_NAME`, and `CLOUDFLARE_ACCOUNT_ID`. Supply the API token only through `CLOUDFLARE_API_TOKEN`; never store it in the target file.
 
 ## Troubleshooting
 
@@ -144,7 +151,7 @@ For Cloudflare Git deployments, use the `TSUB_DB`/`TSUB_KV` bindings configured 
 - **Password is rejected after adding variables**: confirm the variables are under **Production** and trigger a new deployment; Cloudflare does not inject new variables into an already completed deployment. The username must be 3-32 lowercase ASCII letters, digits, dots, underscores, or hyphens; it defaults to `admin`. Passwords must be 8-128 characters with no leading or trailing spaces.
 - **Login immediately expires**: keep `COOKIE_SECRET` stable, use HTTPS, and preserve the forwarded protocol.
 - **Public URLs are wrong**: set `TSUB_PUBLIC_URL` to the real HTTPS URL, redeploy, and check public-page settings.
-- **The fork references the original account**: replace or remove the example resource IDs and bind your own Cloudflare resources.
+- **An older fork references the original account**: sync the public `wrangler.toml` or remove its KV/D1 sections, bind resources owned by your account in Cloudflare, and redeploy.
 
 ## Screenshot checklist
 
