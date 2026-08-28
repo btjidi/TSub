@@ -28,6 +28,8 @@ The deployment command first probes the node address through the controller. Whe
 
 ## Docker Compose
 
+All `tsub.example.com` and `db.example.com` values in this section are placeholders. Replace them with your own domain, database hostname, or IP before running any command.
+
 ### 1. Get the source
 
 ```bash
@@ -125,6 +127,8 @@ sudo journalctl -u tsub-executor.service -n 100 --no-pager
 For OpenRC use `rc-service tsub-executor status` and `/var/log/tsub-executor.log`.
 
 ## Bare-metal installation
+
+Replace `tsub.example.com` in this section with your own domain before running commands.
 
 ### 1. Install dependencies and build
 

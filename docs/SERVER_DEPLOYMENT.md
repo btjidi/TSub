@@ -28,6 +28,8 @@
 
 ## Docker Compose
 
+本节命令中的 `tsub.example.com` 和后文的 `db.example.com` 都是示例值，必须替换为你自己的域名、数据库主机名或 IP；不要原样执行。
+
 ### 1. 获取源码
 
 ```bash
@@ -125,6 +127,8 @@ sudo journalctl -u tsub-executor.service -n 100 --no-pager
 OpenRC 使用 `rc-service tsub-executor status` 和 `/var/log/tsub-executor.log`。
 
 ## 裸机安装
+
+本节命令中的 `tsub.example.com` 必须替换为你自己的域名；不要原样执行。
 
 ### 1. 安装依赖并构建
 

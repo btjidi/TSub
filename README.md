@@ -146,7 +146,7 @@ TSUB_PUBLIC_URL=这里填写公开HTTPS地址
 
 ### Docker Compose（推荐）
 
-要求 Linux `amd64`/`arm64`、Docker Engine、Compose v2，以及一个已经指向服务器的域名。先获取源码并生成 `.env`：
+要求 Linux `amd64`/`arm64`、Docker Engine、Compose v2，以及一个已经指向服务器的域名。下面示例中的 `tsub.example.com` 必须修改为你自己的域名。先获取源码并生成 `.env`：
 
 ```bash
 git clone https://github.com/btjidi/TSub.git
@@ -166,7 +166,7 @@ docker compose logs --tail=100 controller caddy
 
 ### Debian/Ubuntu/Alpine 裸机
 
-裸机方式需要 Node.js 22、npm、Git、SQLite 原生依赖和 systemd/OpenRC。安装器会创建受限的 `tsub-controller` 用户、生成环境文件并注册服务：
+裸机方式需要 Node.js 22、npm、Git、SQLite 原生依赖和 systemd/OpenRC。下面命令中的 `tsub.example.com` 也必须替换为你自己的域名。安装器会创建受限的 `tsub-controller` 用户、生成环境文件并注册服务：
 
 ```bash
 git clone https://github.com/btjidi/TSub.git
