@@ -908,6 +908,8 @@ describe('TSub V2 deployment handler', () => {
     expect(launcher).toContain('|| probe_external_ip 6');
     expect(launcher).toContain("400|401|403) cat \"$TSUB_BOOTSTRAP\" >&2; exit 1");
     expect(launcher).not.toContain('Authorization: Bearer $TSUB_TOKEN\" \"$TSUB_AWS_IP_URL');
+    expect((launcher.match(/\bif /g) || []).length).toBe((launcher.match(/\bfi\b/g) || []).length);
+    expect((launcher.match(/\bwhile /g) || []).length).toBe((launcher.match(/\bdone\b/g) || []).length);
 
     const bootstrap = await handleDeployBootstrap(new Request('https://tsub.example/api/deploy/bootstrap', {
       headers: { Authorization: `Bearer ${token}` }

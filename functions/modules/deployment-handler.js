@@ -1133,7 +1133,11 @@ elif command -v wget >/dev/null 2>&1; then
   TSUB_HEADERS=$(mktemp)
   trap 'rm -f "$TSUB_BOOTSTRAP" "$TSUB_HEADERS"' EXIT HUP INT TERM
   while :; do
-    wget -O "$TSUB_BOOTSTRAP" --server-response --header="Authorization: Bearer $TSUB_TOKEN" "$TSUB_BOOTSTRAP_URL" 2>"$TSUB_HEADERS" && TSUB_HTTP_CODE=$(sed -n 's/^  HTTP\/[0-9.]* \([0-9][0-9][0-9]\).*/\\1/p' "$TSUB_HEADERS" | tail -n 1 || TSUB_HTTP_CODE=000
+    if wget -O "$TSUB_BOOTSTRAP" --server-response --header="Authorization: Bearer $TSUB_TOKEN" "$TSUB_BOOTSTRAP_URL" 2>"$TSUB_HEADERS"; then
+      TSUB_HTTP_CODE=$(sed -n 's/^  HTTP\/[0-9.]* \([0-9][0-9][0-9]\).*/\\1/p' "$TSUB_HEADERS" | tail -n 1)
+    else
+      TSUB_HTTP_CODE=000
+    fi
     case "$TSUB_HTTP_CODE" in
       2*) break ;;
       400|401|403) cat "$TSUB_BOOTSTRAP" >&2; exit 1 ;;
