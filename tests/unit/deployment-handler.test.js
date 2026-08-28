@@ -377,6 +377,19 @@ describe('TSub V2 deployment handler', () => {
     expect(nodes[1]).toContain('@[2001:db8::20]:51231');
   });
 
+  it('accepts authenticated node-side public address probes and rejects private addresses', async () => {
+    const env = createEnv();
+    const created = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Node probe', config: config() }), env, '/deployments');
+    const body = await created.json();
+    const token = bearerFromCommand(body.data.command);
+    const operationId = body.data.operation.id;
+    const submit = address => handleDeployAddressProbe(new Request(`https://tsub.example/api/deploy/address/${operationId}`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ address })
+    }), env, operationId);
+    expect((await submit('10.0.0.2')).status).toBe(400);
+    expect((await submit('8.8.8.8')).status).toBe(200);
+  });
+
   it('encrypts configuration, masks summaries, and emits a verified POSIX bootstrap once', async () => {
     const env = createEnv();
     const result = await createAndBootstrap(env);
@@ -889,6 +902,12 @@ describe('TSub V2 deployment handler', () => {
     expect(launcher.indexOf('输入 Y 确认')).toBeLessThan(launcher.indexOf('/api/deploy/bootstrap'));
     expect(launcher).toContain('Short command');
     expect(launcher).not.toContain(token);
+    expect(launcher).toContain("TSUB_AWS_IP_URL='https://checkip.global.api.aws'");
+    expect(launcher).toContain("TSUB_AKAMAI_IP_URL='https://whatismyip.akamai.com'");
+    expect(launcher).toContain('|| probe_external_ip 4');
+    expect(launcher).toContain('|| probe_external_ip 6');
+    expect(launcher).toContain("400|401|403) cat \"$TSUB_BOOTSTRAP\" >&2; exit 1");
+    expect(launcher).not.toContain('Authorization: Bearer $TSUB_TOKEN\" \"$TSUB_AWS_IP_URL');
 
     const bootstrap = await handleDeployBootstrap(new Request('https://tsub.example/api/deploy/bootstrap', {
       headers: { Authorization: `Bearer ${token}` }

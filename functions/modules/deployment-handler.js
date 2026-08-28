@@ -34,6 +34,21 @@ const FINAL_STATUSES = new Set(['succeeded', 'failed']);
 const TRAFFIC_BACKENDS = new Set(['nftables', 'iptables', 'core-singbox', 'core-xray', 'unavailable']);
 const isRowStorage = storage => [STORAGE_TYPES.D1, STORAGE_TYPES.SQLITE, STORAGE_TYPES.POSTGRES].includes(storage.type);
 
+function isPublicProbeAddress(address, family) {
+  if (family === 'ipv4') {
+    const parts = address.split('.').map(Number);
+    if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+    const [a, b, c] = parts;
+    return !(a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127)
+      || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+      || (a === 192 && b === 0 && (c === 0 || c === 2)) || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100)))
+      || (a === 203 && b === 0 && c === 113));
+  }
+  const normalized = address.toLowerCase();
+  return /^[0-9a-f:]+$/.test(normalized) && normalized.includes(':') && normalized !== '::' && normalized !== '::1'
+    && !/^(?:fc|fd|fe8|fe9|fea|feb|ff)/.test(normalized) && !normalized.startsWith('2001:db8:');
+}
+
 function runtimeSupportsVersionUpdate(version) {
   const parts = String(version || '').replace(/^v/i, '').split('.').map(value => Number.parseInt(value, 10) || 0);
   return (parts[0] || 0) > 1 || ((parts[0] || 0) === 1 && ((parts[1] || 0) > 0 || (parts[2] || 0) >= 5));
@@ -1075,19 +1090,55 @@ chmod 600 "$TSUB_BOOTSTRAP"
 trap 'rm -f "$TSUB_BOOTSTRAP"' EXIT HUP INT TERM
 TSUB_BOOTSTRAP_URL=${shellQuote(bootstrapUrl)}
 TSUB_PROBE_URL=${shellQuote(probeUrl)}
+TSUB_AWS_IP_URL='https://checkip.global.api.aws'
+TSUB_AKAMAI_IP_URL='https://whatismyip.akamai.com'
+probe_external_ip() {
+  TSUB_FAMILY=$1
+  TSUB_IP=''
+  if command -v curl >/dev/null 2>&1; then
+    TSUB_IP=$(curl -\${TSUB_FAMILY} -fsS --max-time 5 "$TSUB_AWS_IP_URL" 2>/dev/null | tr -d '[:space:]' || true)
+    [ -n "$TSUB_IP" ] || TSUB_IP=$(curl -\${TSUB_FAMILY} -fsS --max-time 5 "$TSUB_AKAMAI_IP_URL" 2>/dev/null | tr -d '[:space:]' || true)
+  elif command -v wget >/dev/null 2>&1; then
+    TSUB_IP=$(wget -qO- -\${TSUB_FAMILY} --timeout=5 "$TSUB_AWS_IP_URL" 2>/dev/null | tr -d '[:space:]' || true)
+    [ -n "$TSUB_IP" ] || TSUB_IP=$(wget -qO- -\${TSUB_FAMILY} --timeout=5 "$TSUB_AKAMAI_IP_URL" 2>/dev/null | tr -d '[:space:]' || true)
+  fi
+  case "$TSUB_FAMILY" in
+    4) printf '%s' "$TSUB_IP" | grep -Eq '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$' || TSUB_IP='' ;;
+    6) printf '%s' "$TSUB_IP" | grep -Eq '^[0-9A-Fa-f:]+$' || TSUB_IP='' ;;
+  esac
+  if [ -n "$TSUB_IP" ]; then
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsS -X POST -H "Authorization: Bearer $TSUB_TOKEN" -H 'Content-Type: application/json' --data "{\\"address\\":\\"$TSUB_IP\\"}" "$TSUB_PROBE_URL" >/dev/null 2>&1 || true
+    elif command -v wget >/dev/null 2>&1; then
+      wget -qO- --header="Authorization: Bearer $TSUB_TOKEN" --header='Content-Type: application/json' --post-data="{\\"address\\":\\"$TSUB_IP\\"}" "$TSUB_PROBE_URL" >/dev/null 2>&1 || true
+    fi
+  fi
+}
 if command -v curl >/dev/null 2>&1; then
-  curl -4 -fsS -X POST -H "Authorization: Bearer $TSUB_TOKEN" "$TSUB_PROBE_URL" >/dev/null 2>&1 || true
-  curl -6 -fsS -X POST -H "Authorization: Bearer $TSUB_TOKEN" "$TSUB_PROBE_URL" >/dev/null 2>&1 || true
+  curl -4 -fsS -X POST -H "Authorization: Bearer $TSUB_TOKEN" "$TSUB_PROBE_URL" >/dev/null 2>&1 || probe_external_ip 4
+  curl -6 -fsS -X POST -H "Authorization: Bearer $TSUB_TOKEN" "$TSUB_PROBE_URL" >/dev/null 2>&1 || probe_external_ip 6
   TSUB_ATTEMPT=0
-  until curl -fsSL -H "Authorization: Bearer $TSUB_TOKEN" -o "$TSUB_BOOTSTRAP" "$TSUB_BOOTSTRAP_URL"; do
-    TSUB_ATTEMPT=$((TSUB_ATTEMPT + 1)); [ "$TSUB_ATTEMPT" -lt 12 ] || exit 1; sleep 5
+  while :; do
+    TSUB_HTTP_CODE=$(curl -sS -L --max-time 60 -w '%{http_code}' -o "$TSUB_BOOTSTRAP" -H "Authorization: Bearer $TSUB_TOKEN" "$TSUB_BOOTSTRAP_URL" || printf '000')
+    case "$TSUB_HTTP_CODE" in
+      2*) break ;;
+      400|401|403) cat "$TSUB_BOOTSTRAP" >&2; exit 1 ;;
+      *) TSUB_ATTEMPT=$((TSUB_ATTEMPT + 1)); [ "$TSUB_ATTEMPT" -lt 12 ] || exit 1; sleep 5 ;;
+    esac
   done
 elif command -v wget >/dev/null 2>&1; then
-  wget -qO- -4 --header="Authorization: Bearer $TSUB_TOKEN" --post-data='' "$TSUB_PROBE_URL" >/dev/null 2>&1 || true
-  wget -qO- -6 --header="Authorization: Bearer $TSUB_TOKEN" --post-data='' "$TSUB_PROBE_URL" >/dev/null 2>&1 || true
+  wget -qO- -4 --header="Authorization: Bearer $TSUB_TOKEN" --post-data='' "$TSUB_PROBE_URL" >/dev/null 2>&1 || probe_external_ip 4
+  wget -qO- -6 --header="Authorization: Bearer $TSUB_TOKEN" --post-data='' "$TSUB_PROBE_URL" >/dev/null 2>&1 || probe_external_ip 6
   TSUB_ATTEMPT=0
-  until wget -O "$TSUB_BOOTSTRAP" --header="Authorization: Bearer $TSUB_TOKEN" "$TSUB_BOOTSTRAP_URL"; do
-    TSUB_ATTEMPT=$((TSUB_ATTEMPT + 1)); [ "$TSUB_ATTEMPT" -lt 12 ] || exit 1; sleep 5
+  TSUB_HEADERS=$(mktemp)
+  trap 'rm -f "$TSUB_BOOTSTRAP" "$TSUB_HEADERS"' EXIT HUP INT TERM
+  while :; do
+    wget -O "$TSUB_BOOTSTRAP" --server-response --header="Authorization: Bearer $TSUB_TOKEN" "$TSUB_BOOTSTRAP_URL" 2>"$TSUB_HEADERS" && TSUB_HTTP_CODE=$(sed -n 's/^  HTTP\/[0-9.]* \([0-9][0-9][0-9]\).*/\\1/p' "$TSUB_HEADERS" | tail -n 1 || TSUB_HTTP_CODE=000
+    case "$TSUB_HTTP_CODE" in
+      2*) break ;;
+      400|401|403) cat "$TSUB_BOOTSTRAP" >&2; exit 1 ;;
+      *) TSUB_ATTEMPT=$((TSUB_ATTEMPT + 1)); [ "$TSUB_ATTEMPT" -lt 12 ] || exit 1; sleep 5 ;;
+    esac
   done
 else
   printf '%s\\n' ${shellQuote(prepareText.missingDownloader)} >&2
@@ -1302,9 +1353,15 @@ export async function handleDeployAddressProbe(request, env, operationId) {
   const auth = await authenticateToken(request, env, 'bootstrap');
   if (auth.error) return auth.error;
   if (auth.operation.id !== operationId) return createErrorResponse('Operation mismatch', 409);
-  const address = request.cf && typeof request.cf === 'object' ? String(request.headers.get('CF-Connecting-IP') || '').trim() : '';
+  let body = {};
+  let submittedAddress = false;
+  if (request.headers.get('Content-Type')?.includes('application/json')) {
+    try { body = await readJsonWithLimit(request, 4096); submittedAddress = Object.hasOwn(body || {}, 'address'); } catch { return createErrorResponse('Invalid address probe payload', 400); }
+  }
+  const address = String(body?.address || (request.cf && typeof request.cf === 'object' ? request.headers.get('CF-Connecting-IP') || '' : '')).trim();
   const family = address.includes(':') ? 'ipv6' : /^\d{1,3}(?:\.\d{1,3}){3}$/.test(address) ? 'ipv4' : '';
   if (!family) return createErrorResponse('Trusted public address unavailable', 400);
+  if (submittedAddress && !isPublicProbeAddress(address, family)) return createErrorResponse(`Public ${family === 'ipv4' ? 'IPv4' : 'IPv6'} address required`, 400);
   auth.operation.resolvedAddresses = { ...(auth.operation.resolvedAddresses || {}), [family]: address };
   auth.operation.updatedAt = nowIso();
   await writeOperation(auth.storage, auth.operation);

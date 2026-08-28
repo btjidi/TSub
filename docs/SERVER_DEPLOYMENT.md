@@ -13,6 +13,10 @@
 
 远程 Agent 始终由节点主动连接主控，不需要保存 SSH 密码。只有控制主控所在宿主机的代理节点时，才需要本机执行器。
 
+### 节点公网地址探测
+
+代理部署命令会先通过主控探测节点地址。自托管主控无法提供 Cloudflare 客户端地址时，节点脚本会依次尝试 AWS Global API（`https://checkip.global.api.aws`）和 Akamai（`https://whatismyip.akamai.com`），分别使用 IPv4/IPv6 连接。外部服务只返回出口 IP，不接收部署 Token 或配置；NAT、代理和特殊云网络可能使出口 IP 与可入站地址不同，生产环境应在生成器中手动确认节点公网地址。
+
 ## 部署前检查
 
 - 支持 `amd64` 和 `arm64` Linux。裸机安装支持 Debian/Ubuntu 的 systemd，以及 Alpine 的 OpenRC。

@@ -11,10 +11,11 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.5**
-- 代理部署记录新增“更新版本”远程操作。
-- TSub Proxy Runtime 支持校验后原子更新并重新加载 Agent。
-- 旧 Agent 会明确提示先重新安装，不会自动覆盖服务器配置。`;
+    const localChangelog = `**TSub 1.0.6**
+- 自托管部署增加节点侧公网 IPv4/IPv6 备用探测。
+- AWS Global API 作为主探测，Akamai HTTPS 作为备用。
+- 主控地址探测失败时显示更明确的错误原因。
+- HTTP 400/401/403 不再无限重试，保留手动填写公网地址兜底。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

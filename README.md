@@ -176,6 +176,12 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 
 部署前放行 `80/TCP`、`443/TCP`（需要 HTTP/3 时再放行 `443/UDP`），不要开放 `8787`。首次登录后在“设置 → 系统设置”确认活动存储，并立即导出备份。
 
+节点安装命令会先通过主控探测公网地址；自托管主控无法提供可信地址时，脚本依次使用 AWS Global API（`https://checkip.global.api.aws`）和 Akamai（`https://whatismyip.akamai.com`）探测 IPv4/IPv6。两者获取的是出口地址，NAT 或代理环境下可能与可入站地址不同，生产环境请在生成器中手动确认节点公网 IP。
+
+### 版本更新说明
+
+当前版本 `1.0.6`：自托管节点增加 AWS/Akamai 公网 IPv4/IPv6 备用探测；主控地址探测失败时显示明确原因；HTTP 400/401/403 不再重复重试；保留手动填写公网地址作为最终兜底。
+
 完整的环境变量、HTTPS、执行器、PostgreSQL、多实例、升级和备份步骤见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 
 ## 本地开发

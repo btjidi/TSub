@@ -13,6 +13,10 @@ This guide deploys the TSub controller, not just a proxy node. The server contro
 
 Remote agents always initiate outbound connections and require no stored SSH password. Install the local executor only when the controller must manage a proxy node on its own host.
 
+### Node public address detection
+
+The deployment command first probes the node address through the controller. When a self-hosted controller cannot provide a Cloudflare client address, the node script tries the AWS Global API (`https://checkip.global.api.aws`) and then Akamai (`https://whatismyip.akamai.com`) over IPv4/IPv6. These services only return the egress IP and receive no deployment token or configuration. NAT, proxies, and special cloud networks can make the egress IP differ from the reachable address, so confirm the node public address manually in production.
+
 ## Preflight
 
 - `amd64` and `arm64` Linux are supported. Bare metal supports Debian/Ubuntu with systemd and Alpine with OpenRC.
