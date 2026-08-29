@@ -180,7 +180,7 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 
 ### 版本更新说明
 
-当前版本 `1.0.6`：自托管节点增加 AWS/Akamai 公网 IPv4/IPv6 备用探测；主控地址探测失败时显示明确原因；HTTP 400/401/403 不再重复重试；保留手动填写公网地址作为最终兜底。
+当前版本 `1.0.7`：节点菜单新增 Agent 与调度状态、调度修复和立即心跳测试；缺少 `crontab` 时自动安装对应依赖；菜单操作按真实返回值显示成功、失败或降级状态。并保留 1.0.6 的 AWS/Akamai 公网 IPv4/IPv6 备用探测和安装错误处理。
 
 完整的环境变量、HTTPS、执行器、PostgreSQL、多实例、升级和备份步骤见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 

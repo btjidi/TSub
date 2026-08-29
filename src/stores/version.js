@@ -11,11 +11,11 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.6**
-- 自托管部署增加节点侧公网 IPv4/IPv6 备用探测。
-- AWS Global API 作为主探测，Akamai HTTPS 作为备用。
-- 主控地址探测失败时显示更明确的错误原因。
-- HTTP 400/401/403 不再无限重试，保留手动填写公网地址兜底。`;
+    const localChangelog = `**TSub 1.0.7**
+- 节点菜单新增 Agent 与调度状态、调度修复和立即心跳测试。
+- 缺少 crontab 时自动安装发行版对应的调度依赖。
+- 修正菜单操作成功判定，明确显示失败阶段和降级状态。
+- 保留 1.0.6 的公网 IP 备用探测与安装错误处理。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

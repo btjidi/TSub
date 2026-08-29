@@ -41,7 +41,7 @@ The server controller supports Docker Compose and bare-metal Debian, Ubuntu, or 
 
 ### Release Notes
 
-Current version `1.0.6`: added AWS/Akamai IPv4/IPv6 fallback probing for self-hosted node deployment, clearer controller probe errors, immediate handling for HTTP 400/401/403, and manual public-address fallback.
+Current version `1.0.7`: added Agent and scheduler status, scheduler repair, and immediate heartbeat testing to the node menu; missing `crontab` is installed automatically when supported; menu actions now report real success, failure, or degraded status. It retains the 1.0.6 AWS/Akamai IPv4/IPv6 fallback probing and installer error handling.
 
 ## Local development
 
