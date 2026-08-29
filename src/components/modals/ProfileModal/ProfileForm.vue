@@ -136,7 +136,7 @@ watch(
         <button
           type="button"
           data-testid="generate-profile-custom-id"
-          class="absolute inset-y-px right-px border-0 border-l bg-gray-50 px-3 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-900 dark:hover:bg-white/10"
+          class="absolute inset-y-px right-px rounded-l-none rounded-r-md border-0 border-l bg-gray-50 px-3 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-900 dark:hover:bg-white/10"
           :title="t('profiles.generateCustomId')"
           :aria-label="t('profiles.generateCustomId')"
           @click="generateCustomId"
