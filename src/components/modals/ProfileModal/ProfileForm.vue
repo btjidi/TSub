@@ -94,6 +94,10 @@ const enforceExternalSchemeConstraints = () => {
   }
 };
 
+const generateCustomId = () => {
+  props.localProfile.customId = crypto.randomUUID();
+};
+
 watch(
   () => [
     isExternalEngine.value,
@@ -119,12 +123,27 @@ watch(
       />
     </div>
     <div>
-      <Input
-        id="profile-custom-id"
-        v-model="localProfile.customId"
-        :label="t('profiles.customIdLabel')"
-        :placeholder="t('profiles.customIdPlaceholder')"
-      />
+      <label for="profile-custom-id" class="block font-medium text-gray-700 dark:text-gray-300 text-sm mb-1.5 ml-1">
+        {{ t('profiles.customIdLabel') }}
+      </label>
+      <div class="relative group">
+        <input
+          id="profile-custom-id"
+          v-model="localProfile.customId"
+          :placeholder="t('profiles.customIdPlaceholder')"
+          class="w-full bg-white dark:bg-white/[0.035] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-[#f7f8f8] placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/70 dark:focus:border-primary-400/60 focus:outline-none transition-colors duration-150 py-2 text-sm tsub-radius-md px-3 pr-24"
+        />
+        <button
+          type="button"
+          data-testid="generate-profile-custom-id"
+          class="absolute inset-y-px right-px border-0 border-l bg-gray-50 px-3 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-900 dark:hover:bg-white/10"
+          :title="t('profiles.generateCustomId')"
+          :aria-label="t('profiles.generateCustomId')"
+          @click="generateCustomId"
+        >
+          {{ t('profiles.generateCustomId') }}
+        </button>
+      </div>
       <p class="text-xs text-gray-400 mt-1 ml-1">{{ t('profiles.customIdHint') }}</p>
     </div>
   </div>
