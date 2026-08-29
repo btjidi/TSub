@@ -157,7 +157,7 @@ watch(() => props.settings.profileToken, (val) => {
 </script>
 
 <template>
-  <div class="space-y-8">
+  <div class="space-y-8 flex flex-col">
     <!-- 默认显示语言 -->
     <div class="rounded-xl border border-gray-100/80 bg-white/90 p-6 shadow-sm dark:border-white/10 dark:bg-gray-900/70">
       <SectionHeader :title="t('settings.defaultLanguageTitle')" :description="t('settings.defaultLanguageDesc')" tone="amber">
@@ -231,17 +231,6 @@ watch(() => props.settings.profileToken, (val) => {
             :error="profileTokenError"
             class="tsub-radius-lg"
         />
-      </div>
-      <div class="mt-5 max-w-xl">
-        <Input
-          :label="t('settings.publicUrlTitle')"
-          v-model="settings.publicUrl"
-          type="url"
-          placeholder="https://example.com"
-          autocomplete="url"
-          class="tsub-radius-lg"
-        />
-        <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('settings.publicUrlDesc') }}</p>
       </div>
     </div>
     </div>
@@ -434,7 +423,7 @@ watch(() => props.settings.profileToken, (val) => {
 
 
     <!-- Web 访问控制 -->
-    <div class="rounded-xl border border-gray-100/80 bg-white/90 p-6 shadow-sm dark:border-white/10 dark:bg-gray-900/70">
+    <div class="order-first rounded-xl border border-gray-100/80 bg-white/90 p-6 shadow-sm dark:border-white/10 dark:bg-gray-900/70">
       <SectionHeader :title="t('settings.webAccessTitle')" :description="t('settings.webAccessDesc')" tone="blue">
         <template #icon>
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -442,6 +431,18 @@ watch(() => props.settings.profileToken, (val) => {
           </svg>
         </template>
       </SectionHeader>
+
+      <div class="mb-5 rounded-lg border border-gray-200/70 bg-white/70 p-4 dark:border-white/10 dark:bg-gray-900/50">
+        <Input
+          :label="t('settings.publicUrlTitle')"
+          v-model="settings.publicUrl"
+          type="url"
+          placeholder="https://example.com"
+          autocomplete="url"
+          class="tsub-radius-lg"
+        />
+        <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('settings.publicUrlDesc') }}</p>
+      </div>
 
       <div
         class="bg-white/70 dark:bg-gray-900/50 border border-gray-200/70 dark:border-white/10 tsub-radius-lg divide-y divide-gray-200/60 dark:divide-white/10 overflow-hidden">
