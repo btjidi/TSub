@@ -12,6 +12,8 @@ describe('generated TSub Proxy v2', () => {
     expect(RUNTIME_VERSION).toBe(RUNTIME_MANIFEST.version);
     expect(source.toString()).toContain(`TSUB_RUNTIME_VERSION='${RUNTIME_VERSION}'`);
     expect(source.toString()).toContain('main "$@"');
+    const historical = await readFile('public/proxy/v2/history/1.0.9/tsub-proxy.sh');
+    expect(RUNTIME_MANIFEST.history?.['1.0.9']).toMatchObject({ path: '/proxy/v2/history/1.0.9/tsub-proxy.sh', sha256: createHash('sha256').update(historical).digest('hex') });
   });
 
   it('skips optional port allow rules when unavailable but keeps HY2 hop NAT mandatory', async () => {
@@ -28,7 +30,7 @@ describe('generated TSub Proxy v2', () => {
   it('serializes mutating runtime actions and releases stale operation locks', async () => {
     const common = await readFile('runtime/v2/modules/00-common.sh', 'utf8');
     const main = await readFile('runtime/v2/modules/90-main.sh', 'utf8');
-    expect(common).toContain('apply|update|update-runtime|repair|restart|rollback|uninstall) return 0');
+    expect(common).toContain('apply|update|update-runtime|rollback-runtime|repair|restart|rollback|uninstall) return 0');
     expect(common).toContain('TSUB_OPERATION_LOCK_WAIT_SECONDS:-1800');
     expect(common).toContain('kill -0 "$runtime_lock_pid"');
     expect(common).toContain('rmdir "$TSUB_OPERATION_LOCK"');
@@ -42,9 +44,9 @@ describe('generated TSub Proxy v2', () => {
   it('supports the dedicated update-version Agent action', async () => {
     const agent = await readFile('runtime/v2/modules/38-agent.sh', 'utf8');
     const main = await readFile('runtime/v2/modules/90-main.sh', 'utf8');
-    expect(agent).toContain('apply|update|update-runtime|reinstall');
+    expect(agent).toContain('apply|update|update-runtime|rollback-runtime|reinstall');
     expect(agent).toContain('exec /bin/sh "$TSUB_BIN/tsub-proxy.sh" agent');
-    expect(main).toContain('update-runtime)');
+    expect(main).toContain('update-runtime|rollback-runtime)');
     expect(main).toContain('Runtime 更新失败，当前版本保持不变');
   });
 

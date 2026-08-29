@@ -27,9 +27,9 @@ const TOKEN_TTL_MS = 30 * 60 * 1000;
 const CALLBACK_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_CALLBACK_BYTES = 256 * 1024;
 const MAX_NODES = 1000;
-const ACTIONS = new Set(['plan', 'apply', 'reinstall', 'status', 'list', 'update', 'update-runtime', 'restart', 'repair', 'doctor', 'rollback', 'uninstall']);
+const ACTIONS = new Set(['plan', 'apply', 'reinstall', 'status', 'list', 'update', 'update-runtime', 'rollback-runtime', 'restart', 'repair', 'doctor', 'rollback', 'uninstall']);
 const REMOTE_ACTIONS = new Set([...ACTIONS].filter(action => action !== 'reinstall').concat('transfer-controller'));
-const CONFIRMED_ACTIONS = new Set(['apply', 'reinstall', 'update', 'update-runtime', 'repair', 'restart', 'rollback', 'uninstall']);
+const CONFIRMED_ACTIONS = new Set(['apply', 'reinstall', 'update', 'update-runtime', 'rollback-runtime', 'repair', 'restart', 'rollback', 'uninstall']);
 const FINAL_STATUSES = new Set(['succeeded', 'failed']);
 const TRAFFIC_BACKENDS = new Set(['nftables', 'iptables', 'core-singbox', 'core-xray', 'unavailable']);
 const isRowStorage = storage => [STORAGE_TYPES.D1, STORAGE_TYPES.SQLITE, STORAGE_TYPES.POSTGRES].includes(storage.type);
@@ -52,6 +52,16 @@ function isPublicProbeAddress(address, family) {
 function runtimeSupportsVersionUpdate(version) {
   const parts = String(version || '').replace(/^v/i, '').split('.').map(value => Number.parseInt(value, 10) || 0);
   return (parts[0] || 0) > 1 || ((parts[0] || 0) === 1 && ((parts[1] || 0) > 0 || (parts[2] || 0) >= 5));
+}
+
+function runtimeRollbackDescriptor(version) {
+  const target = String(version || '').trim();
+  const descriptor = RUNTIME_MANIFEST.history?.[target];
+  if (!/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(target) || !descriptor
+    || !/^\/proxy\/v2\/history\/[A-Za-z0-9._-]+\/tsub-proxy\.sh$/.test(String(descriptor.path || ''))
+    || !/^[0-9a-f]{64}$/i.test(String(descriptor.sha256 || ''))
+    || !Number.isSafeInteger(Number(descriptor.bytes)) || Number(descriptor.bytes) <= 0) return null;
+  return { version: target, path: descriptor.path, sha256: String(descriptor.sha256).toLowerCase(), bytes: Number(descriptor.bytes) };
 }
 
 export function normalizeDeploymentClientNodeUrl(value) {
@@ -414,8 +424,8 @@ function operationConfirmation(action, deploymentName, outputLanguage = 'zh-CN')
   if (!CONFIRMED_ACTIONS.has(action)) return '';
   const language = normalizeOutputLanguage(outputLanguage);
   const actionLabel = language === 'en-US'
-    ? { apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', 'update-runtime': 'Update Version', repair: 'Repair Deployment', restart: 'Restart Service', rollback: 'Rollback Deployment', uninstall: 'Uninstall Deployment' }[action]
-    : { apply: '安装节点', reinstall: '重新安装', update: '更新配置', 'update-runtime': '更新版本', repair: '修复部署', restart: '重启服务', rollback: '回滚部署', uninstall: '卸载部署' }[action];
+    ? { apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', 'update-runtime': 'Update Version', 'rollback-runtime': 'Roll Back Runtime', repair: 'Repair Deployment', restart: 'Restart Service', rollback: 'Rollback Deployment', uninstall: 'Uninstall Deployment' }[action]
+    : { apply: '安装节点', reinstall: '重新安装', update: '更新配置', 'update-runtime': '更新版本', 'rollback-runtime': '回退 Runtime', repair: '修复部署', restart: '重启服务', rollback: '回滚部署', uninstall: '卸载部署' }[action];
   const prompt = language === 'en-US'
     ? `About to run "${actionLabel}" for ${deploymentName}. Enter Y to confirm: `
     : `即将在服务器执行“${actionLabel}”：${deploymentName}。输入 Y 确认：`;
@@ -991,6 +1001,10 @@ export function buildBootstrapScript(operation, config, callbackToken, origin, e
   const callbackUrl = new URL('/api/deploy/events', origin).toString();
   const outputLanguage = normalizeOutputLanguage(operation.outputLanguage);
   const compiled = compileBootstrapConfig(config, callbackToken, callbackUrl, operation.deploymentId, env, agentToken, agentToken ? 'remote' : 'none', callbackUrl, configRevision, outputLanguage);
+  const runtimeTarget = operation.runtimeTarget;
+  const runtimeTargetLines = runtimeTarget
+    ? `\nruntime_target_version=${runtimeTarget.version}\nruntime_target_path=${runtimeTarget.path}\nruntime_target_sha256=${runtimeTarget.sha256}`
+    : '';
   const bootstrapText = outputLanguage === 'en-US' ? {
     preflight: 'TSub Proxy system preflight: %s (ID=%s, version=%s)\\n', architecture: 'TSub Proxy CPU architecture: %s\\n',
     downloading: 'Downloading the TSub Runtime, please wait...', downloadFailed: 'TSub Proxy download failed',
@@ -1027,7 +1041,7 @@ download || { echo ${shellQuote(bootstrapText.downloadFailed)} >&2; exit 1; }
 printf '%s\\n' ${shellQuote(bootstrapText.verifying)}
 [ "$(hash_file "$RUNTIME")" = ${shellQuote(RUNTIME_MANIFEST.sha256)} ] || { echo ${shellQuote(bootstrapText.checksumFailed)} >&2; exit 1; }
 cat >"$CONFIG" <<'TSUB_CONFIG_EOF'
-${compiled}
+${compiled}${runtimeTargetLines}
 TSUB_CONFIG_EOF
 chmod 600 "$CONFIG" "$RUNTIME"
 TSUB_CONFIG="$CONFIG" /bin/sh "$RUNTIME" ${shellQuote(operation.action === 'reinstall' ? 'apply' : operation.action)}
@@ -1112,7 +1126,7 @@ function buildDeployPrepareScript(request, operation, deployment) {
   const outputLanguage = normalizeOutputLanguage(operation.outputLanguage);
   const prepareText = outputLanguage === 'en-US' ? {
     actionLabels: {
-      apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', 'update-runtime': 'Update Version', repair: 'Repair Deployment', restart: 'Restart Service',
+      apply: 'Install Nodes', reinstall: 'Reinstall', update: 'Update Configuration', 'update-runtime': 'Update Version', 'rollback-runtime': 'Roll Back Runtime', repair: 'Repair Deployment', restart: 'Restart Service',
       rollback: 'Rollback Deployment', uninstall: 'Uninstall Deployment', plan: 'Check Deployment', status: 'View Status',
       list: 'Show Nodes', doctor: 'Diagnose Deployment'
     },
@@ -1120,7 +1134,7 @@ function buildDeployPrepareScript(request, operation, deployment) {
     canceled: 'Operation canceled.', missingToken: 'Missing one-time deployment token.', missingDownloader: 'curl or wget must be installed.'
   } : {
     actionLabels: {
-      apply: '安装节点', reinstall: '重新安装', update: '更新配置', 'update-runtime': '更新版本', repair: '修复部署', restart: '重启服务',
+      apply: '安装节点', reinstall: '重新安装', update: '更新配置', 'update-runtime': '更新版本', 'rollback-runtime': '回退 Runtime', repair: '修复部署', restart: '重启服务',
       rollback: '回滚部署', uninstall: '卸载部署', plan: '预检部署', status: '查看状态',
       list: '显示节点', doctor: '诊断部署'
     },
@@ -1511,7 +1525,7 @@ export async function handleDeployEvents(request, env) {
   const cacheNodes = normalizeCallbackNodes(payload.cacheNodes);
   const timestamp = nowIso();
   const event = {
-    at: timestamp, status, stage: String(payload.stage || '').slice(0, 64), message: String(payload.message || '').slice(-500),
+    at: timestamp, status, stage: String(payload.stage || '').slice(0, 64), message: String(payload.message || '').slice(-500), errorCode: String(payload.errorCode || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64),
     resources: {
       tier: String(payload.resourceTier || ''), container: String(payload.container || ''), init: String(payload.init || ''),
       tun: payload.tun === 'true', firewall: payload.firewall === 'true', memoryMb: Number(payload.memoryMb || payload.cgroupLimitMb || 0),
@@ -1535,6 +1549,7 @@ export async function handleDeployEvents(request, env) {
   auth.operation.events = duplicateEvent ? existingEvents : [...existingEvents, event].slice(-50);
   auth.operation.status = status; auth.operation.hostname = String(payload.hostname || '').slice(0, 160);
   auth.operation.message = event.message; auth.operation.updatedAt = timestamp;
+  if (event.errorCode) auth.operation.errorCode = event.errorCode;
   const previousTuicPinStatus = auth.deployment.capabilities?.tuicCertificatePinStatus;
   auth.deployment.status = status;
   auth.deployment.capabilities = {
@@ -1922,7 +1937,15 @@ export async function handleDeployAgentCommandConfig(request, env, commandId) {
     const settings = await storage.get(KV_KEY_SETTINGS).catch(() => ({})) || {};
     const controllerBase = settings.publicUrl || env.TSUB_PUBLIC_URL || request.url;
     const localExecutor = deployment.controlTransport === 'local-executor';
-    const compiled = compileBootstrapConfig(config, '', '', deployment.id, env, localExecutor ? '' : parseBearer(request), localExecutor ? 'local' : 'remote', controllerBase, deployment.configRevision || 1, operation.outputLanguage);
+    let compiled = compileBootstrapConfig(config, '', '', deployment.id, env, localExecutor ? '' : parseBearer(request), localExecutor ? 'local' : 'remote', controllerBase, deployment.configRevision || 1, operation.outputLanguage);
+    if (auth.command.action === 'rollback-runtime') {
+      const commandData = JSON.parse(auth.command.data || '{}');
+      const target = runtimeRollbackDescriptor(commandData.runtimeTarget?.version);
+      if (!target || target.path !== commandData.runtimeTarget?.path || target.sha256 !== String(commandData.runtimeTarget?.sha256 || '').toLowerCase()) {
+        throw Object.assign(new Error('Runtime 回退清单无效或已过期'), { status: 409, code: 'runtime_rollback_manifest_invalid' });
+      }
+      compiled += `\nruntime_target_version=${target.version}\nruntime_target_path=${target.path}\nruntime_target_sha256=${target.sha256}`;
+    }
     await storage.db.prepare(`UPDATE deployment_commands SET status = 'running', updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND status = 'claimed'`).bind(commandId).run();
     return new Response(compiled, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -1997,7 +2020,8 @@ async function createOperation(request, storage, deployment, action, env, option
     id: randomId('op'), deploymentId: deployment.id, action, status: 'pending', bootstrapTokenHash, callbackTokenHash,
     configRevision: Number.isSafeInteger(deployment.configRevision) ? deployment.configRevision : 1,
     outputLanguage: normalizeOutputLanguage(options.outputLanguage),
-    events: [], createdAt, updatedAt: createdAt, expiresAt: new Date(Date.now() + TOKEN_TTL_MS).toISOString()
+    events: [], createdAt, updatedAt: createdAt, expiresAt: new Date(Date.now() + TOKEN_TTL_MS).toISOString(),
+    ...(options.runtimeTarget ? { runtimeTarget: options.runtimeTarget } : {})
   };
   const capabilities = await getPlatformCapabilities(env);
   const agent = capabilities.features.remoteAgent ? await ensureDeploymentAgent(storage, deployment) : { token: '' };
@@ -2261,6 +2285,11 @@ export async function handleDeploymentsRequest(request, env, path) {
   if (child === 'operations' && request.method === 'POST') {
     let body; try { body = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
     const action = String(body.action || '');
+    let runtimeTarget;
+    if (action === 'rollback-runtime') {
+      runtimeTarget = runtimeRollbackDescriptor(body.version || '1.0.9');
+      if (!runtimeTarget) return createErrorResponse('指定的 Runtime 历史版本不可用，请选择主控已发布的版本', 400);
+    }
     if (['update', 'reinstall'].includes(action) && body.config) {
       try {
         const { nextDeployment } = await prepareDeploymentUpdate(storage, deployment, body, env, '', action);
@@ -2278,7 +2307,7 @@ export async function handleDeploymentsRequest(request, env, path) {
       deployment.updatedAt = nowIso();
       await writeDeployment(storage, deployment);
     }
-    return createOperation(request, storage, deployment, action, env, { outputLanguage: body.outputLanguage });
+    return createOperation(request, storage, deployment, action, env, { outputLanguage: body.outputLanguage, runtimeTarget });
   }
   if (child === 'transfer-claim' && request.method === 'POST') {
     try {
@@ -2344,7 +2373,8 @@ export async function handleDeploymentsRequest(request, env, path) {
       const timestamp = nowIso();
       const operation = { id: randomId('op'), deploymentId: deployment.id, action, status: 'pending', delivery: 'agent', outputLanguage: normalizeOutputLanguage(body.outputLanguage), events: [], createdAt: timestamp, updatedAt: timestamp, expiresAt: new Date(Date.now() + TOKEN_TTL_MS).toISOString() };
       try {
-        if (action === 'update-runtime') {
+        let commandData = {};
+        if (action === 'update-runtime' || action === 'rollback-runtime') {
           const agentState = await listAgentState(storage, deployment.id);
           const runtimeVersion = agentState.heartbeat?.runtimeVersion || '';
           if (!runtimeSupportsVersionUpdate(runtimeVersion)) {
@@ -2355,6 +2385,12 @@ export async function handleDeploymentsRequest(request, env, path) {
             operation.events = [{ at: timestamp, status: 'failed', stage: 'unsupported-runtime', message, resources: { runtimeVersion } }];
             await writeOperation(storage, operation);
             return createJsonResponse({ success: false, error: 'runtime_update_unsupported', message, data: { operation: publicOperation(operation) } }, 409);
+          }
+          if (action === 'rollback-runtime') {
+            const target = runtimeRollbackDescriptor(body.version || '1.0.9');
+            if (!target) throw Object.assign(new Error('指定的 Runtime 历史版本不可用，请选择主控已发布的版本'), { status: 400, code: 'runtime_rollback_version_unavailable' });
+            commandData = { runtimeTarget: target };
+            operation.runtimeTarget = target;
           }
         }
         if (action === 'update' && body.config) {
@@ -2380,7 +2416,7 @@ export async function handleDeploymentsRequest(request, env, path) {
           return createJsonResponse({ success: true, data: { deployment: publicDeployment(nextDeployment), operation: publicOperation(operation), command } }, 202, { 'Cache-Control': 'no-store' });
         }
         await writeOperation(storage, operation);
-        const command = await queueAgentCommand(storage, deployment, operation);
+        const command = await queueAgentCommand(storage, deployment, operation, commandData);
         return createJsonResponse({ success: true, data: { operation: publicOperation(operation), command } }, 202);
       } catch (error) { return createJsonResponse({ success: false, error: error.code || 'remote_command_failed', message: error.message }, error.status || 400); }
     }

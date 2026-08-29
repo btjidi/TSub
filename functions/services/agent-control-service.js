@@ -314,7 +314,8 @@ export async function reportAgentCommand(request, env, storage, commandId, paylo
   if (!operation) return { error: { status: 404, code: 'operation_not_found' } };
   const event = {
     at: nowIso(), status, stage: String(payload.stage || auth.command.action).slice(0, 64),
-    message: String(payload.message || '').slice(-500), resources: payload.resources && typeof payload.resources === 'object' ? payload.resources : {}
+    message: String(payload.message || '').slice(-500), errorCode: String(payload.errorCode || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64),
+    resources: payload.resources && typeof payload.resources === 'object' ? payload.resources : {}
   };
   if (status === 'succeeded' && typeof hooks.beforeSuccess === 'function') {
     try {
@@ -333,6 +334,7 @@ export async function reportAgentCommand(request, env, storage, commandId, paylo
   operation.status = status; operation.updatedAt = event.at;
   if (hostname) operation.hostname = hostname;
   if (event.message) operation.message = event.message;
+  if (event.errorCode) operation.errorCode = event.errorCode;
   if (status === 'succeeded' || status === 'failed') operation.completedAt = event.at;
   await repository.putOperation(operation);
   await storage.db.prepare(`UPDATE deployment_commands SET status = ?, data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)

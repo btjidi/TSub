@@ -26,7 +26,7 @@ export const RESOURCE_TIERS = [
 
 export const DEPLOYMENT_ACTIONS = [
   ['plan', 'deployments.actions.plan'], ['apply', 'deployments.actions.apply'], ['status', 'deployments.actions.status'], ['list', 'deployments.actions.list'],
-  ['update', 'deployments.actions.update'], ['update-runtime', 'deployments.actions.updateRuntime'], ['restart', 'deployments.actions.restart'], ['repair', 'deployments.actions.repair'], ['doctor', 'deployments.actions.doctor'],
+  ['update', 'deployments.actions.update'], ['update-runtime', 'deployments.actions.updateRuntime'], ['rollback-runtime', 'deployments.actions.rollbackRuntime'], ['restart', 'deployments.actions.restart'], ['repair', 'deployments.actions.repair'], ['doctor', 'deployments.actions.doctor'],
   ['rollback', 'deployments.actions.rollback'], ['uninstall', 'deployments.actions.uninstall']
 ];
 

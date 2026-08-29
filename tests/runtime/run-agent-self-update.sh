@@ -22,12 +22,25 @@ printf '%s\n' updated >'$TEST_TMP/reloaded'
 EOF
 chmod 700 "$TEST_TMP/new-runtime.sh"
 runtime_sha=$(sha256_file "$TEST_TMP/new-runtime.sh")
+cat >"$TEST_TMP/rollback-runtime.sh" <<EOF
+#!/bin/sh
+printf '%s\n' rollback >'$TEST_TMP/rollback-installed'
+EOF
+chmod 700 "$TEST_TMP/rollback-runtime.sh"
+rollback_sha=$(sha256_file "$TEST_TMP/rollback-runtime.sh")
 cat >"$TEST_TMP/manifest.json" <<EOF
 {
   "runtimeVersion": "9.9.9",
   "runtime": {
     "path": "/proxy/v2/tsub-proxy.sh",
     "sha256": "$runtime_sha"
+  },
+  "history": {
+    "1.0.9": {
+      "path": "/proxy/v2/history/1.0.9/tsub-proxy.sh",
+      "sha256": "$rollback_sha",
+      "bytes": 42
+    }
   }
 }
 EOF
@@ -40,6 +53,9 @@ download_file() {
     https://controller.example/proxy/v2/tsub-proxy.sh?v="$runtime_sha")
       [ "${FAIL_RUNTIME_DOWNLOAD:-false}" != true ] || return 56
       cp "$TEST_TMP/new-runtime.sh" "$2"
+      ;;
+    https://controller.example/proxy/v2/history/1.0.9/tsub-proxy.sh?v="$rollback_sha")
+      cp "$TEST_TMP/rollback-runtime.sh" "$2"
       ;;
     *) return 1 ;;
   esac
@@ -56,5 +72,11 @@ unset FAIL_RUNTIME_DOWNLOAD
 [ "$(cat "$TEST_TMP/reloaded")" = updated ]
 [ "$(sha256_file "$TSUB_BIN/tsub-proxy.sh")" = "$runtime_sha" ]
 [ "$(stat -c '%a' "$TSUB_BIN/tsub-proxy.sh")" = 700 ]
+
+mkdir -p "$TSUB_TMP"
+printf '%s\n' "runtime_target_version=1.0.9" "runtime_target_path=/proxy/v2/history/1.0.9/tsub-proxy.sh" "runtime_target_sha256=$rollback_sha" >>"$TSUB_CONFIG"
+agent_maybe_update_runtime force no-reload
+[ "$(cat "$TSUB_BIN/tsub-proxy.sh")" = rollback ]
+[ "$(sha256_file "$TSUB_BIN/tsub-proxy.sh")" = "$rollback_sha" ]
 
 echo 'agent self-update tests passed'

@@ -180,7 +180,7 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 
 ### 版本更新说明
 
-当前版本 `1.0.9`：修复直接执行“更新版本”时未初始化 Agent 地址导致的脚本退出；内置代理核心公开资产清单，普通用户无需配置核心下载变量；基础设置新增默认主控地址。
+当前版本 `1.0.10`：更新版本后会实际重载 Agent 并立即回报新 Runtime 心跳；增加已校验的历史 Runtime Manifest，可安全回退到 `1.0.9`；增加主控地址不一致和远程命令等待状态提示。
 
 完整的环境变量、HTTPS、执行器、PostgreSQL、多实例、升级和备份步骤见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 

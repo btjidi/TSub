@@ -15,7 +15,7 @@ describe('V2 deployment generator option matrix', () => {
     expect(OUTBOUND_OPTIONS.map(([value]) => value)).toEqual(['direct', 'warp-auto', 'warp-v4', 'warp-v6']);
     expect(RESOURCE_TIERS.map(([value]) => value)).toEqual(['auto', 'tiny', 'small', 'standard']);
     expect(DEPLOYMENT_ACTIONS.map(([action]) => action)).toEqual([
-      'plan', 'apply', 'status', 'list', 'update', 'update-runtime', 'restart', 'repair', 'doctor', 'rollback', 'uninstall'
+      'plan', 'apply', 'status', 'list', 'update', 'update-runtime', 'rollback-runtime', 'restart', 'repair', 'doctor', 'rollback', 'uninstall'
     ]);
   });
 

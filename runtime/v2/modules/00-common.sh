@@ -192,7 +192,7 @@ atomic_install() {
 }
 
 runtime_action_requires_lock() {
-  case "$1" in apply|update|update-runtime|repair|restart|rollback|uninstall) return 0 ;; *) return 1 ;; esac
+  case "$1" in apply|update|update-runtime|rollback-runtime|repair|restart|rollback|uninstall) return 0 ;; *) return 1 ;; esac
 }
 
 acquire_runtime_operation_lock() {
@@ -280,8 +280,8 @@ emit_event() {
   event_message=${2:-}
   [ -n "${TSUB_CALLBACK_URL:-}" ] || return 0
   event_file="$TSUB_TMP/event.$$"
-  printf 'status=%s\nstage=%s\nmessage=%s\nhostname=%s\nresourceTier=%s\ncontainer=%s\ninit=%s\ntun=%s\nfirewall=%s\n' \
-    "$event_status" "${TSUB_STAGE:-bootstrap}" "$event_message" "${TSUB_HOSTNAME:-unknown}" \
+  printf 'status=%s\nstage=%s\nmessage=%s\nerrorCode=%s\nhostname=%s\nresourceTier=%s\ncontainer=%s\ninit=%s\ntun=%s\nfirewall=%s\n' \
+    "$event_status" "${TSUB_STAGE:-bootstrap}" "$event_message" "${TSUB_ERROR_CODE:-}" "${TSUB_HOSTNAME:-unknown}" \
     "${TSUB_TIER:-unknown}" "${TSUB_CONTAINER:-unknown}" "${TSUB_INIT:-none}" \
     "${TSUB_HAS_TUN:-false}" "${TSUB_HAS_NET_ADMIN:-false}" >"$event_file"
   printf 'memoryMb=%s\ncgroupLimitMb=%s\nmemoryAvailableMb=%s\nswapReported=%s\nswapTotalMb=%s\nswapFreeMb=%s\nswapUsedMb=%s\ncgroupSwapReported=%s\ncgroupSwapCurrentMb=%s\ncgroupSwapLimitMb=%s\ndiskKb=%s\npidLimit=%s\nrssMb=%s\ncoreRssMb=%s\ncloudflaredRssMb=%s\nestimatedCoreRssMb=%s\nestimatedCloudflaredRssMb=%s\ncoreVersion=%s\nipv6=%s\ntrafficBackend=%s\ndegradedReason=%s\ncontrolCommand=%s\n' \

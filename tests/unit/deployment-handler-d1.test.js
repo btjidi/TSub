@@ -288,12 +288,41 @@ describe('TSub deployment handler with D1', () => {
         action: 'status', delivery: 'agent'
       }), env, `/deployments/${createdBody.data.deployment.id}/commands`);
       expect(blockingResponse.status).toBe(202);
+      const blockingBody = await blockingResponse.json();
       const blockedResponse = await handleDeploymentsRequest(jsonRequest(`/deployments/${createdBody.data.deployment.id}/commands`, 'POST', {
         action: 'update', delivery: 'agent', name: 'Blocked Update', configRevision: applied.configRevision, config: remoteConfig
       }), env, `/deployments/${createdBody.data.deployment.id}/commands`);
       expect(blockedResponse.status).toBe(409);
       expect(await blockedResponse.json()).toMatchObject({ error: 'command_active' });
       expect(JSON.parse((await database.prepare('SELECT data FROM deployments WHERE id = ?').bind(createdBody.data.deployment.id).first()).data).name).toBe('D1 Remote Updated');
+
+      const blockingClaim = await handleDeployAgentPoll(agentRequest('poll', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runtimeVersion: '2.3.8', hostname: 'd1-server' })
+      }), env);
+      const blockingCommand = (await blockingClaim.json()).data.command;
+      expect(blockingCommand.id).toBe(blockingBody.data.command.id);
+      await handleDeployAgentCommandEvents(agentRequest(`commands/${blockingCommand.id}/events`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-TSub-Lease': blockingCommand.leaseId },
+        body: JSON.stringify({ status: 'succeeded', stage: 'status', message: 'status collected' })
+      }), env, blockingCommand.id);
+
+      const rollbackResponse = await handleDeploymentsRequest(jsonRequest(`/deployments/${createdBody.data.deployment.id}/commands`, 'POST', {
+        action: 'rollback-runtime', delivery: 'agent', version: '1.0.9'
+      }), env, `/deployments/${createdBody.data.deployment.id}/commands`);
+      expect(rollbackResponse.status).toBe(202);
+      const rollbackBody = await rollbackResponse.json();
+      expect(rollbackBody.data.operation).toMatchObject({ action: 'rollback-runtime', runtimeTarget: { version: '1.0.9' } });
+      const rollbackClaim = await handleDeployAgentPoll(agentRequest('poll', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runtimeVersion: '2.3.8', hostname: 'd1-server' })
+      }), env);
+      const rollbackCommand = (await rollbackClaim.json()).data.command;
+      const rollbackConfigResponse = await handleDeployAgentCommandConfig(agentRequest(`commands/${rollbackCommand.id}/config`, {
+        headers: { 'X-TSub-Lease': rollbackCommand.leaseId }
+      }), env, rollbackCommand.id);
+      const rollbackConfig = await rollbackConfigResponse.text();
+      expect(rollbackConfig).toContain('runtime_target_version=1.0.9');
+      expect(rollbackConfig).toContain('runtime_target_path=/proxy/v2/history/1.0.9/tsub-proxy.sh');
+      expect(rollbackConfig).toMatch(/^runtime_target_sha256=[0-9a-f]{64}$/m);
     } finally {
       SettingsCache.clear();
       await miniflare.dispose();

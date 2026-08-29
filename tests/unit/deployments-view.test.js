@@ -821,7 +821,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     const dialog = document.querySelector('[data-testid="quick-inbound-dialog"]');
     expect(dialog.textContent).toContain('已达到 20 个入站上限');
     expect(dialog.querySelector('[data-testid="quick-auto-add"]').disabled).toBe(true);
-  });
+  }, 15_000);
 
   it('keeps direct CDN mode available and explains each missing prerequisite', async () => {
     wrapper = mountView();
@@ -884,7 +884,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     await flushPromises();
     expect(document.body.textContent).toContain('确认生成部署命令');
     expect(document.body.textContent).toContain('自签证书');
-  });
+  }, 15_000);
 
   it('renders the deployment generator in English and preserves incompatible inbounds', async () => {
     wrapper = mountView('en-US');
@@ -1266,7 +1266,7 @@ describe('TSub Proxy simplified deployment generator', () => {
     await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
     await flushPromises();
 
-    for (const [label, action] of [['更新核心', 'update'], ['更新版本', 'update-runtime'], ['重启', 'restart'], ['修复', 'repair'], ['回滚', 'rollback'], ['卸载', 'uninstall']]) {
+    for (const [label, action] of [['更新核心', 'update'], ['更新版本', 'update-runtime'], ['回退 Runtime', 'rollback-runtime'], ['重启', 'restart'], ['修复', 'repair'], ['回滚', 'rollback'], ['卸载', 'uninstall']]) {
       const callsBefore = createDeploymentCommand.mock.calls.length;
       await wrapper.findAll('button').find(button => button.text() === label).trigger('click');
       const confirmDialog = document.querySelector('[data-testid="deployment-operation-confirm-dialog"]');

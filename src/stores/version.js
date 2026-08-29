@@ -11,9 +11,10 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.9**
-- 修复直接执行“更新版本”时未初始化 Agent 地址导致的脚本退出。
-- 保留 1.0.8 的内置代理核心资产清单和默认主控地址设置。`;
+    const localChangelog = `**TSub 1.0.10**
+- 更新版本后实际重载 Agent，并立即回报新 Runtime 心跳。
+- 增加已校验的历史 Runtime Manifest，可安全回退到 1.0.9。
+- 增加主控地址不一致和远程命令等待状态提示。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

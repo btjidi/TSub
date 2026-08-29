@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='1.0.10'
+TSUB_RUNTIME_VERSION='1.0.9'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -195,7 +195,7 @@ atomic_install() {
 }
 
 runtime_action_requires_lock() {
-  case "$1" in apply|update|update-runtime|rollback-runtime|repair|restart|rollback|uninstall) return 0 ;; *) return 1 ;; esac
+  case "$1" in apply|update|update-runtime|repair|restart|rollback|uninstall) return 0 ;; *) return 1 ;; esac
 }
 
 acquire_runtime_operation_lock() {
@@ -283,8 +283,8 @@ emit_event() {
   event_message=${2:-}
   [ -n "${TSUB_CALLBACK_URL:-}" ] || return 0
   event_file="$TSUB_TMP/event.$$"
-  printf 'status=%s\nstage=%s\nmessage=%s\nerrorCode=%s\nhostname=%s\nresourceTier=%s\ncontainer=%s\ninit=%s\ntun=%s\nfirewall=%s\n' \
-    "$event_status" "${TSUB_STAGE:-bootstrap}" "$event_message" "${TSUB_ERROR_CODE:-}" "${TSUB_HOSTNAME:-unknown}" \
+  printf 'status=%s\nstage=%s\nmessage=%s\nhostname=%s\nresourceTier=%s\ncontainer=%s\ninit=%s\ntun=%s\nfirewall=%s\n' \
+    "$event_status" "${TSUB_STAGE:-bootstrap}" "$event_message" "${TSUB_HOSTNAME:-unknown}" \
     "${TSUB_TIER:-unknown}" "${TSUB_CONTAINER:-unknown}" "${TSUB_INIT:-none}" \
     "${TSUB_HAS_TUN:-false}" "${TSUB_HAS_NET_ADMIN:-false}" >"$event_file"
   printf 'memoryMb=%s\ncgroupLimitMb=%s\nmemoryAvailableMb=%s\nswapReported=%s\nswapTotalMb=%s\nswapFreeMb=%s\nswapUsedMb=%s\ncgroupSwapReported=%s\ncgroupSwapCurrentMb=%s\ncgroupSwapLimitMb=%s\ndiskKb=%s\npidLimit=%s\nrssMb=%s\ncoreRssMb=%s\ncloudflaredRssMb=%s\nestimatedCoreRssMb=%s\nestimatedCloudflaredRssMb=%s\ncoreVersion=%s\nipv6=%s\ntrafficBackend=%s\ndegradedReason=%s\ncontrolCommand=%s\n' \
@@ -2384,20 +2384,8 @@ agent_maybe_update_runtime() {
   agent_update_version=$(sed -n 's/.*"runtimeVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$agent_update_manifest" | head -n 1)
   agent_update_path=$(sed -n 's/.*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$agent_update_manifest" | head -n 1)
   agent_update_sha=$(sed -n 's/.*"sha256"[[:space:]]*:[[:space:]]*"\([0-9a-fA-F]*\)".*/\1/p' "$agent_update_manifest" | head -n 1 | tr 'A-F' 'a-f')
-  agent_target_version=$(kv_get runtime_target_version)
-  agent_target_path=$(kv_get runtime_target_path)
-  agent_target_sha=$(kv_get runtime_target_sha256 | tr 'A-F' 'a-f')
-  if [ -n "$agent_target_version" ] || [ -n "$agent_target_path" ] || [ -n "$agent_target_sha" ]; then
-    agent_update_version=$agent_target_version
-    agent_update_path=$agent_target_path
-    agent_update_sha=$agent_target_sha
-    grep -F "${agent_update_version}" "$agent_update_manifest" >/dev/null 2>&1 || return 0
-  fi
   case "$agent_update_version" in ''|*[!0-9A-Za-z._-]*) return 0 ;; esac
-  case "$agent_update_path" in
-    /proxy/v2/tsub-proxy.sh|/proxy/v2/history/*/tsub-proxy.sh) ;;
-    *) return 0 ;;
-  esac
+  [ "$agent_update_path" = /proxy/v2/tsub-proxy.sh ] || return 0
   case "$agent_update_sha" in *[!0-9a-f]*|'') return 0 ;; esac
   [ "${#agent_update_sha}" -eq 64 ] || return 0
   agent_update_target="$TSUB_BIN/tsub-proxy.sh"
@@ -2421,23 +2409,11 @@ agent_maybe_update_runtime() {
   fi
   printf '%s\n' "$agent_update_now" >"$TSUB_TMP/runtime.update-checked-at"
   atomic_install "$TSUB_TMP/runtime.update-checked-at" "$agent_update_checked_file" 600
-  i18n_log INFO "Runtime 已更新到 $agent_update_version" "Runtime updated to $agent_update_version"
+  i18n_log INFO "Runtime 已更新到 $agent_update_version，正在重新加载 Agent" "Runtime updated to $agent_update_version; reloading the agent"
   [ "${2:-}" = no-reload ] && return 0
   rm -rf "$TSUB_TMP"
   trap - 0 1 2 15
   exec /bin/sh "$agent_update_target" agent
-}
-
-agent_restart_service() {
-  if [ "${TSUB_INIT:-none}" = systemd ] && have systemctl && [ -f /etc/systemd/system/tsub-agent.service ]; then
-    systemctl restart tsub-agent.service >/dev/null 2>&1
-    return $?
-  fi
-  if [ "${TSUB_INIT:-none}" = openrc ] && have rc-service && [ -f /etc/init.d/tsub-agent ]; then
-    rc-service tsub-agent restart >/dev/null 2>&1
-    return $?
-  fi
-  return 1
 }
 
 agent_value() {
@@ -2448,7 +2424,6 @@ agent_value() {
 agent_report() {
   agent_command_id=$1 agent_lease=$2 agent_status=$3 agent_stage=$4 agent_message=$5
   agent_message_json=$(json_escape "$agent_message")
-  agent_error_code_json=$(json_escape "${TSUB_ERROR_CODE:-}")
   agent_hostname_json=$(json_escape "${TSUB_HOSTNAME:-unknown}")
   agent_node_count=0
   agent_nodes_file=${TSUB_STATE:+$TSUB_STATE/nodes.txt}
@@ -2496,8 +2471,8 @@ agent_report() {
     [ "$agent_probe_ws" = true ] || agent_probe_ws=false
     agent_resources="$agent_resources,\"edgeProbe\":{\"ok\":$agent_probe_ws,\"checks\":{\"dns\":$agent_probe_dns,\"tcp\":$agent_probe_tcp,\"tls\":$agent_probe_tls,\"hostSni\":$agent_probe_sni,\"websocket101\":$agent_probe_ws},\"latencyMs\":$agent_probe_latency}"
   fi
-  printf '{"status":"%s","stage":"%s","message":"%s","errorCode":"%s","hostname":"%s","resources":{%s}%s}\n' \
-    "$agent_status" "$agent_stage" "$agent_message_json" "$agent_error_code_json" "$agent_hostname_json" "$agent_resources" "$agent_subscription_fields" >"$agent_event"
+  printf '{"status":"%s","stage":"%s","message":"%s","hostname":"%s","resources":{%s}%s}\n' \
+    "$agent_status" "$agent_stage" "$agent_message_json" "$agent_hostname_json" "$agent_resources" "$agent_subscription_fields" >"$agent_event"
   curl -fsS --connect-timeout 10 --max-time 30 -X POST \
     -H "Authorization: Bearer $TSUB_AGENT_TOKEN" -H "X-TSub-Lease: $agent_lease" \
     -H 'Content-Type: application/json' --data-binary "@$agent_event" \
@@ -2594,7 +2569,7 @@ agent_execute_transfer() {
 
 agent_execute_command() {
   agent_command_id=$1 agent_action=$2 agent_lease=$3
-  case "$agent_action" in apply|update|update-runtime|rollback-runtime|reinstall|restart|repair|status|list|doctor|rollback|uninstall|transfer-controller|edge-probe) ;; *) return 2 ;; esac
+  case "$agent_action" in apply|update|update-runtime|reinstall|restart|repair|status|list|doctor|rollback|uninstall|transfer-controller|edge-probe) ;; *) return 2 ;; esac
   agent_config="$TSUB_TMP/agent-command.conf"
   curl -fsS --connect-timeout 10 --max-time 60 \
     -H "Authorization: Bearer $TSUB_AGENT_TOKEN" -H "X-TSub-Lease: $agent_lease" \
@@ -2627,7 +2602,7 @@ agent_execute_command() {
       agent_report "$agent_command_id" "$agent_lease" succeeded "$agent_action" 'command completed'
       agent_poll_once true >/dev/null 2>&1 || true
       case "$agent_action" in
-        update-runtime|rollback-runtime)
+        update-runtime)
           rm -rf "$TSUB_TMP"
           trap - 0 1 2 15
           exec /bin/sh "$TSUB_BIN/tsub-proxy.sh" agent
@@ -4237,14 +4212,11 @@ main() {
     traffic) traffic_ensure_rules; traffic_checkpoint ;;
     push) push_snapshot ;;
     agent) run_agent_loop ;;
-    update-runtime|rollback-runtime)
+    update-runtime)
       agent_update_sha=''
       agent_maybe_update_runtime force no-reload
       [ -n "$agent_update_sha" ] && [ "$(sha256_file "$TSUB_BIN/tsub-proxy.sh")" = "$agent_update_sha" ] \
-        || { TSUB_ERROR_CODE=runtime_update_failed; i18n_die 'Runtime 更新失败，当前版本保持不变' 'Runtime update failed; the current version was preserved'; }
-      if [ "${TSUB_AGENT_RUNNING:-false}" != true ]; then
-        agent_restart_service || { TSUB_ERROR_CODE=runtime_reload_failed; i18n_die 'Runtime 已替换，但 Agent 重载失败，请手动重启 tsub-agent 服务' 'Runtime was replaced, but the Agent could not reload; restart the tsub-agent service manually'; }
-      fi
+        || i18n_die 'Runtime 更新失败，当前版本保持不变' 'Runtime update failed; the current version was preserved'
       ;;
     agent-install) install_agent_service "$TSUB_BIN/tsub-proxy.sh" "$TSUB_ETC/runtime.conf" ;;
     edge-probe) edge_probe ;;
