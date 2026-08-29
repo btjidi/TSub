@@ -237,7 +237,7 @@ Compose does not bundle PostgreSQL. The database address must be reachable from 
 
 ## Upgrade and rollback
 
-### 1.0.10 Runtime update and rollback
+### 1.0.11 Runtime update and rollback
 
 TSub `1.0.10` adds **Update Version** and **Roll Back Runtime** to remote execution. Update Version validates the current manifest, atomically replaces the Runtime, and reloads the Agent. Rollback uses the historical `1.0.9` manifest retained by the controller, verifies its SHA-256, and then replaces the Runtime. It does not modify proxy cores, node configuration, or deployment data.
 

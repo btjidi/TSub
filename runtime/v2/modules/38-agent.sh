@@ -274,6 +274,13 @@ agent_execute_command() {
       agent_report "$agent_command_id" "$agent_lease" succeeded "$agent_action" "${agent_probe_message:-edge probe passed}"
     else
       agent_report "$agent_command_id" "$agent_lease" succeeded "$agent_action" 'command completed'
+      if [ "$agent_action" = uninstall ]; then
+        # The uninstall action removes the service and persistent config. Exit the
+        # in-process Agent as well so it cannot keep polling or restart services.
+        rm -rf "$TSUB_TMP"
+        trap - 0 1 2 15
+        exit 0
+      fi
       agent_poll_once true >/dev/null 2>&1 || true
       case "$agent_action" in
         update-runtime|rollback-runtime)

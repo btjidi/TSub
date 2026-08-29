@@ -45,7 +45,7 @@ The server controller supports Docker Compose and bare-metal Debian, Ubuntu, or 
 
 ### Release Notes
 
-Current version `1.0.10`: Update Version now reloads the Agent and reports the new Runtime heartbeat immediately; a verified historical Runtime Manifest allows a safe rollback to `1.0.9`; controller mismatches and waiting remote commands are shown explicitly.
+Current version `1.0.11`: fixes the Agent process continuing to run after uninstall; Update Version reloads the Agent and reports the new Runtime heartbeat immediately; a verified historical Runtime Manifest allows a safe rollback to `1.0.9`; controller mismatches and waiting remote commands are shown explicitly.
 
 ## Local development
 
