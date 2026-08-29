@@ -160,6 +160,7 @@ control_agent_repair() {
     return 2
   fi
   control_confirm_word '将安装或刷新 Agent 调度服务。输入 REPAIR 确认：' 'This will install or refresh the Agent scheduler. Enter REPAIR to confirm: ' REPAIR || { i18n_print '已取消。' 'Canceled.'; return 1; }
+  ensure_dependencies repair || return 1
   install_agent_service "$TSUB_BIN/tsub-proxy.sh" "$TSUB_ETC/runtime.conf"
 }
 

@@ -120,7 +120,8 @@ describe('generated TSub Proxy v2', () => {
     expect(push).toContain('>>$TSUB_LOG 2>&1');
     expect(dependencies).toContain('dependency_package_for_scheduler');
     expect(dependencies).toContain('dependency_add_missing cron');
-    expect(dependencies).toContain('&& ! have crontab; then');
+    expect(dependencies).toContain('if ! have crontab && {');
+    expect(dependencies).toContain('[ "$(id -u)" -ne 0 ]');
   });
 
   it('records successful configuration changes and reports uninstall completion only after cleanup', async () => {

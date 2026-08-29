@@ -2,6 +2,6 @@
 export const RUNTIME_MANIFEST = Object.freeze({
   "version": "1.0.6",
   "path": "/proxy/v2/tsub-proxy.sh",
-  "sha256": "04125c8d6e17375ccbd67d555c041a2e0c664ba5a65e071c06a2a03b8005a963",
-  "bytes": 220136
+  "sha256": "5d76b1057c0e3406ad547dd9c6cba14d4375fc1549f25d96024c903e9c238abc",
+  "bytes": 220419
 });
