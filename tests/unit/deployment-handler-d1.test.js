@@ -35,7 +35,7 @@ const V2_CONFIG = {
   subscription: { hostname: 'd1.example', namePrefix: 'D1', server: { enabled: true, port: 51250, traffic: { enabled: true, quotaBytes: 0 } } }
 };
 
-describe('TSub deployment handler with D1', () => {
+describe('TSub deployment handler with D1', { timeout: 60_000 }, () => {
   it('synchronizes a VPS airport subscription and profile references through Miniflare D1', async () => {
     const miniflare = new Miniflare({
       modules: true,

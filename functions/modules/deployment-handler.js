@@ -1277,7 +1277,10 @@ export async function handleDeployBootstrap(request, env) {
   if (!agentToken && ['apply', 'update', 'reinstall', 'repair'].includes(auth.operation.action)) {
     const capabilities = await getPlatformCapabilities(env);
     if (capabilities.features.remoteAgent) {
-      const agent = await ensureDeploymentAgent(auth.storage, auth.deployment, { rotateIfOffline: true });
+      const agent = await ensureDeploymentAgent(auth.storage, auth.deployment, {
+        rotateIfOffline: true,
+        rotateAlways: auth.operation.action === 'reinstall'
+      });
       agentToken = agent.token || '';
     }
   }

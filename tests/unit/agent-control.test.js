@@ -138,6 +138,11 @@ describe('deployment agent control plane', { timeout: 15_000 }, () => {
     expect(online).toMatchObject({ token: '', configured: true });
     expect((await pollAgent(request(first.token), env, storage, {})).deploymentId).toBe('deploy-agent');
 
+    const reinstall = await ensureDeploymentAgent(storage, { id: 'deploy-agent' }, { rotateAlways: true });
+    expect(reinstall.token).toHaveLength(43);
+    expect((await pollAgent(request(first.token), env, storage, {})).error?.code).toBe('unauthorized');
+    expect((await pollAgent(request(reinstall.token), env, storage, {})).deploymentId).toBe('deploy-agent');
+
     await database.prepare('UPDATE deployment_heartbeats SET last_seen_at = ? WHERE deployment_id = ?')
       .bind(new Date(Date.now() - 3 * 60_000).toISOString(), 'deploy-agent').run();
     const replacement = await ensureDeploymentAgent(storage, { id: 'deploy-agent' }, { rotateIfOffline: true });

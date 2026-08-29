@@ -97,6 +97,9 @@ export async function ensureDeploymentAgent(storage, deployment, options = {}) {
   if (!storage.db) return { token: '', configured: false };
   const current = await storage.db.prepare('SELECT generation FROM deployment_agents WHERE deployment_id = ? AND revoked_at IS NULL').bind(deployment.id).first();
   if (current && Number(current.generation || 0) >= 1) {
+    if (options.rotateAlways === true && deployment.controlTransport !== 'local-executor') {
+      return rotateDeploymentAgent(storage, deployment.id);
+    }
     if (options.rotateIfOffline === true && deployment.controlTransport !== 'local-executor') {
       const heartbeat = await storage.db.prepare('SELECT data, last_seen_at FROM deployment_heartbeats WHERE deployment_id = ?').bind(deployment.id).first();
       const heartbeatData = parseData(heartbeat?.data);

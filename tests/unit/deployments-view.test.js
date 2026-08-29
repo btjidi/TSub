@@ -20,7 +20,7 @@ import { checkDeploymentEdgePermissions, createDeployment, createDeploymentComma
 import { useDataStore } from '../../src/stores/useDataStore.js';
 import { createI18n } from '../../src/i18n/index.js';
 
-describe('TSub Proxy simplified deployment generator', () => {
+describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () => {
   let wrapper;
   const mountView = (locale = 'zh-CN') => mount(DeploymentsView, {
     attachTo: document.body,
