@@ -11,10 +11,10 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.7**
-- 节点菜单新增 Agent 与调度状态、调度修复和立即心跳测试。
-- 缺少 crontab 时自动安装发行版对应的调度依赖。
-- 修正菜单操作成功判定，明确显示失败阶段和降级状态。
+    const localChangelog = `**TSub 1.0.8**
+- 内置代理核心公开资产清单，普通用户无需配置核心下载变量。
+- 基础设置新增默认主控地址，供远程 Agent 回调和部署命令使用。
+- 保留 1.0.7 的节点菜单、调度修复、crontab 自动安装和真实操作状态。
 - 保留 1.0.6 的公网 IP 备用探测与安装错误处理。`;
 
     // --- Getters ---

@@ -230,9 +230,20 @@ watch(() => props.settings.profileToken, (val) => {
             :placeholder="t('settings.profileTokenPlaceholder')"
             :error="profileTokenError"
             class="tsub-radius-lg"
-          />
-        </div>
+        />
       </div>
+      <div class="mt-5 max-w-xl">
+        <Input
+          :label="t('settings.publicUrlTitle')"
+          v-model="settings.publicUrl"
+          type="url"
+          placeholder="https://example.com"
+          autocomplete="url"
+          class="tsub-radius-lg"
+        />
+        <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('settings.publicUrlDesc') }}</p>
+      </div>
+    </div>
     </div>
 
     <!-- 功能开关区域 -->

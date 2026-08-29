@@ -37,11 +37,15 @@ Fork this repository first, then authorize GitHub in Cloudflare and select your 
 
 Use `npm run build` as the build command, `dist` as the output directory, and Node.js 22 or later. `wrangler.example.toml` is local reference only. Every fork must create and bind its own `TSUB_DB` or `TSUB_KV` resources in its Cloudflare Pages project.
 
+Proxy core versions, download URLs, and SHA-256 checksums are built into the application. Regular Cloudflare users do not need to add public asset variables such as `TSUB_XRAY_*`, `TSUB_SINGBOX_*`, or `TSUB_BUSYBOX_*`. Maintainers may provide a complete variable group for a custom mirror or version; incomplete override groups fail with a clear error. Administrator passwords, Cookie keys, deployment keys, and settings keys must remain Secrets.
+
+After the first sign-in, before generating a proxy deployment command, open **Settings → Basic settings** and enter the controller default address below “Default display language”, for example `https://your-project-address`, then save. Open `https://your-project-address/login` to sign in. This address is used for remote Agent callbacks and deployment commands; if left empty, the current address is used. Confirm the active storage under **Settings → System settings**; D1 mode should also show remote Agent and deployment-command capabilities.
+
 The server controller supports Docker Compose and bare-metal Debian, Ubuntu, or Alpine. Its web process is unprivileged and delegates host changes to a separate root executor. Node installers first probe the controller, then use the AWS Global API (`https://checkip.global.api.aws`) and Akamai (`https://whatismyip.akamai.com`) as IPv4/IPv6 fallbacks. These report egress IPs, so confirm the reachable address manually behind NAT or proxies. See [Server Controller Deployment](docs/SERVER_DEPLOYMENT_EN.md) and [Architecture](docs/ARCHITECTURE_EN.md).
 
 ### Release Notes
 
-Current version `1.0.7`: added Agent and scheduler status, scheduler repair, and immediate heartbeat testing to the node menu; missing `crontab` is installed automatically when supported; menu actions now report real success, failure, or degraded status. It retains the 1.0.6 AWS/Akamai IPv4/IPv6 fallback probing and installer error handling.
+Current version `1.0.8`: public proxy-core asset metadata is built in, so regular users do not need core download variables; Basic settings now includes a controller default address for remote Agent callbacks and deployment commands. It retains the 1.0.7 node-menu, scheduler repair, automatic crontab installation, and operation-status improvements, plus the 1.0.6 AWS/Akamai IPv4/IPv6 fallback probing.
 
 ## Local development
 

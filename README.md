@@ -63,6 +63,8 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 
 填写完成后点击页面底部 **保存并部署（Save and deploy）**。首次部署成功后，再进入项目设置配置 D1/KV 绑定；绑定和变量保存后还需要再次部署才能生效。
 
+代理核心的版本、下载地址和 SHA-256 校验值已内置在程序中，普通用户无需在 Cloudflare 变量中填写 `TSUB_XRAY_*`、`TSUB_SINGBOX_*`、`TSUB_BUSYBOX_*` 等公开资产变量。维护者如需自定义镜像或版本，可以按核心完整配置同一组环境变量覆盖内置清单；覆盖组不完整时会明确报错。管理员密码、Cookie 密钥、部署密钥和设置密钥仍必须作为 Secret 保存。
+
 ### 4. 创建并绑定存储
 
 > [!CAUTION]
@@ -109,7 +111,6 @@ KV 支持订阅、节点、Profile、一次性命令和主动推送，但不支�
 | `COOKIE_SECRET` | 登录 Cookie 签名密钥 |
 | `DEPLOYMENT_SECRET_KEY` | 代理部署配置密钥 |
 | `SETTINGS_SECRET_KEY` | 设置、通知和外部 API 密钥 |
-| `TSUB_PUBLIC_URL` | 公开 HTTPS 地址 |
 
 #### 方式 B：导入 `.env` 模板
 
@@ -121,14 +122,13 @@ ADMIN_PASSWORD=这里填写管理员密码（至少8位）
 COOKIE_SECRET=这里填写随机Cookie密钥
 DEPLOYMENT_SECRET_KEY=这里填写随机部署密钥
 SETTINGS_SECRET_KEY=这里填写随机设置密钥
-TSUB_PUBLIC_URL=这里填写公开HTTPS地址
 ```
 
 导入后确认环境为生产，敏感项显示为 Secret；填写后的 `.env` 不得提交到仓库。
 
 ### 6. 部署和首次验证
 
-点击 **保存并部署（Save and Deploy）**，等待依赖安装、`npm run build` 和 Functions 发布完成。打开 `https://你的项目.pages.dev/login`，使用管理员账号登录，再进入 TSub **设置 → 系统设置**确认活动存储。D1 模式还应显示远程 Agent 和部署命令能力。
+点击 **保存并部署（Save and Deploy）**，等待依赖安装、`npm run build` 和 Functions 发布完成。打开 `https://你的项目地址/login`，使用管理员账号登录。首次生成代理部署命令前，进入 **设置 → 基础设置**，在“默认显示语言”下方填写主控默认地址，例如 `https://你的项目地址`，点击保存设置。该地址用于远程 Agent 回调和部署命令；留空时才使用当前访问地址。最后进入 **设置 → 系统设置**确认活动存储，D1 模式还应显示远程 Agent 和部署命令能力。
 
 ### 常见问题
 
@@ -180,7 +180,7 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 
 ### 版本更新说明
 
-当前版本 `1.0.7`：节点菜单新增 Agent 与调度状态、调度修复和立即心跳测试；缺少 `crontab` 时自动安装对应依赖；菜单操作按真实返回值显示成功、失败或降级状态。并保留 1.0.6 的 AWS/Akamai 公网 IPv4/IPv6 备用探测和安装错误处理。
+当前版本 `1.0.8`：内置代理核心公开资产清单，普通用户无需配置核心下载变量；基础设置新增默认主控地址，供远程 Agent 回调和部署命令使用。并保留 1.0.7 的节点菜单、调度修复、crontab 自动安装和真实操作状态，以及 1.0.6 的 AWS/Akamai 公网 IPv4/IPv6 备用探测。
 
 完整的环境变量、HTTPS、执行器、PostgreSQL、多实例、升级和备份步骤见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 

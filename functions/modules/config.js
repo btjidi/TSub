@@ -21,6 +21,8 @@ export const DEFAULT_SETTINGS = {
     FileName: 'TSub',
     mytoken: 'auto',
     profileToken: 'profiles',
+    defaultLocale: 'zh-CN',
+    publicUrl: '',
     transformConfigMode: 'builtin',
     transformConfig: '',
     ruleLevel: 'std',

@@ -51,6 +51,8 @@ sh scripts/init-controller-env.sh
 
 An explicit password is not echoed. Generated and explicit passwords are written only to `.env`, not to the image.
 
+Public proxy-core and BusyBox versions, download URLs, and SHA-256 checksums are built into the application, so server deployments do not need `TSUB_XRAY_*`, `TSUB_SINGBOX_*`, or `TSUB_BUSYBOX_*` variables. For a custom mirror, provide a complete override for one core, including its version and AMD64/ARM64 URLs and checksums; incomplete overrides are rejected.
+
 ### 2. Optional manual `.env` setup
 
 If the initializer is not used, copy the template and replace at least these values:

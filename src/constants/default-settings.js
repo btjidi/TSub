@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS = {
     mytoken: 'auto',
     profileToken: 'profiles',
     defaultLocale: 'zh-CN',
+    publicUrl: '',
     transformConfigMode: 'builtin',
     transformConfig: '',
     ruleLevel: 'std',

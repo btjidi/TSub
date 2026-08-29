@@ -66,6 +66,7 @@ function normalizeSettings(settings = {}) {
             }
         },
         directCommitSilentSuccess: settings.directCommitSilentSuccess !== false,
+        publicUrl: String(settings.publicUrl || '').trim(),
         trafficNodeDisplay: normalizeTrafficNodeDisplay(settings.trafficNodeDisplay)
     };
 }
@@ -640,6 +641,15 @@ export async function handleSettingsSave(request, env) {
         const cloudflareValidation = validateCloudflareUsage(newSettings.cloudflareUsage, Boolean(oldSettings.cloudflareUsage?.apiToken) && !clearingCloudflareToken);
         if (cloudflareValidation) return createJsonResponse({ success: false, message: cloudflareValidation }, 400);
         const finalSettings = mergeSettingsUpdate(oldSettings, newSettings);
+        finalSettings.publicUrl = String(finalSettings.publicUrl || '').trim();
+        if (finalSettings.publicUrl) {
+            try {
+                const publicUrl = new URL(finalSettings.publicUrl);
+                if (!['http:', 'https:'].includes(publicUrl.protocol) || !publicUrl.hostname) throw new Error('invalid');
+            } catch {
+                return createJsonResponse({ success: false, message: 'TSUB_PUBLIC_URL 必须是有效的 HTTP 或 HTTPS 地址' }, 400);
+            }
+        }
         finalSettings.cloudflareUsage = normalizeSettings(finalSettings).cloudflareUsage;
         finalSettings.storageType = await StorageFactory.getStorageType(env);
         finalSettings.enableTrafficNode = finalSettings.enableTrafficNode === true || finalSettings.enableTrafficNode === 'true';

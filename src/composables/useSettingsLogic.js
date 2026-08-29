@@ -74,6 +74,16 @@ export function useSettingsLogic() {
     });
 
     const isStorageTypeValid = computed(() => ['kv', 'd1'].includes(settings.value.storageType));
+    const isPublicUrlValid = computed(() => {
+        const value = String(settings.value.publicUrl || '').trim();
+        if (!value) return true;
+        try {
+            const url = new URL(value);
+            return ['http:', 'https:'].includes(url.protocol) && Boolean(url.hostname);
+        } catch {
+            return false;
+        }
+    });
 
     // ========== 核心函数 ==========
 
@@ -128,6 +138,10 @@ export function useSettingsLogic() {
             showToast(t('settings.invalidStorageType'), 'error');
             return false;
         }
+        if (!isPublicUrlValid.value) {
+            showToast(t('settings.publicUrlInvalid'), 'error');
+            return false;
+        }
         const cloudflareUsage = settings.value.cloudflareUsage || {};
         const clearingCloudflareToken = cloudflareUsage.apiToken === ''
             && settings.value.secretActions?.clearPaths?.includes('cloudflareUsage.apiToken');
@@ -167,6 +181,7 @@ export function useSettingsLogic() {
         isSaving.value = true;
         try {
             if (!settings.value.storageType) settings.value.storageType = 'kv';
+            settings.value.publicUrl = String(settings.value.publicUrl || '').trim();
             settings.value.externalApi = normalizeExternalApiConfig(settings.value.externalApi);
 
             const settingsToSave = {

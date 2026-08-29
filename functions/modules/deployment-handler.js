@@ -786,24 +786,80 @@ async function deleteDeploymentSubscriptionSource(storage, deploymentId, deploym
   return Boolean(source);
 }
 
-function stableAssetDescriptor(core, env, latest = false) {
-  if (core === 'wgcf') return {
+// Public release metadata is safe to ship with the application. Environment
+// variables remain an optional, all-or-nothing override for maintainers.
+const BUILTIN_ASSET_DESCRIPTORS = Object.freeze({
+  xray: {
+    version: '26.7.28',
+    assets: {
+      amd64: { url: 'https://github.com/btjidi/TSub/releases/download/runtime-assets-v2/xray-26.7.28-amd64', sha256: '64d46afb80adea1bf97a0d467e83f4a9ac1ebd0995891e84bca3f1a1d1affb1d', format: 'binary' },
+      arm64: { url: 'https://github.com/btjidi/TSub/releases/download/runtime-assets-v2/xray-26.7.28-arm64', sha256: '4b8af237444801bf17b3dc10a1c5c24581fbe3d433eba3d78c6c3a0da1df56fc', format: 'binary' }
+    }
+  },
+  singbox: {
+    version: '1.13.15',
+    assets: {
+      amd64: { url: 'https://github.com/btjidi/TSub/releases/download/runtime-assets-v2/sing-box-1.13.15-amd64', sha256: 'fc3f1ff0d83d8d640e785fdd45ccd4d506ee6e8d67ba47b521382c448eee954a', format: 'binary' },
+      arm64: { url: 'https://github.com/btjidi/TSub/releases/download/runtime-assets-v2/sing-box-1.13.15-arm64', sha256: '62635ec87393e0860f24def24ecbc7415691c643dfdbc4faf7aa719263706096', format: 'binary' }
+    }
+  },
+  busybox: {
+    version: '1.31.0-musl',
+    assets: {
+      amd64: { url: 'https://busybox.net/downloads/binaries/1.31.0-defconfig-multiarch-musl/busybox-x86_64', sha256: '51fcb60efbdf3e579550e9ab893730df56b33d0cc928a2a6467bd846cdfef7d8', format: 'binary' },
+      arm64: { url: 'https://busybox.net/downloads/binaries/1.31.0-defconfig-multiarch-musl/busybox-armv8l', sha256: '141adb1b625a6f44c4b114f76b4387b4ea4f7ab802b88eb40e0d2f6adcccb1c3', format: 'binary' }
+    }
+  },
+  cloudflared: {
+    version: '2026.6.0',
+    assets: {
+      amd64: { url: 'https://github.com/cloudflare/cloudflared/releases/download/2026.6.0/cloudflared-linux-amd64', sha256: '08d27c4c5d3ed73ee3e98ef2ddceb4ad09fd4cfc28e243565a189538e8ccd706', format: 'binary' },
+      arm64: { url: 'https://github.com/cloudflare/cloudflared/releases/download/2026.6.0/cloudflared-linux-arm64', sha256: '8482ebf1e74a2a4a1a9f1e090e17e3de08423f94100ece6789287cb26fb9480f', format: 'binary' }
+    }
+  },
+  wgcf: {
     version: '2.2.22',
     assets: {
       amd64: { url: 'https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64', sha256: '268d187e649870b603ad2e5c1b74a696251f6c2f6f075c726a174a0039b0b1e2', format: 'binary' },
       arm64: { url: 'https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_arm64', sha256: 'e5ff08d3aae5374935211053b2d64d96daaa3f1aec8e9a1dab7418125585a011', format: 'binary' }
     }
-  };
+  },
+  lego: {
+    version: '4.26.0',
+    assets: {
+      amd64: { url: 'https://github.com/go-acme/lego/releases/download/v4.26.0/lego_v4.26.0_linux_amd64.tar.gz', sha256: '9a5963e0b3961d5d2863c3055ea608340630815829d9a548ca882511b643d948', format: 'tar.gz', binarySha256: 'b295ce2a1872f7088366ac647c12f516bba990777d91132bfc360f3ff8e17d6c' },
+      arm64: { url: 'https://github.com/go-acme/lego/releases/download/v4.26.0/lego_v4.26.0_linux_arm64.tar.gz', sha256: 'bcc781fe8c01291585e7eafb0a1539a33245cafac448775bdf0d45b6fedb703f', format: 'tar.gz', binarySha256: 'c50265f1b5c11300304946bc858d2eee6e1d84b49449eaaea8320af0c1eccd77' }
+    }
+  }
+});
+
+function stableAssetDescriptor(core, env, latest = false) {
+  const key = core === 'sing-box' ? 'singbox' : core;
+  const builtin = BUILTIN_ASSET_DESCRIPTORS[key];
+  if (!builtin) return { version: '', assets: {} };
   const prefix = core === 'sing-box' ? 'SINGBOX' : core.toUpperCase();
   const channelPrefix = latest ? 'LATEST_' : '';
-  const version = env?.[`TSUB_${prefix}_${channelPrefix}VERSION`] || '';
+  const versionKey = `TSUB_${prefix}_${channelPrefix}VERSION`;
+  const overrideKeys = [versionKey];
+  for (const arch of ['AMD64', 'ARM64']) {
+    const assetPrefix = `TSUB_${prefix}_${channelPrefix}${arch}`;
+    overrideKeys.push(`${assetPrefix}_URL`, `${assetPrefix}_SHA256`, `${assetPrefix}_FORMAT`, `${assetPrefix}_BINARY_SHA256`);
+  }
+  const hasOverride = overrideKeys.some(keyName => String(env?.[keyName] || '').trim());
+  if (!hasOverride) return builtin;
+  const version = String(env?.[versionKey] || '').trim();
   const assets = {};
   for (const arch of ['AMD64', 'ARM64']) {
     const assetPrefix = `TSUB_${prefix}_${channelPrefix}${arch}`;
     assets[arch.toLowerCase()] = {
-      url: env?.[`${assetPrefix}_URL`] || '', sha256: env?.[`${assetPrefix}_SHA256`] || '',
-      format: env?.[`${assetPrefix}_FORMAT`] || 'binary', binarySha256: env?.[`${assetPrefix}_BINARY_SHA256`] || ''
+      url: String(env?.[`${assetPrefix}_URL`] || '').trim(),
+      sha256: String(env?.[`${assetPrefix}_SHA256`] || '').trim(),
+      format: String(env?.[`${assetPrefix}_FORMAT`] || 'binary').trim(),
+      binarySha256: String(env?.[`${assetPrefix}_BINARY_SHA256`] || '').trim()
     };
+  }
+  if (!version || Object.values(assets).some(asset => !asset.url || !asset.sha256)) {
+    throw new Error(`${core} 环境变量覆盖不完整，请补齐版本、AMD64/ARM64 URL 和 SHA-256，或删除整组覆盖变量`);
   }
   return { version, assets };
 }
@@ -1863,7 +1919,8 @@ export async function handleDeployAgentCommandConfig(request, env, commandId) {
     }
     const storedConfig = await decryptDeploymentConfig(deployment.encryptedConfig, env);
     const config = resolveBootstrapConfig(storedConfig, '', deployment.resolvedAddresses || {});
-    const controllerBase = env.TSUB_PUBLIC_URL || request.url;
+    const settings = await storage.get(KV_KEY_SETTINGS).catch(() => ({})) || {};
+    const controllerBase = settings.publicUrl || env.TSUB_PUBLIC_URL || request.url;
     const localExecutor = deployment.controlTransport === 'local-executor';
     const compiled = compileBootstrapConfig(config, '', '', deployment.id, env, localExecutor ? '' : parseBearer(request), localExecutor ? 'local' : 'remote', controllerBase, deployment.configRevision || 1, operation.outputLanguage);
     await storage.db.prepare(`UPDATE deployment_commands SET status = 'running', updated_at = CURRENT_TIMESTAMP

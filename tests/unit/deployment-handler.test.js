@@ -832,10 +832,21 @@ describe('TSub V2 deployment handler', () => {
     const noKey = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Bad', config: config() }), env, '/deployments');
     expect(noKey.status).toBe(503);
     const noAssets = createEnv(); delete noAssets.TSUB_SINGBOX_AMD64_SHA256;
-    expect((await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'No assets', config: config({ runtime: { tier: 'auto', core: 'sing-box', channel: 'stable' } }) }), noAssets, '/deployments')).status).toBe(503);
+    expect((await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'No assets', config: config({ runtime: { tier: 'auto', core: 'sing-box', channel: 'stable' } }) }), noAssets, '/deployments')).status).toBe(400);
     const env2 = createEnv();
     const invalid = config({ inbounds: [{ protocol: 'hysteria2', port: 443, transport: 'tcp', outbound: 'direct', credentials: { password: 'x' }, tls: { mode: 'none' } }] });
     expect((await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Bad', config: invalid }), env2, '/deployments')).status).toBe(400);
+  });
+
+  it('uses built-in public asset metadata when deployment environment omits asset variables', async () => {
+    const env = createEnv();
+    for (const key of Object.keys(env)) {
+      if (/^TSUB_(XRAY|SINGBOX|BUSYBOX|CLOUDFLARED)_/.test(key)) delete env[key];
+    }
+    const result = await createAndBootstrap(env);
+    expect(result.created.status).toBe(201);
+    expect(result.script).toContain('xray_amd64_url=https://github.com/btjidi/TSub/releases/download/runtime-assets-v2/xray-26.7.28-amd64');
+    expect(result.script).toContain('busybox_arm64_url=https://busybox.net/downloads/binaries/1.31.0-defconfig-multiarch-musl/busybox-armv8l');
   });
 
   it('emits separately pinned archive and extracted-binary hashes', async () => {
