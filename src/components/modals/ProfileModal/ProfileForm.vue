@@ -131,7 +131,7 @@ watch(
           id="profile-custom-id"
           v-model="localProfile.customId"
           :placeholder="t('profiles.customIdPlaceholder')"
-          class="w-full bg-white dark:bg-white/[0.035] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-[#f7f8f8] placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/70 dark:focus:border-primary-400/60 focus:outline-none transition-colors duration-150 py-2 text-sm tsub-radius-md px-3 pr-24"
+          class="w-full bg-white dark:bg-white/[0.035] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-[#f7f8f8] placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/70 dark:focus:border-primary-400/60 focus:outline-none transition-colors duration-150 py-2 pl-3 pr-20 text-sm font-mono tsub-radius-md"
         />
         <button
           type="button"
@@ -141,7 +141,7 @@ watch(
           :aria-label="t('profiles.generateCustomId')"
           @click="generateCustomId"
         >
-          {{ t('profiles.generateCustomId') }}
+          {{ t('deployments.generate') }}
         </button>
       </div>
       <p class="text-xs text-gray-400 mt-1 ml-1">{{ t('profiles.customIdHint') }}</p>
