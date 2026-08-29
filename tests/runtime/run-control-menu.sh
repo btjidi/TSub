@@ -84,22 +84,25 @@ grep -q '^Runtime 版本：unknown$' "$TEST_TMP/menu-disabled.out"
 grep -q '^sing-box · auto · 1 个节点 · bare/none · 18/128MB · 服务器命令：proxy-menu$' "$TEST_TMP/menu-disabled.out"
 grep -q '显示全部节点与订阅链接' "$TEST_TMP/menu-disabled.out"
 grep -q '重新获取临时隧道域名' "$TEST_TMP/menu-disabled.out"
+grep -q '查看 Agent 与调度状态' "$TEST_TMP/menu-disabled.out"
+grep -q '修复 Agent 调度' "$TEST_TMP/menu-disabled.out"
+grep -q '立即测试心跳' "$TEST_TMP/menu-disabled.out"
 grep -q 'vless://uuid@example.com:443#node' "$TEST_TMP/menu-disabled.out"
 grep -q '未启用服务器订阅' "$TEST_TMP/menu-disabled.out"
 
 push_enabled() { return 0; }
 push_snapshot() { : >"$TEST_TMP/pushed"; }
-printf '5\n0\n' | control_menu >"$TEST_TMP/menu-enabled.out"
+printf '8\n0\n' | control_menu >"$TEST_TMP/menu-enabled.out"
 grep -q '同步节点并主动推送' "$TEST_TMP/menu-enabled.out"
 grep -q '节点已同步并主动推送' "$TEST_TMP/menu-enabled.out"
 [ -f "$TEST_TMP/pushed" ]
 
 uninstall_runtime() { : >"$TEST_TMP/uninstalled"; printf 'TSub Proxy 卸载成功\n'; }
-printf '7\nn\n0\n' | control_menu >"$TEST_TMP/menu-uninstall-cancelled.out"
+printf '10\nn\n0\n' | control_menu >"$TEST_TMP/menu-uninstall-cancelled.out"
 grep -q '输入 UNINSTALL 确认' "$TEST_TMP/menu-uninstall-cancelled.out"
 grep -q '已取消卸载' "$TEST_TMP/menu-uninstall-cancelled.out"
 [ ! -e "$TEST_TMP/uninstalled" ]
-printf '7\nUNINSTALL\n' | control_menu >"$TEST_TMP/menu-uninstalled.out"
+printf '10\nUNINSTALL\n' | control_menu >"$TEST_TMP/menu-uninstalled.out"
 grep -q 'TSub Proxy 卸载成功' "$TEST_TMP/menu-uninstalled.out"
 [ -f "$TEST_TMP/uninstalled" ]
 
