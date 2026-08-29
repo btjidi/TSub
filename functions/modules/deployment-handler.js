@@ -169,6 +169,9 @@ export async function handleDeploymentDefaultsRequest(request, env) {
   try {
     if (request.method === 'GET') return createJsonResponse({ success: true, data: publicDeploymentDefaults(await readDeploymentDefaults(storage, env)) });
     if (request.method === 'PUT') {
+      const { consumeRateLimit, createRateLimitResponse } = await import('./rate-limit.js');
+      const limitState = await consumeRateLimit(request, env, { scope: 'deployment-defaults-put', limit: 20, windowMs: 60 * 1000 });
+      if (!limitState.allowed) return createRateLimitResponse(limitState.retryAfter);
       let body; try { body = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
       const current = await readDeploymentDefaults(storage, env);
       const defaults = mergeDeploymentDefaults(current, body?.defaults || body || {});
