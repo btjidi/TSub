@@ -237,6 +237,10 @@ Compose does not bundle PostgreSQL. The database address must be reachable from 
 
 ## Upgrade and rollback
 
+### 1.0.12 default TLS/REALITY target and Runtime update
+
+TSub `1.0.12` changes the default server name for new TLS/REALITY deployments to `www.cloudflare.com` for better handshake compatibility on AWS and similar cloud networks. Existing deployments are not changed automatically; edit the server name in the deployment record and run **Update Configuration** when needed.
+
 ### 1.0.11 Runtime update and rollback
 
 TSub `1.0.10` adds **Update Version** and **Roll Back Runtime** to remote execution. Update Version validates the current manifest, atomically replaces the Runtime, and reloads the Agent. Rollback uses the historical `1.0.9` manifest retained by the controller, verifies its SHA-256, and then replaces the Runtime. It does not modify proxy cores, node configuration, or deployment data.

@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
-  "runtimeVersion": "1.0.11",
+  "runtimeVersion": "1.0.12",
   "runtime": {
     "path": "/proxy/v2/tsub-proxy.sh",
-    "sha256": "107c27759d033891b001ecbcb5e4cb4e1f98a06aa0459062c0e4d4a7f58587c3",
+    "sha256": "3b4c31a6aa847b7a3b6aac36fe88d420d0609215b8e026cee0b2e30d18046011",
     "bytes": 222247
   },
   "history": {
@@ -16,6 +16,11 @@
       "path": "/proxy/v2/history/1.0.10/tsub-proxy.sh",
       "sha256": "b402bf938ee53970249914088974788e417dfffc8489896417087b9bc3120192",
       "bytes": 221960
+    },
+    "1.0.11": {
+      "path": "/proxy/v2/history/1.0.11/tsub-proxy.sh",
+      "sha256": "107c27759d033891b001ecbcb5e4cb4e1f98a06aa0459062c0e4d4a7f58587c3",
+      "bytes": 222247
     }
   },
   "providers": {

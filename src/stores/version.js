@@ -11,7 +11,8 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.11**
+    const localChangelog = `**TSub 1.0.12**
+- 将新部署的 TLS/Reality 默认服务器名称从 bing.com 调整为 www.cloudflare.com，提升 AWS 等云服务器的握手兼容性。
 - 修复卸载后 Agent 进程未退出、继续发送心跳并启动已删除服务的问题。
 - 更新版本后实际重载 Agent，并立即回报新 Runtime 心跳。
 - 增加已校验的历史 Runtime Manifest，可安全回退到 1.0.9。

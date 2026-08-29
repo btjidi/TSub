@@ -21,16 +21,17 @@ const AGENT_POLL_INTERVALS = new Set([15, 30, 60, 120, 180, 300]);
 const NODE_NAME_MODES = new Set(['deployment-protocol-port', 'prefix-protocol-port', 'protocol-random']);
 const CONTROL_COMMAND_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
 const PROTOCOL_NAME_ALIASES = Object.freeze({ hysteria2: 'hy2', shadowsocks: 'ss', socks5: 'socks' });
+const DEFAULT_TLS_SERVER_NAME = 'www.cloudflare.com';
 export const BUILTIN_PROTOCOL_DEFAULTS = Object.freeze({
-  vless: { transport: 'tcp', outbound: 'direct', tlsMode: 'reality', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
-  trojan: { transport: 'tcp', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
+  vless: { transport: 'tcp', outbound: 'direct', tlsMode: 'reality', serverName: DEFAULT_TLS_SERVER_NAME, path: '/', serviceName: 'tsub' },
+  trojan: { transport: 'tcp', outbound: 'direct', tlsMode: 'tls', serverName: DEFAULT_TLS_SERVER_NAME, path: '/', serviceName: 'tsub' },
   vmess: { transport: 'ws', outbound: 'direct', tlsMode: 'none', serverName: '', path: '/tsub', serviceName: 'tsub' },
-  hysteria2: { transport: 'hysteria', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
-  tuic: { transport: 'quic', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
-  anytls: { transport: 'tcp', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' },
+  hysteria2: { transport: 'hysteria', outbound: 'direct', tlsMode: 'tls', serverName: DEFAULT_TLS_SERVER_NAME, path: '/', serviceName: 'tsub' },
+  tuic: { transport: 'quic', outbound: 'direct', tlsMode: 'tls', serverName: DEFAULT_TLS_SERVER_NAME, path: '/', serviceName: 'tsub' },
+  anytls: { transport: 'tcp', outbound: 'direct', tlsMode: 'tls', serverName: DEFAULT_TLS_SERVER_NAME, path: '/', serviceName: 'tsub' },
   shadowsocks: { transport: 'tcp', outbound: 'direct', tlsMode: 'none', serverName: '', path: '/', serviceName: 'tsub' },
   socks5: { transport: 'tcp', outbound: 'direct', tlsMode: 'none', serverName: '', path: '/', serviceName: 'tsub' },
-  naive: { transport: 'https', outbound: 'direct', tlsMode: 'tls', serverName: 'bing.com', path: '/', serviceName: 'tsub' }
+  naive: { transport: 'https', outbound: 'direct', tlsMode: 'tls', serverName: DEFAULT_TLS_SERVER_NAME, path: '/', serviceName: 'tsub' }
 });
 
 function randomBytes(size) { const bytes = new Uint8Array(size); crypto.getRandomValues(bytes); return bytes; }
@@ -303,7 +304,7 @@ export function resolveV2Config(raw = {}, systemDefaults = {}, context = {}) {
     if (protocol === 'shadowsocks' && !credentials.password) credentials.password = base64(randomBytes(16));
     if (protocol === 'shadowsocks' && !credentials.method) credentials.method = '2022-blake3-aes-128-gcm';
     const tlsMode = text(tlsSource.mode || protocolDefaults.tlsMode || 'none', 16);
-    const serverName = text(tlsSource.serverName || protocolDefaults.serverName || (tlsMode === 'tls' ? 'bing.com' : ''), 253);
+    const serverName = text(tlsSource.serverName || protocolDefaults.serverName || (tlsMode !== 'none' ? DEFAULT_TLS_SERVER_NAME : ''), 253);
     const resolvedPort = optionalPort(source?.port) || randomPortInRange(defaults.randomPorts.min, defaults.randomPorts.max, usedPorts);
     const explicitName = nodeName(source?.name);
     let resolvedName = explicitName;

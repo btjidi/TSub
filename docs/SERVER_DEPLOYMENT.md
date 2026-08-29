@@ -244,6 +244,10 @@ Compose 不内置 PostgreSQL。连接地址必须能从 `controller` 容器访�
 
 ## 升级与回滚
 
+### 1.0.12 默认 TLS/Reality 目标与 Runtime 更新
+
+TSub `1.0.12` 将新部署的 TLS/Reality 默认服务器名称改为 `www.cloudflare.com`，以提升 AWS 等云服务器的握手兼容性。已有部署不会自动修改，需在部署记录中更新服务器名称并执行“更新配置”。
+
 ### 1.0.11 Runtime 更新与回退
 
 TSub `1.0.10` 会在“远程执行”中提供“更新版本”和“回退 Runtime”。更新版本会校验当前 Manifest、原子替换 Runtime 并重载 Agent；回退默认使用主控保留的 `1.0.9` 历史 Manifest，校验 SHA-256 后再替换。该过程不修改代理核心、节点配置或部署数据。
