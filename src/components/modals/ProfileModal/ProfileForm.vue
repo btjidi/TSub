@@ -126,17 +126,17 @@ watch(
       <label for="profile-custom-id" class="block font-medium text-gray-700 dark:text-gray-300 text-sm mb-1.5 ml-1">
         {{ t('profiles.customIdLabel') }}
       </label>
-      <div class="relative group">
+      <div class="relative overflow-hidden border border-gray-200 dark:border-white/10 tsub-radius-md focus-within:ring-2 focus-within:ring-primary-500/30 focus-within:border-primary-500/70 dark:focus-within:border-primary-400/60">
         <input
           id="profile-custom-id"
           v-model="localProfile.customId"
           :placeholder="t('profiles.customIdPlaceholder')"
-          class="w-full bg-white dark:bg-white/[0.035] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-[#f7f8f8] placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/70 dark:focus:border-primary-400/60 focus:outline-none transition-colors duration-150 py-2 pl-3 pr-20 text-sm font-mono tsub-radius-md"
+          class="w-full bg-white dark:bg-white/[0.035] text-gray-900 dark:text-[#f7f8f8] placeholder-gray-400 dark:placeholder-gray-500 focus:ring-0 focus:border-transparent focus:outline-none transition-colors duration-150 py-2 pl-3 pr-20 text-sm font-mono border-0 rounded-none"
         />
         <button
           type="button"
           data-testid="generate-profile-custom-id"
-          class="absolute inset-y-px right-px rounded-l-none rounded-r-md border-0 border-l bg-gray-50 px-3 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-900 dark:hover:bg-white/10"
+          class="absolute inset-y-0 right-0 rounded-none border-0 border-l border-gray-200 bg-gray-50 px-3 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-gray-900 dark:hover:bg-white/10"
           :title="t('profiles.generateCustomId')"
           :aria-label="t('profiles.generateCustomId')"
           @click="generateCustomId"
