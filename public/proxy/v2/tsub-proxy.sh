@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='1.0.8'
+TSUB_RUNTIME_VERSION='1.0.9'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -2361,7 +2361,7 @@ agent_poll_interval() {
 }
 
 agent_controller_origin() {
-  case "$TSUB_AGENT_URL" in
+  case "${TSUB_AGENT_URL:-}" in
     https://*) printf '%s' "$TSUB_AGENT_URL" | sed 's#^\(https://[^/]*\).*$#\1#' ;;
     *) return 1 ;;
   esac
@@ -2377,6 +2377,7 @@ agent_maybe_update_runtime() {
   # the regular agent loop remains throttled to avoid needless manifest requests.
   [ "${1:-}" = force ] || { [ "$agent_update_now" -eq 0 ] || [ $((agent_update_now - agent_update_checked)) -ge 3600 ] || return 0; }
 
+  TSUB_AGENT_URL=$(kv_get agent_controller_url)
   agent_update_origin=$(agent_controller_origin) || return 0
   agent_update_manifest="$TSUB_TMP/runtime-manifest.json"
   if ! download_file "$agent_update_origin/proxy/v2/manifest.json?v=$agent_update_now" "$agent_update_manifest"; then return 0; fi

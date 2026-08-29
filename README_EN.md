@@ -45,7 +45,7 @@ The server controller supports Docker Compose and bare-metal Debian, Ubuntu, or 
 
 ### Release Notes
 
-Current version `1.0.8`: public proxy-core asset metadata is built in, so regular users do not need core download variables; Basic settings now includes a controller default address for remote Agent callbacks and deployment commands. It retains the 1.0.7 node-menu, scheduler repair, automatic crontab installation, and operation-status improvements, plus the 1.0.6 AWS/Akamai IPv4/IPv6 fallback probing.
+Current version `1.0.9`: fixes direct “Update Version” execution failing when the Agent URL was not initialized; public proxy-core asset metadata is built in, so regular users do not need core download variables; Basic settings includes a controller default address.
 
 ## Local development
 

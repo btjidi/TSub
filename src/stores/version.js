@@ -11,11 +11,9 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.8**
-- 内置代理核心公开资产清单，普通用户无需配置核心下载变量。
-- 基础设置新增默认主控地址，供远程 Agent 回调和部署命令使用。
-- 保留 1.0.7 的节点菜单、调度修复、crontab 自动安装和真实操作状态。
-- 保留 1.0.6 的公网 IP 备用探测与安装错误处理。`;
+    const localChangelog = `**TSub 1.0.9**
+- 修复直接执行“更新版本”时未初始化 Agent 地址导致的脚本退出。
+- 保留 1.0.8 的内置代理核心资产清单和默认主控地址设置。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

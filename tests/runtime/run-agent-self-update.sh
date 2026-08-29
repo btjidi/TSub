@@ -12,10 +12,9 @@ trap 'rm -rf "$TEST_TMP"' EXIT HUP INT TERM
 TSUB_TMP="$TEST_TMP/tmp"
 TSUB_STATE="$TEST_TMP/state"
 TSUB_BIN="$TEST_TMP/bin"
-TSUB_AGENT_URL=https://controller.example/api/deploy/agent
 TSUB_CONFIG="$TEST_TMP/runtime.conf"
 mkdir -p "$TSUB_TMP" "$TSUB_STATE" "$TSUB_BIN"
-: >"$TSUB_CONFIG"
+printf '%s\n' 'agent_controller_url=https://controller.example/api/deploy/agent' >"$TSUB_CONFIG"
 
 cat >"$TEST_TMP/new-runtime.sh" <<EOF
 #!/bin/sh

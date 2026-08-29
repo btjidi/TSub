@@ -180,7 +180,7 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 
 ### 版本更新说明
 
-当前版本 `1.0.8`：内置代理核心公开资产清单，普通用户无需配置核心下载变量；基础设置新增默认主控地址，供远程 Agent 回调和部署命令使用。并保留 1.0.7 的节点菜单、调度修复、crontab 自动安装和真实操作状态，以及 1.0.6 的 AWS/Akamai 公网 IPv4/IPv6 备用探测。
+当前版本 `1.0.9`：修复直接执行“更新版本”时未初始化 Agent 地址导致的脚本退出；内置代理核心公开资产清单，普通用户无需配置核心下载变量；基础设置新增默认主控地址。
 
 完整的环境变量、HTTPS、执行器、PostgreSQL、多实例、升级和备份步骤见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 
