@@ -44,7 +44,7 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 
 ## 部署教程
 
-### 部署方式对比
+### 部署分类
 
 | 项目 | Cloudflare Pages | Docker Compose | Debian/Ubuntu/Alpine 裸机 |
 | --- | --- | --- | --- |
@@ -58,22 +58,22 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 
 ### 部署方式一：Cloudflare Pages
 
-### 部署前准备
+#### 部署前准备
 
 - Cloudflare 账号，并能创建 Workers 和 Pages 项目、D1 数据库和 KV 命名空间。
 - GitHub 账号，建议将本仓库 Fork 到自己的账号并保持公开。
 - 管理员密码至少 8 位；另准备三个互不相同的随机 Secret。
 - D1 模式建议准备稳定的 HTTPS 公开地址。
 
-### 1. Fork 仓库
+#### 1. Fork 仓库
 
 打开本仓库 GitHub 页面，点击 **Fork**，选择自己的账号和仓库名称。Cloudflare 只会显示授权账号可访问的仓库；公开 Fork 是最简单的部署路径。
 
-### 2. 创建 Pages 项目并授权 GitHub
+#### 2. 创建 Pages 项目并授权 GitHub
 
 进入 **Workers 和 Pages → 创建应用程序 → Pages → 导入现有 Git 存储库**。如果先显示 Worker 创建卡片，点击底部“想要部署 Pages？开始使用”。授权 GitHub 后选择 Fork，点击 **开始设置（Begin setup）**。
 
-### 3. 填写构建设置
+#### 3. 填写构建设置
 
 | 设置项（Cloudflare 中文界面） | 填写值 |
 | --- | --- |
@@ -89,7 +89,7 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 
 代理核心的版本、下载地址和 SHA-256 校验值已内置在程序中，普通用户无需在 Cloudflare 变量中填写 `TSUB_XRAY_*`、`TSUB_SINGBOX_*`、`TSUB_BUSYBOX_*` 等公开资产变量。维护者如需自定义镜像或版本，可以按核心完整配置同一组环境变量覆盖内置清单；覆盖组不完整时会明确报错。管理员密码、Cookie 密钥、部署密钥和设置密钥仍必须作为 Secret 保存。
 
-### 4. 创建并绑定存储
+#### 4. 创建并绑定存储
 
 > [!CAUTION]
 > 存储配置方式已改为 **Cloudflare 控制台绑定**。公共仓库不再提供生效的 `wrangler.toml`，因为 Pages 检测到该文件后会锁定控制台绑定。请在 Pages **设置 → 绑定** 中选择自己的 KV/D1 资源；旧 Fork 更新后也应删除原有 `wrangler.toml`。
@@ -120,7 +120,7 @@ KV 支持订阅、节点、Profile、一次性命令和主动推送，但不支�
 
 不要把已有生产 KV 直接改绑为 D1。应先备份，再绑定 `TSUB_DB`，重新部署后从 TSub **设置 → 系统设置** 执行迁移。
 
-### 5. 配置变量和密钥
+#### 5. 配置变量和密钥
 
 在 **设置 → 变量和密钥（Settings → Variables and Secrets）** 中选择 **生产（Production）**。密码和加密密钥选择 **密钥（Secret）**，不要把真实值写入 GitHub 或 `wrangler.toml`。
 
@@ -150,11 +150,11 @@ SETTINGS_SECRET_KEY=这里填写随机设置密钥
 
 导入后确认环境为生产，敏感项显示为 Secret；填写后的 `.env` 不得提交到仓库。
 
-### 6. 部署和首次验证
+#### 6. 部署和首次验证
 
 点击 **保存并部署（Save and Deploy）**，等待依赖安装、`npm run build` 和 Functions 发布完成。打开 `https://你的项目地址/login`，使用管理员账号登录。首次生成代理部署命令前，进入 **设置 → 基础设置**顶部的“Web 访问控制”卡片，填写“默认主控地址”，例如 `https://你的项目地址`，点击保存设置。该地址用于远程 Agent 回调和部署命令；留空时才使用当前访问地址。最后进入 **设置 → 系统设置**确认活动存储，D1 模式还应显示远程 Agent 和部署命令能力。
 
-### 常见问题
+#### 常见问题
 
 - GitHub 授权后看不到仓库：检查 GitHub **Settings → Applications** 中 Cloudflare 的授权范围。
 - 构建失败：确认构建命令为 `npm run build`、输出目录为 `dist`、Node.js 为 22+。
@@ -164,11 +164,11 @@ SETTINGS_SECRET_KEY=这里填写随机设置密钥
 
 本 README 即为完整部署教程，其中部署方式一为 Cloudflare Pages；英文入口见 [README_EN.md](README_EN.md)。
 
-## 服务器部署
+### 部署方式二：Docker Compose
 
 服务器部署运行的是完整的 TSub 主控，适合需要 SQLite/PostgreSQL、远程 Agent 或本机执行器的场景。支持 Docker Compose 和 Debian/Ubuntu/Alpine 裸机安装；Web 主控默认使用非 root 用户运行，root 执行器仅在启用本机代理控制时安装。
 
-### Docker Compose（推荐）
+#### Docker Compose（推荐）
 
 要求 Linux `amd64`/`arm64`、Docker Engine、Compose v2，以及一个已经指向服务器的域名。下面示例中的 `tsub.example.com` 必须修改为你自己的域名。先获取源码并生成 `.env`：
 
@@ -188,7 +188,7 @@ curl -I https://tsub.example.com/login
 docker compose logs --tail=100 controller caddy
 ```
 
-### Debian/Ubuntu/Alpine 裸机
+### 部署方式三：Debian/Ubuntu/Alpine 裸机
 
 裸机方式需要 Node.js 22、npm、Git、SQLite 原生依赖和 systemd/OpenRC。下面命令中的 `tsub.example.com` 也必须替换为你自己的域名。安装器会创建受限的 `tsub-controller` 用户、生成环境文件并注册服务：
 
@@ -202,7 +202,7 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 
 节点安装命令会先通过主控探测公网地址；自托管主控无法提供可信地址时，脚本依次使用 AWS Global API（`https://checkip.global.api.aws`）和 Akamai（`https://whatismyip.akamai.com`）探测 IPv4/IPv6。两者获取的是出口地址，NAT 或代理环境下可能与可入站地址不同，生产环境请在生成器中手动确认节点公网 IP。
 
-### 服务器部署补充
+#### 通用配置与验证
 
 服务器主控支持 SQLite 单实例、PostgreSQL 多实例、远程 Agent，以及可选的同机 root 执行器。远程 Agent 始终主动连接主控，不保存 SSH 密码；只有管理主控所在服务器上的节点时才需要本机执行器。
 

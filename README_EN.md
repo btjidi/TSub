@@ -53,7 +53,6 @@ TSub is a subscription and proxy-node management platform for Cloudflare Pages o
 | Operations | Configure Pages bindings and variables | Docker Engine and Compose v2 | Node.js 22, npm, Git, and a service manager |
 
 ### Deployment Method 1: Cloudflare Pages
-### Deployment Method 1: Cloudflare Pages
 
 Fork this repository first, then authorize GitHub in Cloudflare and select your public fork. This README contains the complete deployment tutorial for build settings, D1/KV bindings, Secrets, first sign-in, and troubleshooting.
 
@@ -67,6 +66,14 @@ Proxy core versions, download URLs, and SHA-256 checksums are built into the app
 After the first sign-in, before generating a proxy deployment command, open the **Web Access Control** card at the top of **Settings → Basic settings**, enter the “Controller default address”, for example `https://your-project-address`, and save. Open `https://your-project-address/login` to sign in. This address is used for remote Agent callbacks and deployment commands; if left empty, the current address is used. Confirm the active storage under **Settings → System settings**; D1 mode should also show remote Agent and deployment-command capabilities.
 
 The server controller supports Docker Compose and bare-metal Debian, Ubuntu, or Alpine. Its web process is unprivileged and delegates host changes to a separate root executor. Node installers first probe the controller, then use the AWS Global API (`https://checkip.global.api.aws`) and Akamai (`https://whatismyip.akamai.com`) as IPv4/IPv6 fallbacks. These report egress IPs, so confirm the reachable address manually behind NAT or proxies. See [Server Controller Deployment](docs/SERVER_DEPLOYMENT_EN.md) and [Architecture](docs/ARCHITECTURE_EN.md).
+
+### Deployment Method 2: Docker Compose
+
+Use Docker Engine and Compose v2 on Linux `amd64` or `arm64`. Initialize `.env` with `TSUB_DOMAIN`, administrator credentials, and independent encryption Secrets, then run `docker compose config` and `docker compose up -d --build`. Compose runs the controller as an unprivileged container, uses Caddy for HTTPS, persists SQLite and Caddy data in named volumes, and exposes only ports 80/443. Port 8787 remains internal.
+
+### Deployment Method 3: Debian/Ubuntu/Alpine Bare Metal
+
+Install Node.js 22, npm, Git, and the platform service manager, then run `scripts/install-controller.sh`. The installer creates the restricted `tsub-controller` user and registers systemd or OpenRC services. Configure Caddy or Nginx to proxy HTTPS to `127.0.0.1:8787`; PostgreSQL is optional for multi-instance deployments. See the [full server deployment reference](docs/SERVER_DEPLOYMENT_EN.md) for executor installation and verification commands.
 
 ### Release Notes
 
