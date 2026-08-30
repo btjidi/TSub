@@ -1,4 +1,4 @@
-[简体中文](SERVER_DEPLOYMENT.md)
+[简体中文](../README.md#服务器部署)
 
 # Server Controller Deployment
 

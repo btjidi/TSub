@@ -7,14 +7,14 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <a href="#cloudflare-pages-部署教程"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
-  <a href="docs/SERVER_DEPLOYMENT.md#docker-compose"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
+  <a href="#服务器部署"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
   <a href="#版本更新说明"><img src="https://img.shields.io/badge/TSub-v1.0.13-2563eb.svg" alt="TSub v1.0.13"></a>
 </p>
 
 TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节点管理平台，包含订阅管理、节点管理、Profile、多客户端转换、代理部署、远程 Agent、本机执行器、通知、备份和外部管理 API。
 
-<p align="center"><a href="#核心能力">功能特性</a> · <a href="#cloudflare-pages-部署教程">Cloudflare Pages 部署</a> · <a href="#本地开发">本地开发</a> · <a href="docs/USER_GUIDE.md">用户指南</a> · <a href="docs/PROXY_DEPLOYMENT.md">代理部署</a> · <a href="docs/SERVER_DEPLOYMENT.md">服务器部署</a> · <a href="docs/API_REFERENCE.md">API 参考</a> · <a href="docs/ARCHITECTURE.md">架构说明</a> · <a href="docs/SECURITY.md">安全模型</a> · <a href="docs/OPERATIONS.md">运维手册</a> · <a href="docs/DEVELOPMENT.md">开发文档</a> · <a href="#版本更新说明">更新日志</a></p>
+<p align="center"><a href="#核心能力">功能特性</a> · <a href="#cloudflare-pages-部署教程">Cloudflare Pages 部署</a> · <a href="#本地开发">本地开发</a> · <a href="docs/USER_GUIDE.md">用户指南</a> · <a href="docs/PROXY_DEPLOYMENT.md">代理部署</a> · <a href="#服务器部署">服务器部署</a> · <a href="docs/API_REFERENCE.md">API 参考</a> · <a href="docs/ARCHITECTURE.md">架构说明</a> · <a href="docs/SECURITY.md">安全模型</a> · <a href="docs/OPERATIONS.md">运维手册</a> · <a href="docs/DEVELOPMENT.md">开发文档</a> · <a href="#版本更新说明">更新日志</a></p>
 
 ![TSub 仪表盘](docs/assets/screenshots/dashboard.png)
 
@@ -188,11 +188,40 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 
 节点安装命令会先通过主控探测公网地址；自托管主控无法提供可信地址时，脚本依次使用 AWS Global API（`https://checkip.global.api.aws`）和 Akamai（`https://whatismyip.akamai.com`）探测 IPv4/IPv6。两者获取的是出口地址，NAT 或代理环境下可能与可入站地址不同，生产环境请在生成器中手动确认节点公网 IP。
 
+### 服务器部署补充
+
+服务器主控支持 SQLite 单实例、PostgreSQL 多实例、远程 Agent，以及可选的同机 root 执行器。远程 Agent 始终主动连接主控，不保存 SSH 密码；只有管理主控所在服务器上的节点时才需要本机执行器。
+
+Docker Compose 使用非 root 容器和 Compose 内 Caddy，仅公开 `80/443`，`8787` 保持在内部网络。命名卷保存 Caddy 和 SQLite 数据，普通 `docker compose down` 不会删除数据。启动后可执行：
+
+```bash
+docker compose config
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=100 controller caddy
+curl -I https://tsub.example.com/login
+```
+
+如需宿主机执行器，systemd 主机安装 `server/install/tsub-executor.service`，Alpine/OpenRC 安装 `server/install/tsub-executor.openrc`。执行器以 root 运行但只接受固定动作，不接受任意 Shell 字符串；配置文件 `/run/tsub/executor.conf` 权限应为 `0600`。
+
+裸机安装器会创建受限的 `tsub-controller` 用户、写入 `/etc/tsub-controller/controller.env`、创建 SQLite 数据目录并注册 systemd/OpenRC 服务。安装器不会配置反向代理，主控只监听 `127.0.0.1:8787`；生产环境需自行配置 Caddy 或 Nginx，并转发 `Host`、`X-Forwarded-Proto` 和 `X-Forwarded-For`。
+
+使用 PostgreSQL 多实例时，将 `TSUB_POSTGRES_URL` 和可选的 `TSUB_DATABASE_POOL_SIZE` 写入环境文件，重启主控后在“设置 → 系统设置”执行 SQLite 到 PostgreSQL 的校验迁移。不要直接修改存储类型绕过迁移；Compose 不内置 PostgreSQL，数据库地址必须能从 `controller` 容器访问。
+
+服务验证示例：
+
+```bash
+sudo systemctl status tsub-controller tsub-executor caddy --no-pager
+sudo journalctl -u tsub-controller -n 100 --no-pager
+sudo ss -lntp | grep -E ':(80|443|8787)\\b'
+curl -I http://127.0.0.1:8787/login
+```
+
 ### 版本更新说明
 
 当前版本 `1.0.13`：部署 JSON 接口增加分接口请求体大小保护，已登录后台操作不限制次数，Agent 心跳和回调继续使用独立保护；新部署的 TLS/Reality 默认服务器名称改为 `www.cloudflare.com`，提升 AWS 等云服务器的握手兼容性；修复卸载后 Agent 仍运行的问题；更新版本后会实际重载 Agent 并立即回报新 Runtime 心跳；增加已校验的历史 Runtime Manifest，可安全回退到 `1.0.9`；增加主控地址不一致和远程命令等待状态提示。
 
-完整的环境变量、HTTPS、执行器、PostgreSQL、多实例、升级和备份步骤见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)，架构说明见[总体架构](docs/ARCHITECTURE.md)。
+服务器主控部署的完整说明已整合在本 README 的[服务器部署](#服务器部署)章节，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 
 ## 本地开发
 
@@ -214,7 +243,7 @@ npm run dev:server -- --ip 127.0.0.1 --kv TSUB_KV --persist-to .wrangler/state-l
 - [Cloudflare Pages 部署教程](#cloudflare-pages-部署教程)
 - [用户指南](docs/USER_GUIDE.md)
 - [代理部署](docs/PROXY_DEPLOYMENT.md)
-- [服务器主控部署](docs/SERVER_DEPLOYMENT.md)
+- [服务器部署](#服务器部署)
 - [总体架构](docs/ARCHITECTURE.md)
 - [API 参考](docs/API_REFERENCE.md)
 - [数据模型](docs/DATA_MODEL.md)

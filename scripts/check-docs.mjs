@@ -6,7 +6,6 @@ const pairs = [
   ['README.md', 'README_EN.md'],
   ['docs/USER_GUIDE.md', 'docs/USER_GUIDE_EN.md'],
   ['docs/PROXY_DEPLOYMENT.md', 'docs/PROXY_DEPLOYMENT_EN.md'],
-  ['docs/SERVER_DEPLOYMENT.md', 'docs/SERVER_DEPLOYMENT_EN.md'],
   ['docs/ARCHITECTURE.md', 'docs/ARCHITECTURE_EN.md'],
   ['docs/API_REFERENCE.md', 'docs/API_REFERENCE_EN.md'],
   ['docs/DATA_MODEL.md', 'docs/DATA_MODEL_EN.md'],
@@ -14,7 +13,8 @@ const pairs = [
   ['docs/OPERATIONS.md', 'docs/OPERATIONS_EN.md'],
   ['docs/DEVELOPMENT.md', 'docs/DEVELOPMENT_EN.md']
 ];
-const expected = new Set(pairs.flat().map(item => item.replaceAll('\\', '/')));
+const standalone = ['docs/SERVER_DEPLOYMENT_EN.md'];
+const expected = new Set([...pairs.flat(), ...standalone].map(item => item.replaceAll('\\', '/')));
 const errors = [];
 
 const walkMarkdown = async directory => {
