@@ -67,6 +67,8 @@ ADMIN_PASSWORD=a-strong-password-of-at-least-twelve-characters
 TSUB_DOMAIN=tsub.example.com
 ```
 
+Use a 3-32 character administrator username, a password of at least 12 characters when supplied to the server initializer, and at least 16 characters for `COOKIE_SECRET`, `DEPLOYMENT_SECRET_KEY`, and `SETTINGS_SECRET_KEY` (32-64 random characters are recommended).
+
 First run `cp server/controller.env.example .env && chmod 600 .env`, then run `openssl rand -hex 32` separately for each Secret. Never reuse a value or commit `.env`. Keep `TSUB_STATIC_DIR=/app/dist` in the Docker template.
 
 ### 3. Start

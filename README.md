@@ -132,9 +132,9 @@ KV 支持订阅、节点、Profile、一次性命令和主动推送，但不支�
 | --- | --- |
 | `ADMIN_USERNAME` | 管理员账号名，3-32 位 |
 | `ADMIN_PASSWORD` | 管理员密码，至少 8 位、最多 128 位 |
-| `COOKIE_SECRET` | 登录 Cookie 签名密钥 |
-| `DEPLOYMENT_SECRET_KEY` | 代理部署配置密钥 |
-| `SETTINGS_SECRET_KEY` | 设置、通知和外部 API 密钥 |
+| `COOKIE_SECRET` | 登录 Cookie 签名密钥，至少 16 位（建议 32-64 位） |
+| `DEPLOYMENT_SECRET_KEY` | 代理部署配置密钥，至少 16 位 |
+| `SETTINGS_SECRET_KEY` | 设置、通知和外部 API 密钥，至少 16 位 |
 
 #### 方式 B：导入 `.env` 模板
 
@@ -142,10 +142,10 @@ KV 支持订阅、节点、Profile、一次性命令和主动推送，但不支�
 
 ```dotenv
 ADMIN_USERNAME=这里填写管理员账号名
-ADMIN_PASSWORD=这里填写管理员密码（至少8位）
-COOKIE_SECRET=这里填写随机Cookie密钥
-DEPLOYMENT_SECRET_KEY=这里填写随机部署密钥
-SETTINGS_SECRET_KEY=这里填写随机设置密钥
+ADMIN_PASSWORD=这里填写管理员密码（8-128位）
+COOKIE_SECRET=这里填写随机Cookie密钥（至少16位）
+DEPLOYMENT_SECRET_KEY=这里填写随机部署密钥（至少16位）
+SETTINGS_SECRET_KEY=这里填写随机设置密钥（至少16位）
 ```
 
 导入后确认环境为生产，敏感项显示为 Secret；填写后的 `.env` 不得提交到仓库。
@@ -212,10 +212,10 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 TSUB_DOMAIN=tsub.example.com
 TSUB_PUBLIC_URL=https://tsub.example.com
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=至少十二位的强密码
-COOKIE_SECRET=独立随机值
-DEPLOYMENT_SECRET_KEY=另一个独立随机值
-SETTINGS_SECRET_KEY=第三个独立随机值
+ADMIN_PASSWORD=至少十二位的强密码（服务器初始化脚本要求）
+COOKIE_SECRET=独立随机值（至少16位）
+DEPLOYMENT_SECRET_KEY=另一个独立随机值（至少16位）
+SETTINGS_SECRET_KEY=第三个独立随机值（至少16位）
 ```
 
 裸机主控只监听 `127.0.0.1:8787`，需要自行配置反向代理。Caddy 示例：
