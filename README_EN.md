@@ -14,7 +14,7 @@
 
 TSub is a subscription and proxy-node management platform for Cloudflare Pages or a self-hosted server. It includes Profiles, conversion, proxy deployment, remote agents, local execution, notifications, backups, and an external management API.
 
-<p align="center"><a href="#core-capabilities">Core Capabilities</a> · <a href="#cloudflare-pages-deployment-guide">Cloudflare Pages Deployment</a> · <a href="#local-development">Local Development</a> · <a href="docs/USER_GUIDE_EN.md">User Guide</a> · <a href="docs/PROXY_DEPLOYMENT_EN.md">Proxy Deployment</a> · <a href="docs/SERVER_DEPLOYMENT_EN.md">Server Controller Deployment</a> · <a href="docs/API_REFERENCE_EN.md">API Reference</a> · <a href="docs/ARCHITECTURE_EN.md">Architecture</a> · <a href="docs/SECURITY_EN.md">Security</a> · <a href="docs/OPERATIONS_EN.md">Operations</a> · <a href="docs/DEVELOPMENT_EN.md">Development</a> · <a href="#release-notes">Release Notes</a></p>
+<p align="center"><a href="#core-capabilities">Core Capabilities</a> · <a href="#cloudflare-pages-deployment-guide">Cloudflare Pages Deployment</a> · <a href="#local-development">Local Development</a> · <a href="docs/USER_GUIDE_EN.md">User Guide</a> · <a href="docs/PROXY_DEPLOYMENT_EN.md">Proxy Deployment</a> · <a href="docs/API_REFERENCE_EN.md">API Reference</a> · <a href="docs/ARCHITECTURE_EN.md">Architecture</a> · <a href="docs/SECURITY_EN.md">Security</a> · <a href="docs/OPERATIONS_EN.md">Operations</a> · <a href="docs/DEVELOPMENT_EN.md">Development</a> · <a href="#release-notes">Release Notes</a></p>
 
 ![TSub dashboard](docs/assets/screenshots/dashboard.png)
 
@@ -77,7 +77,6 @@ npm run dev:server -- --ip 127.0.0.1 --kv TSUB_KV --persist-to .wrangler/state-l
 - [Cloudflare Pages deployment tutorial](#cloudflare-pages-deployment-guide)
 - [User Guide](docs/USER_GUIDE_EN.md)
 - [Proxy Deployment](docs/PROXY_DEPLOYMENT_EN.md)
-- [Server Controller Deployment](docs/SERVER_DEPLOYMENT_EN.md)
 - [Architecture](docs/ARCHITECTURE_EN.md)
 - [API Reference](docs/API_REFERENCE_EN.md)
 - [Data Model](docs/DATA_MODEL_EN.md)

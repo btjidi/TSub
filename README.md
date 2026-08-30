@@ -14,9 +14,7 @@
 
 TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节点管理平台，包含订阅管理、节点管理、Profile、多客户端转换、代理部署、远程 Agent、本机执行器、通知、备份和外部管理 API。
 
-<p align="center"><a href="#核心能力">功能特性</a> · <a href="#cloudflare-pages-部署教程">Cloudflare Pages 部署</a> · <a href="#本地开发">本地开发</a> · <a href="docs/USER_GUIDE.md">用户指南</a> · <a href="docs/PROXY_DEPLOYMENT.md">代理部署</a> · <a href="#服务器部署">服务器部署</a> · <a href="docs/API_REFERENCE.md">API 参考</a> · <a href="docs/ARCHITECTURE.md">架构说明</a> · <a href="docs/SECURITY.md">安全模型</a> · <a href="docs/OPERATIONS.md">运维手册</a> · <a href="docs/DEVELOPMENT.md">开发文档</a> · <a href="#版本更新说明">更新日志</a></p>
-
-![TSub 仪表盘](docs/assets/screenshots/dashboard.png)
+<p align="center"><a href="#核心能力">功能特性</a> · <a href="#cloudflare-pages-部署教程">Cloudflare Pages 部署教程</a> · <a href="#本地开发">本地开发</a> · <a href="docs/USER_GUIDE.md">用户指南</a> · <a href="docs/PROXY_DEPLOYMENT.md">代理部署</a> · <a href="docs/API_REFERENCE.md">API 参考</a> · <a href="docs/ARCHITECTURE.md">架构说明</a> · <a href="docs/SECURITY.md">安全模型</a> · <a href="docs/OPERATIONS.md">运维手册</a> · <a href="docs/DEVELOPMENT.md">开发文档</a> · <a href="#版本更新说明">更新日志</a></p>
 
 ## 核心能力
 
@@ -29,6 +27,8 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 - 提供中英文界面、桌面和移动端布局，以及完全隔离的只读演示数据。
 
 ## 界面预览
+
+![TSub 仪表盘](docs/assets/screenshots/dashboard.png)
 
 | 订阅管理 | 节点管理 |
 | --- | --- |
@@ -243,7 +243,6 @@ npm run dev:server -- --ip 127.0.0.1 --kv TSUB_KV --persist-to .wrangler/state-l
 - [Cloudflare Pages 部署教程](#cloudflare-pages-部署教程)
 - [用户指南](docs/USER_GUIDE.md)
 - [代理部署](docs/PROXY_DEPLOYMENT.md)
-- [服务器部署](#服务器部署)
 - [总体架构](docs/ARCHITECTURE.md)
 - [API 参考](docs/API_REFERENCE.md)
 - [数据模型](docs/DATA_MODEL.md)
