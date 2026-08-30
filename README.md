@@ -192,6 +192,28 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 
 服务器主控支持 SQLite 单实例、PostgreSQL 多实例、远程 Agent，以及可选的同机 root 执行器。远程 Agent 始终主动连接主控，不保存 SSH 密码；只有管理主控所在服务器上的节点时才需要本机执行器。
 
+不使用初始化脚本时，可复制 `server/controller.env.example` 为 `.env`，并至少设置以下值；三个 Secret 必须分别生成且不能提交到 Git：
+
+```dotenv
+TSUB_DOMAIN=tsub.example.com
+TSUB_PUBLIC_URL=https://tsub.example.com
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=至少十二位的强密码
+COOKIE_SECRET=独立随机值
+DEPLOYMENT_SECRET_KEY=另一个独立随机值
+SETTINGS_SECRET_KEY=第三个独立随机值
+```
+
+裸机主控只监听 `127.0.0.1:8787`，需要自行配置反向代理。Caddy 示例：
+
+```caddyfile
+tsub.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8787
+    header { -Server X-Content-Type-Options "nosniff" Referrer-Policy "no-referrer" }
+}
+```
+
 Docker Compose 使用非 root 容器和 Compose 内 Caddy，仅公开 `80/443`，`8787` 保持在内部网络。命名卷保存 Caddy 和 SQLite 数据，普通 `docker compose down` 不会删除数据。启动后可执行：
 
 ```bash
@@ -203,6 +225,16 @@ curl -I https://tsub.example.com/login
 ```
 
 如需宿主机执行器，systemd 主机安装 `server/install/tsub-executor.service`，Alpine/OpenRC 安装 `server/install/tsub-executor.openrc`。执行器以 root 运行但只接受固定动作，不接受任意 Shell 字符串；配置文件 `/run/tsub/executor.conf` 权限应为 `0600`。
+
+安装执行器后可验证：
+
+```bash
+sudo test -S /run/tsub/controller.sock
+sudo systemctl status tsub-executor.service --no-pager
+sudo journalctl -u tsub-executor.service -n 100 --no-pager
+```
+
+Alpine/OpenRC 使用 `rc-service tsub-executor status`，日志位于 `/var/log/tsub-executor.log`。
 
 裸机安装器会创建受限的 `tsub-controller` 用户、写入 `/etc/tsub-controller/controller.env`、创建 SQLite 数据目录并注册 systemd/OpenRC 服务。安装器不会配置反向代理，主控只监听 `127.0.0.1:8787`；生产环境需自行配置 Caddy 或 Nginx，并转发 `Host`、`X-Forwarded-Proto` 和 `X-Forwarded-For`。
 
