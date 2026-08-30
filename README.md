@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <a href="#cloudflare-pages-部署教程"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
+  <a href="#部署教程"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
   <a href="#服务器部署"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
   <a href="#版本更新说明"><img src="https://img.shields.io/badge/TSub-v1.0.13-2563eb.svg" alt="TSub v1.0.13"></a>
@@ -14,7 +14,7 @@
 
 TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节点管理平台，包含订阅管理、节点管理、Profile、多客户端转换、代理部署、远程 Agent、本机执行器、通知、备份和外部管理 API。
 
-<p align="center"><a href="#核心能力">功能特性</a> · <a href="#cloudflare-pages-部署教程">Cloudflare Pages 部署教程</a> · <a href="#本地开发">本地开发</a> · <a href="docs/USER_GUIDE.md">用户指南</a> · <a href="docs/PROXY_DEPLOYMENT.md">代理部署</a> · <a href="docs/API_REFERENCE.md">API 参考</a> · <a href="docs/ARCHITECTURE.md">架构说明</a> · <a href="docs/SECURITY.md">安全模型</a> · <a href="docs/OPERATIONS.md">运维手册</a> · <a href="docs/DEVELOPMENT.md">开发文档</a> · <a href="#版本更新说明">更新日志</a></p>
+<p align="center"><a href="#核心能力">功能特性</a> · <a href="#部署教程">部署教程</a> · <a href="#本地开发">本地开发</a> · <a href="docs/USER_GUIDE.md">用户指南</a> · <a href="docs/PROXY_DEPLOYMENT.md">代理部署</a> · <a href="docs/API_REFERENCE.md">API 参考</a> · <a href="docs/ARCHITECTURE.md">架构说明</a> · <a href="docs/SECURITY.md">安全模型</a> · <a href="docs/OPERATIONS.md">运维手册</a> · <a href="docs/DEVELOPMENT.md">开发文档</a> · <a href="#版本更新说明">更新日志</a></p>
 
 ## 核心能力
 
@@ -42,7 +42,21 @@ TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节
 | --- | --- |
 | ![代理部署生成器](docs/assets/screenshots/proxy-deployments.png) | ![设置](docs/assets/screenshots/settings.png) |
 
-## Cloudflare Pages 部署教程
+## 部署教程
+
+### 部署方式对比
+
+| 项目 | Cloudflare Pages | Docker Compose | Debian/Ubuntu/Alpine 裸机 |
+| --- | --- | --- | --- |
+| 适用场景 | 无需管理服务器，快速上线 | 推荐的自有服务器方式 | 需要完全控制系统服务 |
+| 主控运行环境 | Cloudflare Workers/Pages Functions | 非 root Controller 容器 | `tsub-controller` 受限用户 |
+| 默认存储 | KV 基础模式或 D1 完整模式 | SQLite WAL | SQLite WAL，可选 PostgreSQL |
+| 远程 Agent | D1 模式支持 | 支持 | 支持 |
+| HTTPS | Cloudflare 自动提供 | Compose 内 Caddy | 自行配置 Caddy 或 Nginx |
+| 本机 root 执行器 | 不适用 | 需在宿主机额外安装 | 安装器可注册 systemd/OpenRC 服务 |
+| 运维要求 | 配置 Pages 绑定和变量 | Docker Engine、Compose v2 | Node.js 22、npm、Git 和系统服务管理器 |
+
+### 部署方式一：Cloudflare Pages
 
 ### 部署前准备
 
@@ -148,7 +162,7 @@ SETTINGS_SECRET_KEY=这里填写随机设置密钥
 - D1 首次访问返回 `storage_initialization_failed`：检查绑定名、D1 权限和部署日志。
 - 从旧版本更新后仍提示资源不存在或控制台绑定被锁定：同步上游删除原有 `wrangler.toml`，等待一次部署完成，再在 Pages **设置 → 绑定** 中选择自己的资源并重新部署。
 
-本 README 即为完整 Cloudflare Pages 部署教程；英文入口见 [README_EN.md](README_EN.md)。
+本 README 即为完整部署教程，其中部署方式一为 Cloudflare Pages；英文入口见 [README_EN.md](README_EN.md)。
 
 ## 服务器部署
 
@@ -272,7 +286,7 @@ npm run dev:server -- --ip 127.0.0.1 --kv TSUB_KV --persist-to .wrangler/state-l
 
 ## 文档
 
-- [Cloudflare Pages 部署教程](#cloudflare-pages-部署教程)
+- [部署教程](#部署教程)
 - [用户指南](docs/USER_GUIDE.md)
 - [代理部署](docs/PROXY_DEPLOYMENT.md)
 - [总体架构](docs/ARCHITECTURE.md)

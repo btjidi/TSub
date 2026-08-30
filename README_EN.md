@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <a href="#cloudflare-pages-deployment-guide"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
+  <a href="#deployment-guide"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
   <a href="docs/SERVER_DEPLOYMENT_EN.md#docker-compose"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
   <a href="#release-notes"><img src="https://img.shields.io/badge/TSub-v1.0.13-2563eb.svg" alt="TSub v1.0.13"></a>
@@ -14,7 +14,7 @@
 
 TSub is a subscription and proxy-node management platform for Cloudflare Pages or a self-hosted server. It includes Profiles, conversion, proxy deployment, remote agents, local execution, notifications, backups, and an external management API.
 
-<p align="center"><a href="#core-capabilities">Core Capabilities</a> · <a href="#cloudflare-pages-deployment-guide">Cloudflare Pages Deployment</a> · <a href="#local-development">Local Development</a> · <a href="docs/USER_GUIDE_EN.md">User Guide</a> · <a href="docs/PROXY_DEPLOYMENT_EN.md">Proxy Deployment</a> · <a href="docs/API_REFERENCE_EN.md">API Reference</a> · <a href="docs/ARCHITECTURE_EN.md">Architecture</a> · <a href="docs/SECURITY_EN.md">Security</a> · <a href="docs/OPERATIONS_EN.md">Operations</a> · <a href="docs/DEVELOPMENT_EN.md">Development</a> · <a href="#release-notes">Release Notes</a></p>
+<p align="center"><a href="#core-capabilities">Core Capabilities</a> · <a href="#deployment-guide">Deployment Guide</a> · <a href="#local-development">Local Development</a> · <a href="docs/USER_GUIDE_EN.md">User Guide</a> · <a href="docs/PROXY_DEPLOYMENT_EN.md">Proxy Deployment</a> · <a href="docs/API_REFERENCE_EN.md">API Reference</a> · <a href="docs/ARCHITECTURE_EN.md">Architecture</a> · <a href="docs/SECURITY_EN.md">Security</a> · <a href="docs/OPERATIONS_EN.md">Operations</a> · <a href="docs/DEVELOPMENT_EN.md">Development</a> · <a href="#release-notes">Release Notes</a></p>
 
 ![TSub dashboard](docs/assets/screenshots/dashboard.png)
 
@@ -38,7 +38,22 @@ TSub is a subscription and proxy-node management platform for Cloudflare Pages o
 | --- | --- |
 | ![My subscriptions](docs/assets/screenshots/my-subscriptions.png) | ![Proxy deployments](docs/assets/screenshots/proxy-deployments.png) |
 
-## Cloudflare Pages Deployment Guide
+## Deployment Guide
+
+### Deployment Method Comparison
+
+| Item | Cloudflare Pages | Docker Compose | Debian/Ubuntu/Alpine bare metal |
+| --- | --- | --- | --- |
+| Best for | Fast launch without server administration | Recommended self-hosted deployment | Full control of system services |
+| Controller runtime | Cloudflare Workers/Pages Functions | Unprivileged Controller container | Restricted `tsub-controller` user |
+| Default storage | KV basic mode or D1 full mode | SQLite WAL | SQLite WAL, optional PostgreSQL |
+| Remote Agent | Supported with D1 | Supported | Supported |
+| HTTPS | Provided by Cloudflare | Caddy in Compose | Configure Caddy or Nginx |
+| Local root executor | Not applicable | Install separately on the host | Installer can register systemd/OpenRC services |
+| Operations | Configure Pages bindings and variables | Docker Engine and Compose v2 | Node.js 22, npm, Git, and a service manager |
+
+### Deployment Method 1: Cloudflare Pages
+### Deployment Method 1: Cloudflare Pages
 
 Fork this repository first, then authorize GitHub in Cloudflare and select your public fork. This README contains the complete deployment tutorial for build settings, D1/KV bindings, Secrets, first sign-in, and troubleshooting.
 
@@ -74,7 +89,7 @@ npm run dev:server -- --ip 127.0.0.1 --kv TSUB_KV --persist-to .wrangler/state-l
 
 ## Documentation
 
-- [Cloudflare Pages deployment tutorial](#cloudflare-pages-deployment-guide)
+- [Deployment Guide](#deployment-guide)
 - [User Guide](docs/USER_GUIDE_EN.md)
 - [Proxy Deployment](docs/PROXY_DEPLOYMENT_EN.md)
 - [Architecture](docs/ARCHITECTURE_EN.md)
