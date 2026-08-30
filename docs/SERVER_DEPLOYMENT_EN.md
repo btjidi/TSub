@@ -241,6 +241,10 @@ Compose does not bundle PostgreSQL. The database address must be reachable from 
 
 TSub `1.0.12` changes the default server name for new TLS/REALITY deployments to `www.cloudflare.com` for better handshake compatibility on AWS and similar cloud networks. Existing deployments are not changed automatically; edit the server name in the deployment record and run **Update Configuration** when needed.
 
+### 1.0.13 deployment request protection
+
+TSub `1.0.13` adds per-endpoint JSON body-size limits for deployment creation, configuration updates, defaults, and remote operations. Authenticated dashboard actions are not rate-limited; Agent heartbeats and callbacks use separate limits. Oversized requests return `413`, malformed JSON returns `400`, and request contents or secrets are never echoed.
+
 ### 1.0.11 Runtime update and rollback
 
 TSub `1.0.10` adds **Update Version** and **Roll Back Runtime** to remote execution. Update Version validates the current manifest, atomically replaces the Runtime, and reloads the Agent. Rollback uses the historical `1.0.9` manifest retained by the controller, verifies its SHA-256, and then replaces the Runtime. It does not modify proxy cores, node configuration, or deployment data.

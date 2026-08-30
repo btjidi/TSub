@@ -11,7 +11,10 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.12**
+    const localChangelog = `**TSub 1.0.13**
+- 部署 JSON 接口增加分接口请求体大小保护，避免异常请求消耗 Worker 资源。
+- 已登录后台操作不限制次数，Agent 心跳和回调继续使用独立保护。
+- 超大请求和非法 JSON 返回明确的 413/400 错误，不回显敏感内容。
 - 将新部署的 TLS/Reality 默认服务器名称从 bing.com 调整为 www.cloudflare.com，提升 AWS 等云服务器的握手兼容性。
 - 修复卸载后 Agent 进程未退出、继续发送心跳并启动已删除服务的问题。
 - 更新版本后实际重载 Agent，并立即回报新 Runtime 心跳。

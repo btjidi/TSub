@@ -787,7 +787,12 @@ export function escapeHtml(str) {
 export const JSON_BODY_LIMITS = {
     auth: 16 * 1024,
     small: 128 * 1024,
+    deploymentDefaults: 512 * 1024,
+    deploymentOperation: 256 * 1024,
+    controllerTransfer: 32 * 1024,
+    agentPoll: 64 * 1024,
     normal: 1024 * 1024,
+    deployment: 5 * 1024 * 1024,
     large: 5 * 1024 * 1024,
     portable: 25 * 1024 * 1024
 };

@@ -2,9 +2,19 @@
 
 <p align="center"><img src="public/logo.svg" width="96" height="96" alt="TSub Logo"></p>
 
-# TSub
+<h1 align="center">TSub</h1>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <a href="#cloudflare-pages-部署教程"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
+  <a href="docs/SERVER_DEPLOYMENT.md#docker-compose"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
+  <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
+  <a href="#版本更新说明"><img src="https://img.shields.io/badge/TSub-v1.0.13-2563eb.svg" alt="TSub v1.0.13"></a>
+</p>
 
 TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节点管理平台，包含订阅管理、节点管理、Profile、多客户端转换、代理部署、远程 Agent、本机执行器、通知、备份和外部管理 API。
+
+<p align="center"><a href="#核心能力">功能特性</a> · <a href="#cloudflare-pages-部署教程">Cloudflare Pages 部署</a> · <a href="#本地开发">本地开发</a> · <a href="docs/USER_GUIDE.md">用户指南</a> · <a href="docs/PROXY_DEPLOYMENT.md">代理部署</a> · <a href="docs/SERVER_DEPLOYMENT.md">服务器部署</a> · <a href="docs/API_REFERENCE.md">API 参考</a> · <a href="docs/ARCHITECTURE.md">架构说明</a> · <a href="docs/SECURITY.md">安全模型</a> · <a href="docs/OPERATIONS.md">运维手册</a> · <a href="docs/DEVELOPMENT.md">开发文档</a> · <a href="#版本更新说明">更新日志</a></p>
 
 ![TSub 仪表盘](docs/assets/screenshots/dashboard.png)
 
@@ -180,7 +190,7 @@ TSUB_DOMAIN=tsub.example.com sh scripts/install-controller.sh
 
 ### 版本更新说明
 
-当前版本 `1.0.12`：新部署的 TLS/Reality 默认服务器名称改为 `www.cloudflare.com`，提升 AWS 等云服务器的握手兼容性；修复卸载后 Agent 仍运行的问题；更新版本后会实际重载 Agent 并立即回报新 Runtime 心跳；增加已校验的历史 Runtime Manifest，可安全回退到 `1.0.9`；增加主控地址不一致和远程命令等待状态提示。
+当前版本 `1.0.13`：部署 JSON 接口增加分接口请求体大小保护，已登录后台操作不限制次数，Agent 心跳和回调继续使用独立保护；新部署的 TLS/Reality 默认服务器名称改为 `www.cloudflare.com`，提升 AWS 等云服务器的握手兼容性；修复卸载后 Agent 仍运行的问题；更新版本后会实际重载 Agent 并立即回报新 Runtime 心跳；增加已校验的历史 Runtime Manifest，可安全回退到 `1.0.9`；增加主控地址不一致和远程命令等待状态提示。
 
 完整的环境变量、HTTPS、执行器、PostgreSQL、多实例、升级和备份步骤见[服务器主控部署](docs/SERVER_DEPLOYMENT.md)，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 

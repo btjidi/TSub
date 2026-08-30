@@ -2,9 +2,19 @@
 
 <p align="center"><img src="public/logo.svg" width="96" height="96" alt="TSub Logo"></p>
 
-# TSub
+<h1 align="center">TSub</h1>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <a href="#cloudflare-pages-deployment-guide"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
+  <a href="docs/SERVER_DEPLOYMENT_EN.md#docker-compose"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
+  <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
+  <a href="#release-notes"><img src="https://img.shields.io/badge/TSub-v1.0.13-2563eb.svg" alt="TSub v1.0.13"></a>
+</p>
 
 TSub is a subscription and proxy-node management platform for Cloudflare Pages or a self-hosted server. It includes Profiles, conversion, proxy deployment, remote agents, local execution, notifications, backups, and an external management API.
+
+<p align="center"><a href="#core-capabilities">Core Capabilities</a> · <a href="#cloudflare-pages-deployment-guide">Cloudflare Pages Deployment</a> · <a href="#local-development">Local Development</a> · <a href="docs/USER_GUIDE_EN.md">User Guide</a> · <a href="docs/PROXY_DEPLOYMENT_EN.md">Proxy Deployment</a> · <a href="docs/SERVER_DEPLOYMENT_EN.md">Server Controller Deployment</a> · <a href="docs/API_REFERENCE_EN.md">API Reference</a> · <a href="docs/ARCHITECTURE_EN.md">Architecture</a> · <a href="docs/SECURITY_EN.md">Security</a> · <a href="docs/OPERATIONS_EN.md">Operations</a> · <a href="docs/DEVELOPMENT_EN.md">Development</a> · <a href="#release-notes">Release Notes</a></p>
 
 ![TSub dashboard](docs/assets/screenshots/dashboard.png)
 
@@ -45,7 +55,7 @@ The server controller supports Docker Compose and bare-metal Debian, Ubuntu, or 
 
 ### Release Notes
 
-Current version `1.0.12`: new TLS/REALITY deployments now default to `www.cloudflare.com` for better handshake compatibility on AWS and similar cloud networks; fixes the Agent process continuing to run after uninstall; Update Version reloads the Agent and reports the new Runtime heartbeat immediately; a verified historical Runtime Manifest allows a safe rollback to `1.0.9`; controller mismatches and waiting remote commands are shown explicitly.
+Current version `1.0.13`: deployment JSON endpoints now apply per-endpoint body-size protection without rate-limiting authenticated dashboard operations; Agent heartbeats and callbacks keep separate protection. New TLS/REALITY deployments default to `www.cloudflare.com` for better handshake compatibility on AWS and similar cloud networks; fixes the Agent process continuing to run after uninstall; Update Version reloads the Agent and reports the new Runtime heartbeat immediately; a verified historical Runtime Manifest allows a safe rollback to `1.0.9`; controller mismatches and waiting remote commands are shown explicitly.
 
 ## Local development
 

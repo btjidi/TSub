@@ -179,7 +179,7 @@ export async function handleDeploymentDefaultsRequest(request, env) {
   try {
     if (request.method === 'GET') return createJsonResponse({ success: true, data: publicDeploymentDefaults(await readDeploymentDefaults(storage, env)) });
     if (request.method === 'PUT') {
-      let body; try { body = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
+      let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.deploymentDefaults); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
       const current = await readDeploymentDefaults(storage, env);
       const defaults = mergeDeploymentDefaults(current, body?.defaults || body || {});
       await storage.put(DEFAULTS_KEY, await encryptDeploymentConfig(defaults, env));
@@ -1886,10 +1886,8 @@ function agentError(error) {
 
 export async function handleDeployAgentPoll(request, env) {
   if (request.method !== 'POST') return createErrorResponse('Method Not Allowed', 405);
-  const length = Number(request.headers.get('Content-Length') || 0);
-  if (length > 16 * 1024) return createErrorResponse('Payload too large', 413);
   let payload = {};
-  try { payload = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
+  try { payload = await readJsonWithLimit(request, JSON_BODY_LIMITS.agentPoll); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
   const storage = await getStorage(env);
   const result = await pollAgent(request, env, storage, payload);
   if (result.error) return agentError(result.error);
@@ -2089,7 +2087,7 @@ export async function handleDeploymentsRequest(request, env, path) {
     return createJsonResponse({ success: true, data: [...(demoData?.deployments || []).map(publicDeployment), ...realPublic] });
   }
   if (parts.length === 1 && request.method === 'POST') {
-    let body; try { body = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
+    let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.deployment); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
     const name = String(body?.name || '').trim().slice(0, 120);
     if (!name) return createErrorResponse('Deployment name is required', 400);
     let config; let encryptedConfig; let defaults; let requestConfig = body.config || {};
@@ -2165,7 +2163,7 @@ export async function handleDeploymentsRequest(request, env, path) {
     } catch { return createErrorResponse('Service unavailable', 503); }
   }
   if (!child && request.method === 'PATCH') {
-    let body; try { body = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
+    let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.deployment); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
     if (body.name !== undefined) deployment.name = String(body.name).trim().slice(0, 120) || deployment.name;
     if (body.nodeGroup !== undefined) deployment.nodeGroup = String(body.nodeGroup).trim().slice(0, 120);
     if (body.profileId !== undefined) deployment.profileId = String(body.profileId).trim().slice(0, 160);
@@ -2286,7 +2284,7 @@ export async function handleDeploymentsRequest(request, env, path) {
     }
   }
   if (child === 'operations' && request.method === 'POST') {
-    let body; try { body = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
+    let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.deploymentOperation); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
     const action = String(body.action || '');
     let runtimeTarget;
     if (action === 'rollback-runtime') {
@@ -2320,7 +2318,7 @@ export async function handleDeploymentsRequest(request, env, path) {
     }
   }
   if (child === 'controller-transfer' && request.method === 'POST') {
-    let body; try { body = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
+    let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.controllerTransfer); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
     try {
       const targetUrl = validateTransferTarget(body?.targetUrl);
       const claimToken = String(body?.claimToken || '').trim();
@@ -2366,7 +2364,7 @@ export async function handleDeploymentsRequest(request, env, path) {
   }
   // Temporary alias accepted during the client migration, with V2 actions only.
   if (child === 'commands' && request.method === 'POST') {
-    let body; try { body = await request.json(); } catch { return createErrorResponse('Invalid JSON', 400); }
+    let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.deploymentOperation); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
     if (body.delivery === 'agent') {
       const capabilities = await getPlatformCapabilities(env);
       if (!capabilities.features.remoteCommands) return createJsonResponse({ success: false, error: 'd1_required', message: '切换到 D1 后可使用远程执行' }, 409);

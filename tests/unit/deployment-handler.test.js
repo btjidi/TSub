@@ -1156,6 +1156,31 @@ describe('TSub V2 deployment handler', () => {
     expect((await reset.json()).data.credentials.uuid).toBe('');
   });
 
+  it('rejects oversized deployment JSON before processing it', async () => {
+    const env = createEnv();
+    const oversizedDefaults = new Request('https://tsub.example/api/deployment-defaults', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': String(512 * 1024 + 1) },
+      body: JSON.stringify({ defaults: {} })
+    });
+    expect((await handleDeploymentDefaultsRequest(oversizedDefaults, env)).status).toBe(413);
+
+    const oversizedDeployment = new Request('https://tsub.example/api/deployments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'oversized', config: { padding: 'x'.repeat(5 * 1024 * 1024) } })
+    });
+    expect((await handleDeploymentsRequest(oversizedDeployment, env, '/deployments')).status).toBe(413);
+  });
+
+  it('returns a controlled error for malformed deployment JSON', async () => {
+    const env = createEnv();
+    const request = new Request('https://tsub.example/api/deployments', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{invalid'
+    });
+    expect((await handleDeploymentsRequest(request, env, '/deployments')).status).toBe(400);
+  });
+
   it('uses a Cloudflare-provided source address but rejects a forged direct header', async () => {
     const env = createEnv();
     const created = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Auto host', config: { inbounds: [{ protocol: 'vless' }] } }), env, '/deployments');
