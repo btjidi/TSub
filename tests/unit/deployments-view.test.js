@@ -208,11 +208,15 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
   });
 
   it('loads and previews a fail-closed chain upstream for an individual inbound', async () => {
-    listDeploymentChainSources.mockResolvedValue({ success: true, data: { items: [{
-      key: 'deployment:upstream:0', sourceType: 'deployment', sourceId: 'upstream', nodeKey: '0', name: 'Tokyo Upstream',
-      protocol: 'vless', address: 'upstream.example.com', port: 443, transport: 'ws', routeType: 'cdn',
-      preview: { protocol: 'vless', name: 'Tokyo Upstream', server: 'upstream.example.com', port: 443, transport: { type: 'ws' }, tls: { mode: 'tls' } }
-    }], page: 1, totalPages: 1 } });
+    listDeploymentChainSources.mockImplementation(params => Promise.resolve({ success: true, data: {
+      items: params.view === 'groups' ? [{
+        sourceType: 'deployment', sourceId: 'upstream', name: 'Japan SoftBank', nodeCount: 1, protocols: ['vless'], updatedAt: '2026-10-31T00:00:00Z'
+      }] : [{
+        key: 'deployment:upstream:0', sourceType: 'deployment', sourceId: 'upstream', nodeKey: '0', name: 'Tokyo Upstream',
+        protocol: 'vless', address: 'upstream.example.com', port: 443, transport: 'ws', routeType: 'cdn',
+        preview: { protocol: 'vless', name: 'Tokyo Upstream', server: 'upstream.example.com', port: 443, transport: { type: 'ws' }, tls: { mode: 'tls' } }
+      }], page: 1, totalPages: 1
+    } }));
     previewDeploymentChainSource.mockResolvedValue({ success: true, data: {
       protocol: 'tuic', name: 'Pasted TUIC', address: 'tuic.example.com', port: 443, transport: 'quic', routeType: 'direct',
       preview: { protocol: 'tuic', name: 'Pasted TUIC', server: 'tuic.example.com', port: 443, transport: { type: 'quic' }, tls: { mode: 'tls' } }
@@ -222,17 +226,93 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
 
     await wrapper.get('[data-testid="inbound-outbound-0"]').setValue('chain');
     await flushPromises();
+    expect(wrapper.get('[data-testid="inbound-chain-0"] h4').text()).toBe('链式代理');
     expect(wrapper.get('[data-testid="inbound-chain-0"]').text()).toContain('不会回退服务器直连');
-    expect(listDeploymentChainSources).toHaveBeenCalledWith(expect.objectContaining({ source: 'deployment' }));
+    expect(wrapper.get('[data-testid="chain-source-type-0"]').element.value).toBe('deployment');
+    expect(wrapper.find('[data-testid="chain-source-type-deployment-0"]').exists()).toBe(false);
+    expect(listDeploymentChainSources).toHaveBeenCalledWith(expect.objectContaining({ view: 'groups', source: 'deployment' }));
+    expect(wrapper.find('[data-testid="chain-source-item-0"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="chain-group-0"]').setValue('upstream');
+    await flushPromises();
+    expect(listDeploymentChainSources).toHaveBeenCalledWith(expect.objectContaining({ view: 'nodes', source: 'deployment', sourceId: 'upstream' }));
     await wrapper.get('[data-testid="chain-source-item-0"]').trigger('click');
     expect(wrapper.get('[data-testid="inbound-chain-0"]').text()).toContain('upstream.example.com:443');
 
-    await wrapper.get('[data-testid="chain-source-type-url-0"]').trigger('click');
+    await wrapper.get('[data-testid="chain-source-type-0"]').setValue('url');
     await wrapper.get('[data-testid="chain-url-0"]').setValue('tuic://uuid:secret@tuic.example.com:443');
     await wrapper.get('[data-testid="chain-preview-0"]').trigger('click');
     await flushPromises();
     expect(previewDeploymentChainSource).toHaveBeenCalledWith('tuic://uuid:secret@tuic.example.com:443');
     expect(wrapper.get('[data-testid="inbound-chain-0"]').text()).toContain('Pasted TUIC');
+  });
+
+  it('groups subscription nodes and lists manual nodes directly', async () => {
+    listDeploymentChainSources.mockImplementation(params => Promise.resolve({ success: true, data: {
+      items: params.view === 'groups' ? [{
+        sourceType: 'subscription', sourceId: 'provider-1', name: 'Provider One', nodeCount: 1, protocols: ['trojan']
+      }] : [{
+        key: params.source === 'manual' ? 'manual:node-1' : 'subscription:provider-1:0', sourceType: params.source,
+        sourceId: params.source === 'manual' ? 'node-1' : 'provider-1', nodeKey: params.source === 'manual' ? 'node-1' : '0',
+        name: params.source === 'manual' ? 'Manual Node' : 'Provider Trojan', protocol: 'trojan', address: 'trojan.example.com',
+        port: 443, transport: 'tcp', routeType: 'direct', preview: { protocol: 'trojan', server: 'trojan.example.com', port: 443, transport: { type: 'tcp' } }
+      }], page: 1, totalPages: 1
+    } }));
+    wrapper = mountView();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="inbound-outbound-0"]').setValue('chain');
+    await flushPromises();
+    await wrapper.get('[data-testid="chain-source-type-0"]').setValue('subscription');
+    await flushPromises();
+    expect(listDeploymentChainSources).toHaveBeenCalledWith(expect.objectContaining({ view: 'groups', source: 'subscription' }));
+    await wrapper.get('[data-testid="chain-group-0"]').setValue('provider-1');
+    await flushPromises();
+    expect(listDeploymentChainSources).toHaveBeenCalledWith(expect.objectContaining({ view: 'nodes', source: 'subscription', sourceId: 'provider-1' }));
+    await wrapper.get('[data-testid="chain-source-item-0"]').trigger('click');
+    expect(wrapper.get('[data-testid="inbound-chain-0"]').text()).toContain('trojan.example.com:443');
+
+    await wrapper.get('[data-testid="chain-source-type-0"]').setValue('manual');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chain-group-0"]').exists()).toBe(false);
+    expect(listDeploymentChainSources).toHaveBeenCalledWith(expect.objectContaining({ view: 'nodes', source: 'manual', sourceId: '' }));
+    expect(wrapper.find('[data-testid="inbound-chain-0"] .bg-emerald-50').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="chain-source-item-0"]').text()).toContain('Manual Node');
+  });
+
+  it('retains the encrypted chain preview when an edited source no longer exists', async () => {
+    const deployment = {
+      id: 'chain-target', name: 'Chain Target', schemaVersion: 2, configRevision: 2, status: 'succeeded',
+      configSummary: { runtime: { core: 'xray' }, protocols: [{ protocol: 'vless', port: 443 }] }
+    };
+    listDeployments.mockResolvedValue({ success: true, data: [deployment] });
+    listDeploymentChainSources.mockResolvedValue({ success: true, data: { items: [], page: 1, totalPages: 1 } });
+    getDeploymentTemplate.mockResolvedValue({ success: true, data: {
+      deployment, configRevision: 2, retainedSecrets: true,
+      config: {
+        schemaVersion: 2, runtime: { tier: 'auto', core: 'xray', channel: 'stable' }, certificate: { mode: 'self-signed' },
+        firewall: { enabled: true }, subscription: { hostname: 'entry.example.com', server: { enabled: false } },
+        inbounds: [{
+          id: 'entry', name: 'Entry', protocol: 'vless', port: 443, transport: 'tcp', outbound: 'chain',
+          credentials: { uuid: '********' }, tls: { mode: 'reality', serverName: 'www.cloudflare.com', realityPrivateKey: '********', realityPublicKey: 'public' },
+          chain: {
+            source: { type: 'deployment', sourceId: 'removed-source', nodeKey: '0', key: 'deployment:removed-source:0', label: 'Removed Source' },
+            retainedCredentials: true,
+            snapshot: { protocol: 'vless', name: 'Retained Upstream', server: 'retained.example.com', port: 443, transport: { type: 'tcp' } }
+          }
+        }]
+      }
+    } });
+    wrapper = mountView();
+    await flushPromises();
+    await wrapper.get('[data-testid="deployment-tabs"] button:nth-child(2)').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === '更新配置').trigger('click');
+    Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '载入配置').click();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="inbound-chain-0"]').text()).toContain('retained.example.com:443');
+    expect(wrapper.get('[data-testid="inbound-chain-0"]').text()).toContain('原链式来源已不存在');
+    expect(listDeploymentChainSources).toHaveBeenCalledWith(expect.objectContaining({ view: 'groups', source: 'deployment', deploymentId: 'chain-target' }));
   });
 
   it('shows certificate inputs next to the selected certificate strategy', async () => {

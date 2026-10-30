@@ -9,7 +9,7 @@
   <a href="#部署教程"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
   <a href="#服务器部署"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
-  <a href="#版本更新说明"><img src="https://img.shields.io/badge/TSub-v1.0.16-2563eb.svg" alt="TSub v1.0.16"></a>
+  <a href="#版本更新说明"><img src="https://img.shields.io/badge/TSub-v1.0.17-2563eb.svg" alt="TSub v1.0.17"></a>
 </p>
 
 TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节点管理平台，包含订阅管理、节点管理、Profile、多客户端转换、代理部署、远程 Agent、本机执行器、通知、备份和外部管理 API。
@@ -266,13 +266,13 @@ curl -I http://127.0.0.1:8787/login
 
 ### 单级链式代理
 
-每个代理入站可以选择一个链式上游，形成“客户端 → TSub 入口服务器 → 上游代理 → 目标网站”的单级路径。上游可来自已有部署、订阅节点、手动节点或粘贴链接；完整凭据只保存于目标部署的加密配置，来源列表、公开模板、日志和操作记录仅显示脱敏摘要。
+每个代理入站可以选择一个链式上游，形成“客户端 → TSub 入口服务器 → 上游代理 → 目标网站”的单级路径。链式代理使用独立标题分区和统一的来源类型下拉框：部署节点先选择部署再展示节点，订阅节点先选择订阅源再展示节点，手动节点直接选择，粘贴链接先解析预览。完整凭据只保存于目标部署的加密配置，来源列表、公开模板、日志和操作记录仅显示脱敏摘要。
 
 Xray 与 sing-box 均支持 VLESS、VMess、Trojan、Shadowsocks、SOCKS5、HTTP/HTTPS、Hysteria2 和 WireGuard 上游；TUIC、AnyTLS、Naive 和 Snell 上游仅使用 sing-box，SSR/SSD 暂不支持。自动核心会计算服务端入站和上游协议的能力交集。链式路由不生成直连备用出口，上游不可用时连接失败，不会泄露入口服务器出口 IP。来源变更不会自动同步，需要重新选择来源并执行“更新配置”。完整配置、兼容表和排查步骤见[代理部署文档](docs/PROXY_DEPLOYMENT.md#单级链式代理)。
 
 ### 版本更新说明
 
-当前版本 `1.0.16`：代理部署生成器为每个入站增加单级链式代理，可从已有部署、非部署订阅节点、手动节点或粘贴链接创建加密上游快照。Xray 与 sing-box 会根据服务端入站和上游协议自动计算兼容核心；链式路由没有 selector、fallback 或直连备用出口，上游不可用时连接直接失败。Agent 心跳和诊断仅上报脱敏的链式数量、协议和来源类型，并检查上游 DNS、端口、核心出站标签和路由规则。
+当前版本 `1.0.17`：链式代理配置增加独立标题分区和统一来源类型下拉框。部署节点采用“选择部署 → 展示节点”，订阅节点采用“选择订阅源 → 展示节点”，手动节点和粘贴链接保持直接选择；编辑已有配置时可恢复来源层级，原来源不存在时继续保留加密快照并提示重新选择。
 
 服务器主控部署的完整说明已整合在本 README 的[服务器部署](#服务器部署)章节，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 

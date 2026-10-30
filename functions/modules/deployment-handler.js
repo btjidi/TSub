@@ -669,10 +669,48 @@ function chainSourceItem(normalized, source) {
   };
 }
 
+function paginateChainItems(items, page, pageSize) {
+  const start = (page - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    page,
+    pageSize,
+    total: items.length,
+    totalPages: Math.max(1, Math.ceil(items.length / pageSize))
+  };
+}
+
+function summarizeChainSourceNodes(nodes, source) {
+  const protocols = [];
+  let nodeCount = 0;
+  for (const [index, node] of nodes.entries()) {
+    try {
+      const normalized = normalizeChainNodeUrl(node, { ...source, nodeKey: String(index) });
+      nodeCount += 1;
+      if (!protocols.includes(normalized.snapshot.protocol)) protocols.push(normalized.snapshot.protocol);
+    } catch { /* omit unsupported nodes from group summaries */ }
+  }
+  return { nodeCount, protocols: protocols.sort() };
+}
+
+function chainSourceGroup(sourceType, sourceId, name, nodes, updatedAt = '') {
+  const summary = summarizeChainSourceNodes(nodes, { type: sourceType, sourceId, label: name || '' });
+  return {
+    sourceType,
+    sourceId,
+    name: String(name || '').slice(0, 160),
+    nodeCount: summary.nodeCount,
+    protocols: summary.protocols,
+    updatedAt: updatedAt || ''
+  };
+}
+
 async function listChainSources(storage, env, request) {
   const url = new URL(request.url);
   const currentDeploymentId = String(url.searchParams.get('deploymentId') || '').trim();
   const requestedSource = String(url.searchParams.get('source') || '').trim().toLowerCase();
+  const view = String(url.searchParams.get('view') || '').trim().toLowerCase();
+  const sourceId = String(url.searchParams.get('sourceId') || '').trim();
   const protocol = String(url.searchParams.get('protocol') || '').trim().toLowerCase();
   const query = String(url.searchParams.get('query') || '').trim().toLowerCase();
   const page = Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1);
@@ -680,6 +718,33 @@ async function listChainSources(storage, env, request) {
   const subscriptions = typeof storage.getAllSubscriptions === 'function'
     ? await storage.getAllSubscriptions()
     : await readCollection(storage, 'tsub_subscriptions_v1');
+
+  if (view === 'groups') {
+    const groups = [];
+    if (requestedSource === 'deployment') {
+      const deployments = await listWithLegacyDrafts(storage);
+      for (const deployment of deployments.filter(item => item.schemaVersion === 2 && !item.demo && item.id !== currentDeploymentId)) {
+        try {
+          await assertChainSourceDeployment(storage, env, deployment.id, currentDeploymentId);
+          const nodes = await deploymentChainNodes(storage, deployment.id);
+          if (!nodes.length) continue;
+          const group = chainSourceGroup('deployment', deployment.id, deployment.name, nodes, deployment.updatedAt || deployment.createdAt);
+          if (group.nodeCount) groups.push(group);
+        } catch { /* omit unavailable, empty, current, or chained deployments */ }
+      }
+    } else if (requestedSource === 'subscription') {
+      for (const item of subscriptions.filter(entry => entry.enabled !== false && !deploymentSourceKind(entry?.source?.kind) && /^https?:\/\//i.test(String(entry?.url || '')))) {
+        const nodes = await cachedSubscriptionNodes(storage, item);
+        if (!nodes.length) continue;
+        const group = chainSourceGroup('subscription', item.id, item.name, nodes, item.updatedAt || item.createdAt);
+        if (group.nodeCount) groups.push(group);
+      }
+    } else throw new Error('链式上游分组来源类型无效');
+    const filteredGroups = groups.filter(item => (!protocol || item.protocols.includes(protocol))
+      && (!query || `${item.name} ${item.protocols.join(' ')}`.toLowerCase().includes(query)));
+    return paginateChainItems(filteredGroups, page, pageSize);
+  }
+
   const items = [];
   if (!requestedSource || requestedSource === 'manual') {
     for (const item of subscriptions.filter(entry => entry.enabled !== false && !deploymentSourceKind(entry?.source?.kind) && !/^https?:\/\//i.test(String(entry?.url || '')))) {
@@ -690,7 +755,8 @@ async function listChainSources(storage, env, request) {
     }
   }
   if (!requestedSource || requestedSource === 'subscription') {
-    for (const item of subscriptions.filter(entry => entry.enabled !== false && !deploymentSourceKind(entry?.source?.kind) && /^https?:\/\//i.test(String(entry?.url || '')))) {
+    if (view === 'nodes' && !sourceId) throw new Error('请先选择订阅源');
+    for (const item of subscriptions.filter(entry => entry.enabled !== false && !deploymentSourceKind(entry?.source?.kind) && /^https?:\/\//i.test(String(entry?.url || '')) && (!sourceId || entry.id === sourceId))) {
       const nodes = await cachedSubscriptionNodes(storage, item);
       nodes.forEach((node, index) => {
         try {
@@ -701,8 +767,9 @@ async function listChainSources(storage, env, request) {
     }
   }
   if (!requestedSource || requestedSource === 'deployment') {
+    if (view === 'nodes' && !sourceId) throw new Error('请先选择部署');
     const deployments = await listWithLegacyDrafts(storage);
-    for (const deployment of deployments.filter(item => item.schemaVersion === 2 && !item.demo && item.id !== currentDeploymentId)) {
+    for (const deployment of deployments.filter(item => item.schemaVersion === 2 && !item.demo && item.id !== currentDeploymentId && (!sourceId || item.id === sourceId))) {
       try {
         await assertChainSourceDeployment(storage, env, deployment.id, currentDeploymentId);
         const nodes = await deploymentChainNodes(storage, deployment.id);
@@ -717,8 +784,13 @@ async function listChainSources(storage, env, request) {
   }
   const filtered = items.filter(item => (!protocol || item.protocol === protocol)
     && (!query || `${item.name} ${item.address} ${item.sourceLabel} ${item.protocol}`.toLowerCase().includes(query)));
-  const start = (page - 1) * pageSize;
-  return { items: filtered.slice(start, start + pageSize), page, pageSize, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)) };
+  if (view === 'nodes' && sourceId && !filtered.length) {
+    const sourceExists = requestedSource === 'deployment'
+      ? Boolean(await findDeployment(storage, sourceId))
+      : subscriptions.some(item => item.id === sourceId && !deploymentSourceKind(item?.source?.kind));
+    if (!sourceExists) throw new Error('链式上游来源已不存在');
+  }
+  return paginateChainItems(filtered, page, pageSize);
 }
 
 function validTuicCertificatePin(value) {

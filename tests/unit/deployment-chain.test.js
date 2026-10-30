@@ -210,6 +210,17 @@ describe('single-hop chain proxy', () => {
     const listed = await handleDeploymentsRequest(request('/deployments/chain-sources?source=deployment&deploymentId=current'), env, '/deployments/chain-sources');
     const data = (await listed.json()).data.items;
     expect(data.map(item => item.sourceId)).toEqual(['direct-source']);
+    const groups = await handleDeploymentsRequest(request('/deployments/chain-sources?view=groups&source=deployment&deploymentId=current'), env, '/deployments/chain-sources');
+    const groupBody = await groups.json();
+    expect(groupBody.data.items).toEqual([expect.objectContaining({
+      sourceType: 'deployment', sourceId: 'direct-source', name: 'Direct source', nodeCount: 1, protocols: ['vless']
+    })]);
+    expect(JSON.stringify(groupBody)).not.toContain('79411d85-b0dc-4cd2-b46c-01789a18c650');
+    const selectedNodes = await handleDeploymentsRequest(request('/deployments/chain-sources?view=nodes&source=deployment&sourceId=direct-source&deploymentId=current'), env, '/deployments/chain-sources');
+    expect((await selectedNodes.json()).data.items).toEqual([expect.objectContaining({ sourceId: 'direct-source', address: 'upstream.example.com' })]);
+    const missingSelection = await handleDeploymentsRequest(request('/deployments/chain-sources?view=nodes&source=deployment'), env, '/deployments/chain-sources');
+    expect(missingSelection.status).toBe(400);
+    expect((await missingSelection.json()).error).toMatch(/选择部署/);
     const currentExcluded = await handleDeploymentsRequest(request('/deployments/chain-sources?source=deployment&deploymentId=direct-source'), env, '/deployments/chain-sources');
     expect((await currentExcluded.json()).data.items).toEqual([]);
   });
@@ -234,5 +245,11 @@ describe('single-hop chain proxy', () => {
     const body = await response.json();
     expect(body.data.items).toHaveLength(1);
     expect(body.data.items[0]).toMatchObject({ sourceType: 'subscription', sourceId: 'ordinary-sub', address: 'upstream.example.com' });
+    const groups = await handleDeploymentsRequest(request('/deployments/chain-sources?view=groups&source=subscription'), env, '/deployments/chain-sources');
+    expect((await groups.json()).data.items).toEqual([expect.objectContaining({
+      sourceType: 'subscription', sourceId: 'ordinary-sub', name: 'Provider', nodeCount: 1, protocols: ['vless']
+    })]);
+    const selectedNodes = await handleDeploymentsRequest(request('/deployments/chain-sources?view=nodes&source=subscription&sourceId=ordinary-sub'), env, '/deployments/chain-sources');
+    expect((await selectedNodes.json()).data.items).toEqual([expect.objectContaining({ sourceId: 'ordinary-sub', address: 'upstream.example.com' })]);
   });
 });

@@ -11,12 +11,12 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.16**
-- 每个入站可选择单级链式代理，将流量固定转发到一个上游节点。
-- 支持从已有部署、订阅节点、手动节点或粘贴链接创建加密上游快照。
-- 自动计算服务端入站与上游客户端协议的 Xray/sing-box 兼容核心。
-- 上游失败时严格失败关闭，不回退入口服务器直连。
-- Agent 心跳和诊断增加脱敏的链式数量、协议、来源、DNS、端口和路由标签检查。`;
+    const localChangelog = `**TSub 1.0.17**
+- 链式代理配置增加独立标题分区和统一的来源类型下拉框。
+- 部署节点改为先选择部署，再展示该部署生成的节点。
+- 订阅节点改为先选择订阅源，再展示该订阅缓存中的节点。
+- 手动节点和粘贴节点链接继续保持直接选择与解析预览。
+- 编辑已有部署时可恢复来源层级；来源已删除时保留加密快照并提示重新选择。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

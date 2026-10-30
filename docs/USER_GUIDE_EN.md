@@ -39,7 +39,7 @@ The generator uses “Manual Configuration” by default. To copy public setting
 
 Ports, UUIDs, passwords, Reality/WARP private keys, subscription tokens, and managed Tunnel resources are not reused by default. They are regenerated or requested again for the new deployment. The same protocol, port, core, and WARP terms validation still applies, and templates contain only redacted fields.
 
-Each inbound can also select **Chain Proxy** as its individual outbound and choose one upstream from an existing deployment, a subscription node, a manual node, or a pasted link. After preview confirmation, the controller stores an encrypted upstream snapshot in the target deployment. Later source changes or deletion do not alter an installed node automatically. If the upstream is unavailable, the connection fails closed and never falls back to the entry server's direct egress. Select the source again and run **Update Configuration** to switch upstreams.
+Each inbound can also select **Chain Proxy** as its individual outbound. Its dedicated section uses one Source Type selector: Deployment Nodes first select a deployment and then one generated node; Subscription Nodes first select a subscription and then one cached node; Manual Nodes are selected directly; pasted links are parsed and previewed first. After node confirmation, the controller stores an encrypted upstream snapshot in the target deployment. Later source changes or deletion do not alter an installed node automatically. If the upstream is unavailable, the connection fails closed and never falls back to the entry server's direct egress. Select the source again and run **Update Configuration** to switch upstreams.
 
 ## Conversion and operators
 

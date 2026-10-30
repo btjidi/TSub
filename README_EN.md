@@ -9,7 +9,7 @@
   <a href="#deployment-guide"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
   <a href="docs/SERVER_DEPLOYMENT_EN.md#docker-compose"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
-  <a href="#release-notes"><img src="https://img.shields.io/badge/TSub-v1.0.16-2563eb.svg" alt="TSub v1.0.16"></a>
+  <a href="#release-notes"><img src="https://img.shields.io/badge/TSub-v1.0.17-2563eb.svg" alt="TSub v1.0.17"></a>
 </p>
 
 TSub is a subscription and proxy-node management platform for Cloudflare Pages or a self-hosted server. It includes Profiles, conversion, proxy deployment, remote agents, local execution, notifications, backups, and an external management API.
@@ -80,13 +80,13 @@ Install Node.js 22, npm, Git, and the platform service manager, then run `script
 
 ### Single-hop Chain Proxy
 
-Each inbound may select one chain upstream, producing a single-hop path: “Client → TSub entry server → upstream proxy → destination.” Sources include existing deployments, subscription nodes, manual nodes, and pasted links. Complete credentials remain only in the target deployment's encrypted configuration, while source lists, public templates, logs, and operation history expose redacted summaries.
+Each inbound may select one chain upstream, producing a single-hop path: “Client → TSub entry server → upstream proxy → destination.” The dedicated chain section uses one Source Type selector: deployment nodes first select a deployment, subscription nodes first select a subscription, manual nodes are selected directly, and pasted links are parsed and previewed. Complete credentials remain only in the target deployment's encrypted configuration, while source lists, public templates, logs, and operation history expose redacted summaries.
 
 Both Xray and sing-box support VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP/HTTPS, Hysteria2, and WireGuard upstreams. TUIC, AnyTLS, Naive, and Snell upstreams require sing-box; SSR/SSD are not supported. Automatic core selection intersects the server inbound with upstream-client capabilities. No direct backup route is emitted, so an unavailable upstream fails closed instead of leaking the entry server's egress IP. Source changes are not followed automatically; select the source again and run **Update Configuration**. See the [proxy deployment guide](docs/PROXY_DEPLOYMENT_EN.md#single-hop-chain-proxy) for the compatibility table and troubleshooting.
 
 ### Release Notes
 
-Current version `1.0.16`: each proxy inbound can use one single-hop chain upstream sourced from an existing deployment, a non-deployment subscription node, a manual node, or a pasted link. TSub stores an encrypted snapshot and computes the compatible Xray/sing-box core from both the server inbound and upstream client protocol. Chain routes have no selector, fallback, or direct backup, so an unavailable upstream fails closed. Agent heartbeats and diagnostics expose only redacted chain counts, protocols, source types, DNS/port checks, and route-tag checks.
+Current version `1.0.17`: chain proxy settings now use a dedicated section and one source-type selector. Deployment nodes follow “select deployment → select node,” subscription nodes follow “select subscription → select node,” while manual nodes and pasted links remain direct choices. Editing restores the source hierarchy, and a removed source keeps the encrypted snapshot with a reselect warning.
 
 ## Local development
 
