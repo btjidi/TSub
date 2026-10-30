@@ -49,6 +49,12 @@ Auto mode calculates the capability intersection across all inbounds. Shared tra
 - Node names can be explicit or generated as deployment/protocol/port, prefix/protocol/port, or protocol/random suffix.
 - Verified cores generate REALITY keys and self-signed certificates, which no-change Apply, Repair, and Update reuse.
 
+## Reusing an existing deployment
+
+The generator can use manual configuration or reuse public settings from a controller-saved V2 deployment template. Inbound protocols and transport, public TLS/REALITY settings, outbound policy, ports, WARP identity, subscription service, and node names can be selected independently. The resulting form remains editable, so inbounds and outbound policies may still be changed manually.
+
+Reuse always creates a new deployment record, never modifies the source, and never reads live server configuration. UUIDs, passwords, Reality/WARP private keys, subscription tokens, Agent tokens, Cloudflare API tokens, and managed Tunnel resources are not reused by default. Even when credential reuse is selected, the template API returns redacted values and the browser cannot recover original secrets. Run “Update Configuration” on the source first when its saved controller configuration must match the server state.
+
 ## Low-memory operation
 
 `tiny` is at most 96MB, `small` is 97–192MB, and `standard` is above 192MB. Tiny runs downloads, validation, and configuration tests serially and permits only one main core. Estimated RSS must remain below 80% of the cgroup limit. Xray and sing-box receive a Go memory limit on Tiny nodes, and the kernel is directed to reclaim the core or installer before SSH/Agent during OOM pressure. Runtime does not require Node, Python, jq, compilers, or unzip.

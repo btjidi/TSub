@@ -364,6 +364,50 @@ function restoreDeploymentSecrets(requestConfig, sourceConfig, preserveMachineSe
   return next;
 }
 
+function restoreSelectiveCloneSecrets(requestConfig, sourceConfig, rawOptions = {}) {
+  const options = {
+    credentials: rawOptions?.credentials === true,
+    warpIdentity: rawOptions?.warpIdentity === true,
+    subscription: rawOptions?.subscription === true
+  };
+  const next = cloneJson(requestConfig || {});
+  if (options.credentials) {
+    next.defaults ||= {};
+    next.defaults.credentials ||= {};
+    const sourceSharedUuid = sharedCredentialValue(sourceConfig, 'uuid', new Set(['vless', 'vmess', 'tuic']));
+    const sourceSharedPassword = sharedCredentialValue(sourceConfig, 'password', new Set(['trojan', 'hysteria2', 'tuic', 'anytls', 'socks5', 'naive']));
+    if (missingSecret(next.defaults.credentials.uuid) && sourceSharedUuid) next.defaults.credentials.uuid = sourceSharedUuid;
+    if (missingSecret(next.defaults.credentials.password) && sourceSharedPassword) next.defaults.credentials.password = sourceSharedPassword;
+    next.inbounds = (Array.isArray(next.inbounds) ? next.inbounds : []).map((item, index) => {
+      const source = sourceConfig.inbounds?.[index];
+      if (!source || source.protocol !== item.protocol) return item;
+      const restored = cloneJson(item);
+      restored.credentials ||= {};
+      for (const key of ['uuid', 'password']) if (missingSecret(restored.credentials[key]) && source.credentials?.[key]) restored.credentials[key] = source.credentials[key];
+      restored.tls ||= {};
+      for (const key of ['realityPrivateKey', 'realityPublicKey']) if (missingSecret(restored.tls[key]) && source.tls?.[key]) restored.tls[key] = source.tls[key];
+      return restored;
+    });
+  }
+  if (options.warpIdentity) {
+    next.warp ||= {};
+    for (const key of ['privateKey', 'peerPublicKey', 'ipv4', 'ipv6', 'endpoint', 'port', 'reserved']) {
+      if (missingSecret(next.warp[key]) && sourceConfig.warp?.[key]) next.warp[key] = cloneJson(sourceConfig.warp[key]);
+    }
+    next.warp.provisioning = sourceConfig.warp?.provisioning || next.warp.provisioning || 'auto';
+    next.warp.acceptedTerms = sourceConfig.warp?.acceptedTerms === true;
+  }
+  if (options.subscription) {
+    next.subscription ||= {};
+    next.subscription.server ||= {};
+    const sourceServer = sourceConfig.subscription?.server || {};
+    for (const key of ['token', 'pushToken', 'pushGeneration']) if (missingSecret(next.subscription.server[key]) && sourceServer[key]) next.subscription.server[key] = sourceServer[key];
+    next.subscription.server.traffic ||= {};
+    if (missingSecret(next.subscription.server.traffic.apiSecret) && sourceServer.traffic?.apiSecret) next.subscription.server.traffic.apiSecret = sourceServer.traffic.apiSecret;
+  }
+  return next;
+}
+
 async function prepareDeploymentUpdate(storage, deployment, body, env, pendingOperationId = '', action = 'update') {
   if (action === 'reinstall' && !isDeploymentReinstallable(deployment)) throw Object.assign(new Error('Deployment cannot be reinstalled in its current state'), { status: 409 });
   if (action !== 'reinstall' && deployment.status === 'offline') throw Object.assign(new Error('Deployment template is unavailable'), { status: 409 });
@@ -2095,15 +2139,14 @@ export async function handleDeploymentsRequest(request, env, path) {
       const systemDefaults = await readDeploymentDefaults(storage, env);
       if (body.cloneFromDeploymentId) {
         const source = await findDeployment(storage, String(body.cloneFromDeploymentId));
-        if (!source || source.schemaVersion !== 2 || source.status === 'offline') return createErrorResponse('Clone source is unavailable', 409);
+        const selectiveClone = body.selectiveCloneOptions && typeof body.selectiveCloneOptions === 'object';
+        if (!source || source.schemaVersion !== 2 || (!selectiveClone && source.status === 'offline')) return createErrorResponse('Clone source is unavailable', 409);
         const sourceRevision = Number.isSafeInteger(source.configRevision) ? source.configRevision : 1;
         if (body.configRevision !== undefined && Number(body.configRevision) !== sourceRevision) return createErrorResponse('Deployment configuration changed; reload it before cloning', 409);
-        requestConfig = restoreDeploymentSecrets(
-          requestConfig,
-          await decryptDeploymentConfig(source.encryptedConfig, env),
-          false,
-          body.resetInheritedNodeNames === true
-        );
+        const sourceConfig = await decryptDeploymentConfig(source.encryptedConfig, env);
+        requestConfig = selectiveClone
+          ? restoreSelectiveCloneSecrets(requestConfig, sourceConfig, body.selectiveCloneOptions)
+          : restoreDeploymentSecrets(requestConfig, sourceConfig, false, body.resetInheritedNodeNames === true);
       }
       defaults = mergeDeploymentDefaults(systemDefaults, requestConfig.defaults || {});
       config = resolveV2Config(requestConfig, systemDefaults, { deploymentName: name });

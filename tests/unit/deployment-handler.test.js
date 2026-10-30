@@ -1332,6 +1332,44 @@ describe('TSub V2 deployment handler', () => {
     expect(atob(configValue(cloneScript, 'traffic_core_api_secret_b64'))).not.toBe(atob(configValue(source.script, 'traffic_core_api_secret_b64')));
   });
 
+  it('restores only explicitly selected encrypted values for a granular reuse clone', async () => {
+    const env = createEnv();
+    const source = await createAndBootstrap(env, config({
+      edge: { mode: 'disabled', managed: { tunnelId: 'source-tunnel', tunnelToken: 'source-tunnel-token', managedByTsub: true } },
+      warp: { provisioning: 'manual', privateKey: 'warp-private', peerPublicKey: 'warp-peer', ipv4: '172.16.0.2/32', ipv6: '2606:4700:110:8::2/128' },
+      subscription: { hostname: 'node.example.com', server: { enabled: true, port: 51250, pushEnabled: true, traffic: { enabled: true } } }
+    }));
+    const sourceId = source.body.data.deployment.id;
+    const template = (await (await handleDeploymentsRequest(jsonRequest(`/deployments/${sourceId}/template`, 'GET'), env, `/deployments/${sourceId}/template`)).json()).data;
+    const requestConfig = structuredClone(template.config);
+    requestConfig.inbounds[0].id = 'fresh-inbound';
+    requestConfig.inbounds[0].credentials = {};
+    requestConfig.inbounds[0].tls.realityPrivateKey = '';
+    requestConfig.inbounds[0].tls.realityPublicKey = '';
+    requestConfig.warp = { provisioning: 'auto', acceptedTerms: false, privateKey: '', peerPublicKey: '', ipv4: '', ipv6: '' };
+    requestConfig.subscription.server.token = '';
+    requestConfig.subscription.server.pushToken = '';
+    requestConfig.subscription.server.pushGeneration = '';
+    requestConfig.subscription.server.traffic.apiSecret = '';
+    requestConfig.edge = { mode: 'disabled', hostname: '', endpoints: [], cloudflare: {}, managed: {} };
+    requestConfig.tunnels = [];
+
+    const cloned = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', {
+      name: 'Selective Clone', cloneFromDeploymentId: sourceId, configRevision: template.configRevision,
+      selectiveCloneOptions: { credentials: true, warpIdentity: true, subscription: true }, config: requestConfig
+    }), env, '/deployments');
+    expect(cloned.status).toBe(201);
+    const body = await cloned.json();
+    const record = env.TSUB_KV.dump('tsub_deployments_v2').find(item => item.id === body.data.deployment.id);
+    const clonedConfig = await decryptDeploymentConfig(record.encryptedConfig, env);
+    expect(clonedConfig.inbounds[0].credentials.uuid).toBe('79411d85-b0dc-4cd2-b46c-01789a18c650');
+    expect(clonedConfig.inbounds[0].tls.realityPrivateKey).toBe('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    expect(clonedConfig.warp).toMatchObject({ provisioning: 'manual', privateKey: 'warp-private', peerPublicKey: 'warp-peer', ipv4: '172.16.0.2/32' });
+    expect(clonedConfig.subscription.server.token).toBe(atob(configValue(source.script, 'subscription_server_token_b64')));
+    expect(clonedConfig.edge.managed).toMatchObject({ tunnelId: '', dnsRecordId: '', tunnelToken: '', managedByTsub: false });
+    expect(clonedConfig.tunnels).toEqual([]);
+  });
+
   it('does not copy a deleted inbound secret into a newly added inbound', async () => {
     const env = createEnv();
     const source = await createAndBootstrap(env, config({

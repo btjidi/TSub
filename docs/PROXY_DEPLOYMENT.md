@@ -49,6 +49,12 @@ D1、SQLite 和 PostgreSQL 可为部署签发独立 Agent Token。Agent 默认�
 - 节点名称可显式填写，也可使用“部署-协议-端口”“前缀-协议-端口”或“协议-随机后缀”。
 - Reality 密钥和自签证书由已校验核心生成，并在无变化 Apply、Repair、Update 中复用。
 
+## 复用已有部署配置
+
+生成器可在“配置来源”中选择手动配置，或从主控保存的 V2 部署模板复用公共配置。可独立选择入站协议和传输、TLS/Reality 公共参数、出站策略、端口、WARP 身份、订阅服务和节点名称；应用后仍可继续手动增删入站或修改出站。
+
+复用始终创建新的部署记录，不修改来源部署，也不读取服务器上的实时配置。UUID、密码、Reality/WARP 私钥、订阅 Token、Agent Token、Cloudflare API Token 和托管 Tunnel 资源默认不复用；即使用户选择复用凭据，模板接口也只返回脱敏值，因此无法从浏览器恢复原始私密值。需要与服务器实际状态同步时，应先对来源部署执行“更新配置”。
+
 ## 低内存运行
 
 `tiny` 为不超过 96MB，`small` 为 97–192MB，`standard` 为超过 192MB。Tiny 档串行下载、校验和配置测试，只允许一个主核心；预计总 RSS 必须低于 cgroup 上限的 80%。Xray 和 sing-box 在 Tiny 档使用 Go 内存上限，核心和安装进程在 OOM 时优先于 SSH/Agent 被回收。安装器自身不依赖 Node、Python、jq、编译器或 unzip。

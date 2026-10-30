@@ -33,6 +33,12 @@ A Profile combines sources and manual nodes, client templates, rules, operator c
 
 ![My subscriptions](assets/screenshots/my-subscriptions.png)
 
+## Proxy deployment generator
+
+The generator uses “Manual Configuration” by default. To copy public settings from an existing node, choose “Reuse Existing Deployment”, select a controller-saved V2 template, and choose whether to reuse inbound protocols and transport, public TLS/REALITY settings, outbound policy, ports, or node names. Reuse always creates a new deployment record and never changes the source or reads live server configuration.
+
+Ports, UUIDs, passwords, Reality/WARP private keys, subscription tokens, and managed Tunnel resources are not reused by default. They are regenerated or requested again for the new deployment. The same protocol, port, core, and WARP terms validation still applies, and templates contain only redacted fields.
+
 ## Conversion and operators
 
 Built-in converters produce common client formats. Operators run in order and can filter protocols or names, identify regions, sort, deduplicate, rename, and merge rules. Remote scripts and Fetch Proxy access external networks and must point only to trusted endpoints.

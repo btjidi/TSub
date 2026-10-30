@@ -329,6 +329,12 @@ export const messages = {
       submit: { install: '生成安装命令', update: '保存配置并生成更新命令', reinstall: '保存配置并生成重新安装命令', remoteUpdate: '保存并远程应用', uninstall: '生成卸载命令' },
       targetDeployment: '已部署记录', updateSelectHint: '选择已有部署并确认载入后，才会显示可编辑配置。',
       reuseNotice: '当前配置复用自已有部署。提交后将创建一条全新部署记录，不会覆盖来源部署。', noProtocolSummary: '暂无协议摘要',
+      source: {
+        title: '配置来源', hint: '可手动配置，也可从主控保存的部署记录复用公共配置。来源不是服务器实时状态。', manual: '手动配置', reuse: '从已有部署复用', select: '选择已有部署', loading: '正在读取脱敏配置…',
+        summary: '配置版本 {version} · 入站 {count} 个 · 协议：{protocols} · 出站：{outbounds} · 核心：{core}', lastUpdated: '最后更新：{time}',
+        reuseInbounds: '复用入站协议和传输', reuseTls: '复用 TLS/Reality 公共参数', reuseOutbound: '复用出站策略', reusePorts: '复用端口', reuseCredentials: '复用凭据和私钥', reuseWarp: '复用 WARP 身份', reuseSubscription: '复用订阅服务', reuseNodeName: '复用节点名称',
+        sensitiveHint: '端口、UUID、密码、Reality/WARP 私钥和订阅 Token 默认重新生成；已载入的配置只来自主控保存记录。', apply: '载入并应用配置', applied: '已载入非敏感部署配置'
+      },
       globalConfig: '协议全局配置', globalScope: '应用于：{protocols}', moreSettings: '更多设置', generate: '生成', generateUuid: '生成 UUID', generateSecret: '生成安全值',
       saveSystemDefault: '保存为系统默认', generateDeploymentCommand: '生成部署命令',
       oneTimeCommand: '一次性部署命令', commandPlaceholder: '仅可领取一次，请复制到目标服务器的 Shell 中执行', showTroubleshootingCommand: '显示排障命令', hideTroubleshootingCommand: '隐藏排障命令', bootstrapExpires: 'Bootstrap 令牌过期：{time}',
@@ -428,7 +434,7 @@ export const messages = {
       resources: { pending: '等待服务器上报' },
       inbounds: {
         title: '入站协议', hint: '端口和节点名称可留空自动生成，同一协议可重复添加，最多 20 个。', protocol: '协议', port: '端口', nodeName: '节点名称', transport: '传输', outbound: '出站',
-        advanced: '更多', delete: '删除入站', inherit: '继承（{value}）', inheritGlobal: '继承全局', unsupportedByCore: '（{core} 不支持）',
+        advanced: '更多', delete: '删除入站', inherit: '继承（{value}）', inheritGlobal: '继承全局', unsupportedByCore: '（{core} 不支持）', unsupportedOutbound: '（当前协议不支持）',
         serverName: '服务器名称', host: '传输 Host（可选）', uuidOverride: 'UUID 覆盖', passwordOverride: '密码覆盖', tuicPasswordOverride: 'TUIC 密码覆盖', path: '路径',
         realityPrivateKey: 'Reality 私钥', realityPublicKey: 'Reality 公钥', serviceName: '服务名称', xhttpMode: 'XHTTP 模式', xhttpVersion: 'HTTP 版本', edgeMode: 'CDN 节点',
         bandwidthUp: '上传带宽', bandwidthDown: '下载带宽', udpHopPorts: 'UDP 跳跃端口', udpHopInterval: '跳跃周期（秒）'
@@ -444,7 +450,7 @@ export const messages = {
       table: { action: '动作', stage: '阶段', host: '主机', resources: '资源', startedAt: '开始时间', completedAt: '完成时间', notRecorded: '未记录', result: '结果' },
       notices: {
         defaultsSaved: '系统默认配置已加密保存', defaultsReset: '系统默认配置已重置',
-        commandGenerated: '安装命令已生成，随机端口已写入部署摘要', updateCommandGenerated: '配置已保存，更新命令已生成', reinstallCommandGenerated: '配置已保存，重新安装命令已生成', configLoaded: '已载入原部署配置', configReconfigured: '已使用当前表单重新配置所选部署', configReused: '已复用原部署配置，将创建新部署', operationCommandGenerated: '运维命令已生成', recordDeleted: '部署记录已删除', sourceRestored: '订阅来源已恢复，等待下一次主动推送更新节点', commandCopied: '命令已复制', realityKeysGenerated: 'Reality 密钥对已生成', cloudflareResourcesCleaned: 'Cloudflare Tunnel 和 DNS 资源已清理'
+        commandGenerated: '安装命令已生成，随机端口已写入部署摘要', updateCommandGenerated: '配置已保存，更新命令已生成', reinstallCommandGenerated: '配置已保存，重新安装命令已生成', configLoaded: '已载入原部署配置', configReconfigured: '已使用当前表单重新配置所选部署', configReused: '已复用原部署配置，将创建新部署', reuseApplied: '已载入非敏感部署配置，敏感凭据将重新生成', operationCommandGenerated: '运维命令已生成', recordDeleted: '部署记录已删除', sourceRestored: '订阅来源已恢复，等待下一次主动推送更新节点', commandCopied: '命令已复制', realityKeysGenerated: 'Reality 密钥对已生成', cloudflareResourcesCleaned: 'Cloudflare Tunnel 和 DNS 资源已清理'
       },
       confirm: { resetDefaults: '确认删除已保存的部署默认配置并恢复内置默认值？', operationTitle: '确认生成运维命令', operation: '确认生成“{name}”的“{action}”命令？', generateOperation: '生成{action}命令', uninstall: '确认生成“{name}”的卸载命令？节点将被禁用。', deleteRecord: '删除部署记录“{name}”？', deleteSubscriptionSource: '是否同时删除该部署创建的主动推送订阅？\n\n选择“确定”将删除订阅及其组合订阅引用；选择“取消”仅删除部署记录并保留订阅。', preserveCloudflareResources: '该部署仍关联 Cloudflare Tunnel。确定删除记录并保留 Cloudflare 资源吗？取消后可先点击“清理 Cloudflare 资源”。', cleanupCloudflareResources: '请输入部署名称“{name}”确认删除专用 Tunnel 和 DNS 记录：' },
       errors: {
@@ -1888,6 +1894,12 @@ export const messages = {
       submit: { install: 'Generate Install Command', update: 'Save Configuration and Generate Update Command', reinstall: 'Save Configuration and Generate Reinstall Command', remoteUpdate: 'Save and Apply Remotely', uninstall: 'Generate Uninstall Command' },
       targetDeployment: 'Existing Deployment', updateSelectHint: 'Select a deployment and confirm loading it before editing its configuration.',
       reuseNotice: 'This configuration is reused from an existing deployment. Submitting creates a new deployment without changing the source.', noProtocolSummary: 'No protocol summary',
+      source: {
+        title: 'Configuration Source', hint: 'Configure manually or reuse public settings from a controller-saved deployment. This is not live server state.', manual: 'Manual Configuration', reuse: 'Reuse Existing Deployment', select: 'Select Existing Deployment', loading: 'Loading masked configuration…',
+        summary: 'Config v{version} · {count} inbounds · Protocols: {protocols} · Outbound: {outbounds} · Core: {core}', lastUpdated: 'Last updated: {time}',
+        reuseInbounds: 'Reuse inbound protocols and transport', reuseTls: 'Reuse public TLS/REALITY settings', reuseOutbound: 'Reuse outbound policy', reusePorts: 'Reuse ports', reuseCredentials: 'Reuse credentials and keys', reuseWarp: 'Reuse WARP identity', reuseSubscription: 'Reuse subscription service', reuseNodeName: 'Reuse node names',
+        sensitiveHint: 'Ports, UUIDs, passwords, Reality/WARP private keys, and subscription tokens are regenerated by default. Only the controller-saved template is loaded.', apply: 'Load and Apply Configuration', applied: 'Non-sensitive deployment configuration loaded'
+      },
       globalConfig: 'Protocol Global Configuration', globalScope: 'Applies to: {protocols}', moreSettings: 'More Settings', generate: 'Generate', generateUuid: 'Generate UUID', generateSecret: 'Generate a secure value',
       saveSystemDefault: 'Save as System Default', generateDeploymentCommand: 'Generate Deployment Command',
       oneTimeCommand: 'One-time Deployment Command', commandPlaceholder: 'May be claimed once only. Copy and run it in the target server shell', showTroubleshootingCommand: 'Show troubleshooting command', hideTroubleshootingCommand: 'Hide troubleshooting command', bootstrapExpires: 'Bootstrap token expires: {time}',
@@ -1987,7 +1999,7 @@ export const messages = {
       resources: { pending: 'Waiting for server report' },
       inbounds: {
         title: 'Inbound Protocols', hint: 'Empty ports and node names are generated automatically. Protocols may be repeated, up to 20 inbounds.', protocol: 'Protocol', port: 'Port', nodeName: 'Node Name', transport: 'Transport', outbound: 'Outbound',
-        advanced: 'More', delete: 'Delete inbound', inherit: 'Inherit ({value})', inheritGlobal: 'Inherit global value', unsupportedByCore: ' ({core} unsupported)',
+        advanced: 'More', delete: 'Delete inbound', inherit: 'Inherit ({value})', inheritGlobal: 'Inherit global value', unsupportedByCore: ' ({core} unsupported)', unsupportedOutbound: ' (unsupported by this protocol)',
         serverName: 'Server Name', host: 'Transport Host (optional)', uuidOverride: 'UUID Override', passwordOverride: 'Password Override', tuicPasswordOverride: 'TUIC Password Override', path: 'Path',
         realityPrivateKey: 'Reality Private Key', realityPublicKey: 'Reality Public Key', serviceName: 'Service Name', xhttpMode: 'XHTTP Mode', xhttpVersion: 'HTTP Version', edgeMode: 'CDN nodes',
         bandwidthUp: 'Upload Bandwidth', bandwidthDown: 'Download Bandwidth', udpHopPorts: 'UDP Hop Ports', udpHopInterval: 'Hop Interval (seconds)'
@@ -2003,7 +2015,7 @@ export const messages = {
       table: { action: 'Action', stage: 'Stage', host: 'Host', resources: 'Resources', startedAt: 'Started', completedAt: 'Completed', notRecorded: 'Not recorded', result: 'Result' },
       notices: {
         defaultsSaved: 'System defaults saved with encryption', defaultsReset: 'System defaults reset',
-        commandGenerated: 'Install command generated; randomized ports are in the summary', updateCommandGenerated: 'Configuration saved and update command generated', reinstallCommandGenerated: 'Configuration saved and reinstall command generated', configLoaded: 'Existing deployment configuration loaded', configReconfigured: 'The selected deployment will be reconfigured with the current form', configReused: 'Configuration reused; a new deployment will be created', operationCommandGenerated: 'Operation command generated', recordDeleted: 'Deployment record deleted', sourceRestored: 'Subscription source restored; waiting for the next active push', commandCopied: 'Command copied', realityKeysGenerated: 'Reality key pair generated', cloudflareResourcesCleaned: 'Cloudflare Tunnel and DNS resources were removed'
+        commandGenerated: 'Install command generated; randomized ports are in the summary', updateCommandGenerated: 'Configuration saved and update command generated', reinstallCommandGenerated: 'Configuration saved and reinstall command generated', configLoaded: 'Existing deployment configuration loaded', configReconfigured: 'The selected deployment will be reconfigured with the current form', configReused: 'Configuration reused; a new deployment will be created', reuseApplied: 'Non-sensitive deployment configuration loaded; sensitive credentials will be regenerated', operationCommandGenerated: 'Operation command generated', recordDeleted: 'Deployment record deleted', sourceRestored: 'Subscription source restored; waiting for the next active push', commandCopied: 'Command copied', realityKeysGenerated: 'Reality key pair generated', cloudflareResourcesCleaned: 'Cloudflare Tunnel and DNS resources were removed'
       },
       confirm: { resetDefaults: 'Delete the saved deployment defaults and restore built-in defaults?', operationTitle: 'Confirm Operation Command', operation: 'Generate the {action} command for "{name}"?', generateOperation: 'Generate {action} Command', uninstall: 'Generate an uninstall command for "{name}"? Its nodes will be disabled.', deleteRecord: 'Delete deployment record "{name}"?', deleteSubscriptionSource: 'Also delete the active-push subscription created by this deployment?\n\nChoose OK to remove the subscription and its profile references, or Cancel to keep the subscription and delete only the deployment record.', preserveCloudflareResources: 'This deployment still owns a Cloudflare Tunnel. Delete the record and keep those resources? Cancel to clean them first.', cleanupCloudflareResources: 'Enter deployment name "{name}" to delete its dedicated Tunnel and DNS record:' },
       errors: {
@@ -2014,7 +2026,7 @@ export const messages = {
         protocolUuidInvalid: '{protocol} UUID is invalid', protocolTlsUnsupported: '{protocol} does not support this TLS mode', warpCredentials: 'Manual WARP requires complete imported WireGuard credentials', warpTerms: 'Automatic WARP requires accepting the Cloudflare WARP Terms of Service',
         edgeInboundRequired: 'Select at least one inbound for CDN nodes', edgeIncompatible: 'The selected inbound is incompatible with Cloudflare CDN or Tunnel', edgeAddressRequired: 'A CDN preferred address cannot be empty', edgeAddressDuplicate: 'CDN preferred addresses must be unique', edgeHostnameRequired: 'Enter the Cloudflare entry hostname', quickInboundRequired: 'Select one WebSocket inbound for Quick Tunnel', edgeCredentialsRequired: 'Managed Tunnel requires a Cloudflare Account ID and API Token', strictCertificateRequired: 'Cloudflare Full (strict) cannot use a self-signed origin certificate. Use ACME DNS-01 or an existing trusted certificate.',
         pinnedVersion: 'A pinned channel requires a core version', generateCommand: 'Failed to generate the command', loadTemplate: 'Failed to load the existing deployment configuration', selectTarget: 'Select an eligible deployment', configRevisionConflict: 'The deployment was changed in another page. Reload its configuration before submitting.', loadDeployments: 'Failed to load deployments', loadOperations: 'Failed to load operations',
-        v1Migration: 'Recreate this V1 record as a V2 deployment', offlineUseReinstall: 'Offline deployments cannot be updated. Use Reinstall instead.', deleteRecord: 'Delete failed', restoreSource: 'Could not restore the subscription source', cloudflareCleanup: 'Cloudflare cleanup failed; the deployment record is unchanged', copyCommand: 'Copy failed; select the command manually',
+        v1Migration: 'Recreate this V1 record as a V2 deployment', offlineUseReinstall: 'Offline deployments cannot be updated. Use Reinstall instead.', loadReuseTemplate: 'Could not load the reusable deployment template', deleteRecord: 'Delete failed', restoreSource: 'Could not restore the subscription source', cloudflareCleanup: 'Cloudflare cleanup failed; the deployment record is unchanged', copyCommand: 'Copy failed; select the command manually',
         coreProtocol: 'The {core} core does not support {protocol}', coreCombinationConflict: 'The selected protocols require different cores and cannot share one deployment', protocolTransportUnsupported: '{protocol} does not support the {transport} transport', protocolCombinationUnsupported: '{protocol} does not support {transport} + {tls}', realityWebSocketUnsupported: 'REALITY does not support WebSocket. Use TCP/RAW, gRPC, or XHTTP.', xhttpRequiresXrayVless: 'XHTTP requires VLESS + Xray', xhttpH3RequiresTls: 'XHTTP H3 requires TLS and cannot use REALITY or plaintext', realityKeyGeneration: 'This browser cannot generate X25519 Reality keys. Leave them empty so the proxy core can generate them.'
       },
       risk: {

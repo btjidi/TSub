@@ -14,6 +14,7 @@ import {
   listDeploymentOperations, listDeployments, probeDeploymentEdge, resetDeploymentDefaults, saveDeploymentDefaults
 } from '../lib/deployments.js';
 import { useI18n } from '../i18n/index.js';
+import { DEFAULT_REUSE_OPTIONS, buildReusableDeploymentConfig, deploymentReuseSummary } from '../lib/deployment-reuse.js';
 import SecretInput from '../components/forms/SecretInput.vue';
 import PushHistoryModal from '../components/modals/PushHistoryModal.vue';
 import DeploymentHelpLabel from '../components/deployments/DeploymentHelpLabel.vue';
@@ -67,6 +68,11 @@ const preparedUpdateTargetId = ref('');
 const templateSourceId = ref('');
 const templateConfigRevision = ref(0);
 const retainedSecrets = ref(false);
+const configSourceMode = ref('manual');
+const reuseSourceId = ref('');
+const reuseTemplate = ref(null);
+const reuseLoading = ref(false);
+const reuseOptions = reactive({ ...DEFAULT_REUSE_OPTIONS });
 const showLoadConfigDialog = ref(false);
 const pendingTemplateRecord = ref(null);
 const pendingTemplateRemote = ref(false);
@@ -151,6 +157,10 @@ const selectedDeployment = computed(() => deployments.value.find(item => item.id
 const targetDeployment = computed(() => deployments.value.find(item => item.id === targetDeploymentId.value));
 const eligibleDeployments = computed(() => deployments.value.filter(item => !item.demo && item.schemaVersion === 2
   && (!remoteUpdate.value || (item.status !== 'offline' && item.agent?.online))));
+const reuseEligibleDeployments = computed(() => deployments.value.filter(item => !item.demo && item.schemaVersion === 2));
+const reuseSummary = computed(() => reuseTemplate.value
+  ? deploymentReuseSummary({ ...(reuseTemplate.value.config || {}), deployment: reuseTemplate.value.sourceDeployment })
+  : null);
 const visibleDeploymentActions = computed(() => DEPLOYMENT_ACTIONS.filter(([action]) => !['plan', 'apply'].includes(action)));
 const showEditableConfig = computed(() => deploymentMode.value === 'install'
   || (deploymentMode.value === 'update' && preparedUpdateTargetId.value && preparedUpdateTargetId.value === targetDeploymentId.value));
@@ -424,6 +434,8 @@ function nativeTransportLabel(inbound) { return NATIVE_TRANSPORT_LABELS[inbound.
 function transportConfigurable(inbound) { return isConfigurableTransportProtocol(inbound.protocol); }
 function coreSupportsProtocol(core, protocol) { return protocolInfo(protocol).cores.includes(core); }
 function protocolDisabled(protocol) { return global.runtime.core !== 'auto' && !coreSupportsProtocol(global.runtime.core, protocol); }
+function outboundDisabled(inbound, outbound) { return !protocolCapability(inbound.protocol).outbounds.includes(outbound); }
+function sharedOutboundDisabled(outbound) { return form.inbounds.some(inbound => outboundDisabled(inbound, outbound)); }
 function transportDisabled(inbound, transport) {
   if (!transportConfigurable(inbound) || !transportsForProtocol(inbound.protocol, global.runtime.core).includes(transport)) return true;
   const allowedTls = tlsModesForProtocol(inbound.protocol, transport, global.runtime.core);
@@ -820,7 +832,11 @@ function hydrateGlobal(value) {
 }
 
 function visibleSecret(value) { return value === '********' ? '' : (value || ''); }
-function hydrateDeploymentTemplate(payload, mode) {
+function hydrateDeploymentTemplate(payload, mode, options = {}) {
+  const preserveNodeNames = options.preserveNodeNames === true;
+  const selectiveReuse = options.selectiveReuse === true;
+  const preserveSecrets = options.preserveSecrets === true;
+  const preserveWarpIdentity = options.preserveWarpIdentity === true;
   const config = payload.config || {};
   const deployment = payload.deployment || {};
   const next = blankGlobal();
@@ -831,7 +847,7 @@ function hydrateDeploymentTemplate(payload, mode) {
   next.certificate.apiToken = visibleSecret(next.certificate.apiToken);
   Object.assign(next.warp, config.warp || {});
   next.warp.privateKey = visibleSecret(next.warp.privateKey);
-  if (mode === 'install') Object.assign(next.warp, { privateKey: '', peerPublicKey: '', ipv4: '', ipv6: '' });
+  if (mode === 'install' && !preserveWarpIdentity) Object.assign(next.warp, { privateKey: '', peerPublicKey: '', ipv4: '', ipv6: '' });
   Object.assign(next.edge, config.edge || {});
   next.edge.cloudflare = { ...next.edge.cloudflare, ...(config.edge?.cloudflare || {}) };
   next.edge.cloudflare.apiToken = visibleSecret(next.edge.cloudflare.apiToken);
@@ -844,8 +860,8 @@ function hydrateDeploymentTemplate(payload, mode) {
   next.credentials.sharedUuidEnabled = payload.editor?.sharedUuidEnabled === true;
   next.credentials.sharedPasswordEnabled = payload.editor?.sharedPasswordEnabled === true;
   Object.assign(next.randomPorts, payload.editor?.randomPorts || {});
-  next.credentials.uuid = '';
-  next.credentials.password = '';
+  next.credentials.uuid = preserveSecrets ? visibleSecret(config.credentials?.uuid) : '';
+  next.credentials.password = preserveSecrets ? visibleSecret(config.credentials?.password) : '';
   next.deployment.hostname = config.subscription?.hostname || '';
   next.deployment.namePrefix = config.subscription?.namePrefix || 'TSub';
   next.deployment.nodeNameMode = payload.editor?.nodeNameMode || 'deployment-protocol-port';
@@ -873,15 +889,15 @@ function hydrateDeploymentTemplate(payload, mode) {
   const hydratedInbounds = (config.inbounds || []).map((item, index) => ({
     ...newInbound(),
     id: item.id || `inbound-${index + 1}`,
-    name: mode === 'install' ? '' : (item.name || ''), protocol: item.protocol || 'vless', port: item.port || '',
+    name: mode === 'install' && !preserveNodeNames ? '' : (item.name || ''), protocol: item.protocol || 'vless', port: item.port || '',
     transport: item.transport || '', outbound: item.outbound || '',
     tlsMode: item.tls?.mode || '', serverName: item.tls?.serverName || '',
-    uuid: '', username: item.credentials?.username || '', password: '',
+    uuid: preserveSecrets ? visibleSecret(item.credentials?.uuid) : '', username: item.credentials?.username || '', password: preserveSecrets ? visibleSecret(item.credentials?.password) : '',
     path: item.transportOptions?.path || '',
     host: Object.prototype.hasOwnProperty.call(item.transportOptions || {}, 'host') ? (item.transportOptions.host || '') : (item.tls?.serverName || ''),
     serviceName: item.transportOptions?.serviceName || '',
     certificatePath: item.tls?.certificatePath || '', keyPath: item.tls?.keyPath || '',
-    realityPrivateKey: '', realityPublicKey: item.tls?.realityPublicKey || '', shortId: item.tls?.shortId || '',
+    realityPrivateKey: preserveSecrets ? visibleSecret(item.tls?.realityPrivateKey) : '', realityPublicKey: preserveSecrets ? visibleSecret(item.tls?.realityPublicKey) : '', shortId: item.tls?.shortId || '',
     xhttpMode: item.transportOptions?.xhttpMode || 'auto', xhttpVersion: item.transportOptions?.xhttpVersion || 'auto',
     bandwidthUp: item.transportOptions?.bandwidthUp || '', bandwidthDown: item.transportOptions?.bandwidthDown || '',
     udpHopPorts: item.transportOptions?.udpHopPorts || '', udpHopInterval: item.transportOptions?.udpHopInterval || '', edgeMode: item.edgeMode || 'direct'
@@ -890,10 +906,10 @@ function hydrateDeploymentTemplate(payload, mode) {
   syncSelfSignedTlsServerNames();
   deploymentMode.value = mode;
   targetDeploymentId.value = deployment.id || '';
-  templateSourceId.value = deployment.id || '';
+  templateSourceId.value = selectiveReuse ? '' : (deployment.id || '');
   preparedUpdateTargetId.value = mode === 'update' ? (deployment.id || '') : '';
   templateConfigRevision.value = Number(payload.configRevision || deployment.configRevision || 1);
-  retainedSecrets.value = payload.retainedSecrets === true;
+  retainedSecrets.value = selectiveReuse ? false : payload.retainedSecrets === true;
   runtimeOpen.value = false;
   activeTab.value = 'generator';
 }
@@ -910,6 +926,87 @@ async function loadDeploymentConfig(deployment, mode, useRemote = false, action 
   } catch (error) {
     toast.showToast(error?.status === 409 ? t('deployments.errors.configRevisionConflict') : t('deployments.errors.loadTemplate'), 'error');
   } finally { loading.value = false; }
+}
+
+function resetReuseOptions() {
+  Object.assign(reuseOptions, DEFAULT_REUSE_OPTIONS);
+}
+
+function setConfigSourceMode(mode) {
+  configSourceMode.value = mode;
+  if (mode === 'manual') {
+    reuseSourceId.value = '';
+    reuseTemplate.value = null;
+    resetReuseOptions();
+  }
+}
+
+function reuseInboundId(index) {
+  return `inbound-reuse-${Date.now()}-${index + 1}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+async function loadReuseTemplate() {
+  const deployment = reuseEligibleDeployments.value.find(item => item.id === reuseSourceId.value);
+  reuseTemplate.value = null;
+  if (!deployment) return;
+  reuseLoading.value = true;
+  try {
+    const result = await getDeploymentTemplate(deployment.id);
+    const payload = result.data || {};
+    if (payload.config?.schemaVersion !== 2 || !Array.isArray(payload.config?.inbounds) || !payload.config.inbounds.length) {
+      throw new Error('Template unavailable');
+    }
+    reuseTemplate.value = { ...payload, sourceDeployment: deployment };
+  } catch {
+    reuseSourceId.value = '';
+    toast.showToast(t('deployments.errors.loadReuseTemplate'), 'error');
+  } finally { reuseLoading.value = false; }
+}
+
+function applyReuseTemplate() {
+  const payload = reuseTemplate.value;
+  const source = payload?.sourceDeployment || payload?.deployment;
+  if (!payload || !source) return;
+  const previousGlobal = clone(global);
+  const previousHostname = form.hostname;
+  const previousControlCommand = form.controlCommand;
+  const previousInbounds = clone(form.inbounds);
+  const sourceInbounds = Array.isArray(payload.config?.inbounds) ? payload.config.inbounds : [];
+  const config = buildReusableDeploymentConfig(payload.config || {}, reuseOptions, reuseInboundId);
+  hydrateDeploymentTemplate({ ...payload, config, deployment: source }, 'install', {
+    preserveNodeNames: reuseOptions.nodeName,
+    selectiveReuse: true,
+    preserveSecrets: reuseOptions.credentials,
+    preserveWarpIdentity: reuseOptions.warpIdentity
+  });
+  if (!reuseOptions.inbounds) {
+    form.inbounds.splice(0, form.inbounds.length, ...previousInbounds);
+    if (reuseOptions.outbound) form.inbounds.forEach((item, index) => { item.outbound = sourceInbounds[index]?.outbound || ''; });
+  }
+  for (const key of ['runtime', 'certificate', 'edge', 'tunnel', 'firewall', 'credentials', 'randomPorts', 'deployment']) {
+    Object.assign(global[key], clone(previousGlobal[key] || {}));
+  }
+  replaceReactive(global.protocolDefaults, previousGlobal.protocolDefaults || {});
+  Object.assign(global.common, clone(previousGlobal.common || {}));
+  if (!reuseOptions.outbound) Object.assign(global.warp, clone(previousGlobal.warp || {}));
+  else if (!reuseOptions.warpIdentity) {
+    global.warp.privateKey = '';
+    global.warp.peerPublicKey = '';
+    global.warp.ipv4 = '';
+    global.warp.ipv6 = '';
+    global.warp.acceptedTerms = false;
+    global.warp.provisioning = config.warp?.provisioning || 'auto';
+  }
+  if (!reuseOptions.subscription) {
+    Object.assign(global.subscriptionServer, clone(previousGlobal.subscriptionServer || {}));
+    form.hostname = previousHostname;
+  }
+  form.controlCommand = previousControlCommand;
+  reuseSourceId.value = source.id;
+  templateSourceId.value = '';
+  form.name = `${String(source.name || '部署').trim()}-副本`.slice(0, 120);
+  retainedSecrets.value = false;
+  toast.showToast(t('deployments.notices.reuseApplied'), 'success');
 }
 
 function requestUpdateConfig(deployment, useRemote = false, action = 'update') {
@@ -987,12 +1084,20 @@ function setDeploymentMode(mode) {
     templateSourceId.value = '';
     templateConfigRevision.value = 0;
     retainedSecrets.value = false;
+    configSourceMode.value = 'manual';
+    reuseSourceId.value = '';
+    reuseTemplate.value = null;
+    resetReuseOptions();
   } else if (mode === 'uninstall') {
     targetDeploymentId.value = '';
     preparedUpdateTargetId.value = '';
     templateSourceId.value = '';
     templateConfigRevision.value = 0;
     retainedSecrets.value = false;
+    configSourceMode.value = 'manual';
+    reuseSourceId.value = '';
+    reuseTemplate.value = null;
+    resetReuseOptions();
   } else if (templateSourceId.value) {
     targetDeploymentId.value = templateSourceId.value;
     preparedUpdateTargetId.value = templateSourceId.value;
@@ -1174,9 +1279,19 @@ async function generateInstallCommand() {
       }
       toast.showToast(t(reinstallMode.value ? 'deployments.notices.reinstallCommandGenerated' : 'deployments.notices.updateCommandGenerated'), 'success');
     } else {
+      const reuseEncryptedValues = reuseSourceId.value && (reuseOptions.credentials || reuseOptions.warpIdentity || reuseOptions.subscription);
       result = await createDeployment({
         name: form.name.trim(), nodeGroup: defaults.deployment?.nodeGroup || '', profileId: defaults.deployment?.profileId || '', config: buildConfig(defaults), outputLanguage: locale.value,
-        ...(templateSourceId.value ? {
+        ...(reuseEncryptedValues ? {
+          cloneFromDeploymentId: reuseSourceId.value,
+          configRevision: templateConfigRevision.value,
+          selectiveCloneOptions: {
+            credentials: reuseOptions.credentials,
+            warpIdentity: reuseOptions.warpIdentity,
+            subscription: reuseOptions.subscription
+          }
+        } : {}),
+        ...(templateSourceId.value && !reuseSourceId.value ? {
           cloneFromDeploymentId: templateSourceId.value,
           configRevision: templateConfigRevision.value,
           resetInheritedNodeNames: true
@@ -1560,6 +1675,46 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <section v-if="deploymentMode === 'install'" data-testid="deployment-config-source" class="deployment-surface order-3 overflow-hidden">
+            <div class="space-y-3 p-3 sm:p-4">
+              <div>
+                <h2 class="text-sm font-semibold">{{ t('deployments.source.title') }}</h2>
+                <p class="mt-1 text-xs leading-5 text-gray-500">{{ t('deployments.source.hint') }}</p>
+              </div>
+              <div class="grid grid-cols-2 gap-1.5 sm:max-w-lg sm:gap-2" role="radiogroup" :aria-label="t('deployments.source.title')">
+                <button type="button" data-testid="deployment-source-manual" class="min-h-10 border px-3 text-sm font-medium" :class="configSourceMode === 'manual' ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-400/40 dark:bg-primary-500/15 dark:text-primary-200' : 'deploy-btn-neutral'" :aria-pressed="configSourceMode === 'manual'" @click="setConfigSourceMode('manual')">{{ t('deployments.source.manual') }}</button>
+                <button type="button" data-testid="deployment-source-reuse" class="min-h-10 border px-3 text-sm font-medium" :class="configSourceMode === 'reuse' ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-400/40 dark:bg-primary-500/15 dark:text-primary-200' : 'deploy-btn-neutral'" :aria-pressed="configSourceMode === 'reuse'" @click="setConfigSourceMode('reuse')">{{ t('deployments.source.reuse') }}</button>
+              </div>
+              <template v-if="configSourceMode === 'reuse'">
+                <label class="block text-sm font-medium">
+                  {{ t('deployments.source.select') }}
+                  <DeploymentSelectShell><select v-model="reuseSourceId" data-testid="deployment-reuse-source" class="w-full border bg-transparent px-3 py-2.5" @change="loadReuseTemplate">
+                    <option value="">{{ t('deployments.pleaseSelect') }}</option>
+                    <option v-for="deployment in reuseEligibleDeployments" :key="deployment.id" :value="deployment.id">{{ deployment.name }}</option>
+                  </select></DeploymentSelectShell>
+                </label>
+                <div v-if="reuseLoading" class="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800 dark:border-sky-400/25 dark:bg-sky-500/10 dark:text-sky-200">{{ t('deployments.source.loading') }}</div>
+                <div v-else-if="reuseSummary" data-testid="deployment-reuse-summary" class="rounded-lg border border-sky-200 bg-sky-50/70 p-3 text-xs leading-5 text-sky-900 dark:border-sky-400/25 dark:bg-sky-500/10 dark:text-sky-100">
+                  <p class="font-semibold">{{ reuseTemplate.sourceDeployment?.name || reuseTemplate.deployment?.name }}</p>
+                  <p>{{ t('deployments.source.summary', { version: reuseSummary.schemaVersion, count: reuseSummary.inboundCount, protocols: reuseSummary.protocols.join('、') || '-', outbounds: reuseSummary.outbounds.join('、') || '-', core: reuseSummary.core || '-' }) }}</p>
+                  <p v-if="reuseSummary.updatedAt">{{ t('deployments.source.lastUpdated', { time: formatDate(reuseSummary.updatedAt) }) }}</p>
+                </div>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.inbounds" data-testid="reuse-option-inbounds" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseInbounds') }}</label>
+                  <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.tls" data-testid="reuse-option-tls" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseTls') }}</label>
+                  <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.outbound" data-testid="reuse-option-outbound" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseOutbound') }}</label>
+                  <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.ports" data-testid="reuse-option-ports" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reusePorts') }}</label>
+                  <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.credentials" data-testid="reuse-option-credentials" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseCredentials') }}</label>
+                  <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.warpIdentity" data-testid="reuse-option-warp" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseWarp') }}</label>
+                  <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.subscription" data-testid="reuse-option-subscription" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseSubscription') }}</label>
+                  <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.nodeName" data-testid="reuse-option-node-name" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseNodeName') }}</label>
+                </div>
+                <p class="text-xs leading-5 text-gray-500">{{ t('deployments.source.sensitiveHint') }}</p>
+                <button type="button" data-testid="deployment-apply-reuse" class="deploy-btn-primary min-h-10 w-full px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="!reuseTemplate || reuseLoading" @click="applyReuseTemplate">{{ t('deployments.source.apply') }}</button>
+              </template>
+            </div>
+          </section>
+
           <section data-testid="deployment-global-settings" class="deployment-surface order-4 overflow-hidden">
             <div class="space-y-3 p-3 sm:p-4">
               <h2 class="text-sm font-semibold">{{ t('deployments.globalConfig') }}</h2>
@@ -1576,7 +1731,7 @@ onBeforeUnmount(() => {
               <div data-testid="deployment-shared-options" class="grid grid-cols-6 gap-2.5 sm:gap-3 lg:grid-cols-5">
                 <div class="col-span-2 min-w-0 text-sm lg:col-span-1"><DeploymentHelpLabel for-id="global-shared-transport" :label="t('deployments.fields.sharedTransport')" :help="t('deployments.help.sharedTransport')" :open="deploymentInfoPopoverKey === generatorHelpKey('shared-transport')" test-id="shared-transport-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('shared-transport'), value)" /><DeploymentSelectShell test-id="global-shared-transport-shell"><select id="global-shared-transport" v-model="global.common.transport" data-testid="global-shared-transport" class="w-full border bg-transparent px-2 py-2"><option value="">{{ t('deployments.options.protocolDefault') }}</option><option v-for="([value,label]) in TRANSPORT_OPTIONS" :key="value" :value="value">{{ label }}</option></select></DeploymentSelectShell><p v-if="sharedTransportScope" data-testid="shared-transport-scope" class="mt-1 text-xs leading-5 text-gray-500">{{ sharedTransportScope }}</p></div>
                 <div class="col-span-2 min-w-0 text-sm lg:col-span-1"><DeploymentHelpLabel for-id="global-shared-tls" :label="t('deployments.fields.sharedTls')" :help="t('deployments.help.sharedTls')" :open="deploymentInfoPopoverKey === generatorHelpKey('shared-tls')" test-id="shared-tls-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('shared-tls'), value)" /><DeploymentSelectShell test-id="global-shared-tls-shell"><select id="global-shared-tls" v-model="global.common.tlsMode" data-testid="global-shared-tls" class="w-full border bg-transparent px-2 py-2"><option value="">{{ t('deployments.options.protocolDefault') }}</option><option value="none">{{ t('deployments.options.noTls') }}</option><option value="tls">TLS</option><option value="reality">Reality</option></select></DeploymentSelectShell><p v-if="sharedTlsScope" data-testid="shared-tls-scope" class="mt-1 text-xs leading-5 text-gray-500">{{ sharedTlsScope }}</p></div>
-                <div class="col-span-2 min-w-0 text-sm lg:col-span-1"><DeploymentHelpLabel for-id="global-shared-outbound" :label="t('deployments.fields.sharedOutbound')" :help="t('deployments.help.sharedOutbound')" :open="deploymentInfoPopoverKey === generatorHelpKey('shared-outbound')" test-id="shared-outbound-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('shared-outbound'), value)" /><DeploymentSelectShell test-id="global-shared-outbound-shell"><select id="global-shared-outbound" v-model="global.common.outbound" data-testid="global-shared-outbound" class="w-full border bg-transparent px-2 py-2"><option value="">{{ t('deployments.options.protocolDefault') }}</option><option v-for="([value,label]) in OUTBOUND_OPTIONS" :key="value" :value="value">{{ label.startsWith('deployments.') ? t(label) : label }}</option></select></DeploymentSelectShell></div>
+                <div class="col-span-2 min-w-0 text-sm lg:col-span-1"><DeploymentHelpLabel for-id="global-shared-outbound" :label="t('deployments.fields.sharedOutbound')" :help="t('deployments.help.sharedOutbound')" :open="deploymentInfoPopoverKey === generatorHelpKey('shared-outbound')" test-id="shared-outbound-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('shared-outbound'), value)" /><DeploymentSelectShell test-id="global-shared-outbound-shell"><select id="global-shared-outbound" v-model="global.common.outbound" data-testid="global-shared-outbound" class="w-full border bg-transparent px-2 py-2"><option value="">{{ t('deployments.options.protocolDefault') }}</option><option v-for="([value,label]) in OUTBOUND_OPTIONS" :key="value" :value="value" :disabled="sharedOutboundDisabled(value)">{{ label.startsWith('deployments.') ? t(label) : label }}{{ sharedOutboundDisabled(value) ? ` ${t('deployments.inbounds.unsupportedOutbound')}` : '' }}</option></select></DeploymentSelectShell></div>
                 <div class="col-span-3 min-w-0 text-sm lg:col-span-1"><DeploymentHelpLabel for-id="global-shared-server-name" :label="t('deployments.fields.sharedServerName')" :help="t('deployments.help.sharedServerName')" :open="deploymentInfoPopoverKey === generatorHelpKey('shared-server-name')" test-id="shared-server-name-help" @update:open="value => setDeploymentInfoPopover(generatorHelpKey('shared-server-name'), value)" /><input id="global-shared-server-name" v-model="global.common.serverName" class="mt-1 w-full border bg-transparent px-2 py-2" :placeholder="t('deployments.placeholders.protocolBuiltin')" @input="updateSharedServerName" /></div>
                 <label class="col-span-3 min-w-0 text-sm lg:col-span-1">{{ t('deployments.fields.username') }}<input v-model="global.credentials.username" data-testid="global-username" class="mt-1 w-full border bg-transparent px-2 py-2" /></label>
               </div>
@@ -1663,7 +1818,7 @@ onBeforeUnmount(() => {
               <label class="col-span-2 min-w-0 text-xs text-gray-500 sm:col-span-1 lg:col-span-1" :for="`inbound-port-${index}`">{{ t('deployments.inbounds.port') }}<input :id="`inbound-port-${index}`" v-model="inbound.port" data-testid="inbound-port" inputmode="numeric" class="mt-1 min-h-10 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" :placeholder="t('deployments.placeholders.random')" /></label>
               <label class="col-span-5 min-w-0 text-xs text-gray-500 sm:col-span-4 sm:col-start-3 sm:row-start-1 lg:col-span-1 lg:col-start-auto lg:row-start-auto">{{ t('deployments.inbounds.nodeName') }}<input v-model="inbound.name" data-testid="inbound-node-name" maxlength="80" class="mt-1 min-h-10 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" :placeholder="nodeNamePlaceholder(inbound)" /></label>
               <div class="col-span-2 col-start-1 row-start-3 min-w-0 text-xs text-gray-500 sm:row-start-2 lg:col-span-1 lg:col-start-auto lg:row-start-auto"><DeploymentHelpLabel :for-id="`inbound-transport-${index}`" :label="t('deployments.inbounds.transport')" :help="t('deployments.help.inboundTransport')" :open="deploymentInfoPopoverKey === generatorHelpKey(`inbound-${index}-transport`)" :test-id="`inbound-transport-help-${index}`" @update:open="value => setDeploymentInfoPopover(generatorHelpKey(`inbound-${index}-transport`), value)" /><DeploymentSelectShell v-if="transportConfigurable(inbound)"><select :id="`inbound-transport-${index}`" v-model="inbound.transport" :data-testid="`inbound-transport-${index}`" class="min-h-10 min-w-0 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" @change="updateTransport(inbound)"><option value="">{{ t('deployments.inbounds.inherit', { value: effective(inbound, 'transport') }) }}</option><option v-for="([value,label]) in TRANSPORT_OPTIONS" :key="value" :value="value" :disabled="transportDisabled(inbound, value)">{{ label }}</option></select></DeploymentSelectShell><output v-else :id="`inbound-transport-${index}`" :data-testid="`inbound-transport-${index}`" class="mt-1 flex min-h-10 w-full items-center border bg-gray-50 px-2 text-sm text-gray-700 dark:bg-white/5 dark:text-gray-200">{{ nativeTransportLabel(inbound) }}</output></div>
-              <div class="col-span-2 col-start-3 row-start-3 min-w-0 text-xs text-gray-500 sm:row-start-2 lg:col-span-1 lg:col-start-auto lg:row-start-auto"><DeploymentHelpLabel :for-id="`inbound-outbound-${index}`" :label="t('deployments.inbounds.outbound')" :help="t('deployments.help.inboundOutbound')" :open="deploymentInfoPopoverKey === generatorHelpKey(`inbound-${index}-outbound`)" :test-id="`inbound-outbound-help-${index}`" @update:open="value => setDeploymentInfoPopover(generatorHelpKey(`inbound-${index}-outbound`), value)" /><DeploymentSelectShell><select :id="`inbound-outbound-${index}`" v-model="inbound.outbound" :data-testid="`inbound-outbound-${index}`" class="min-h-10 min-w-0 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" @change="updateOutbound(inbound)"><option value="">{{ t('deployments.inbounds.inherit', { value: effective(inbound, 'outbound') }) }}</option><option v-for="([value,label]) in OUTBOUND_OPTIONS" :key="value" :value="value">{{ label.startsWith('deployments.') ? t(label) : label }}</option></select></DeploymentSelectShell></div>
+              <div class="col-span-2 col-start-3 row-start-3 min-w-0 text-xs text-gray-500 sm:row-start-2 lg:col-span-1 lg:col-start-auto lg:row-start-auto"><DeploymentHelpLabel :for-id="`inbound-outbound-${index}`" :label="t('deployments.inbounds.outbound')" :help="t('deployments.help.inboundOutbound')" :open="deploymentInfoPopoverKey === generatorHelpKey(`inbound-${index}-outbound`)" :test-id="`inbound-outbound-help-${index}`" @update:open="value => setDeploymentInfoPopover(generatorHelpKey(`inbound-${index}-outbound`), value)" /><DeploymentSelectShell><select :id="`inbound-outbound-${index}`" v-model="inbound.outbound" :data-testid="`inbound-outbound-${index}`" class="min-h-10 min-w-0 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" @change="updateOutbound(inbound)"><option value="">{{ t('deployments.inbounds.inherit', { value: effective(inbound, 'outbound') }) }}</option><option v-for="([value,label]) in OUTBOUND_OPTIONS" :key="value" :value="value" :disabled="outboundDisabled(inbound, value)">{{ label.startsWith('deployments.') ? t(label) : label }}{{ outboundDisabled(inbound, value) ? ` ${t('deployments.inbounds.unsupportedOutbound')}` : '' }}</option></select></DeploymentSelectShell></div>
               <div class="contents sm:hidden" data-testid="inbound-mobile-actions">
                 <button type="button" :data-testid="`inbound-more-mobile-${index}`" class="deploy-btn-neutral col-start-5 row-start-3 flex min-h-10 w-fit justify-self-end items-center justify-center gap-0.5 whitespace-nowrap border px-2 text-sm" :aria-expanded="inbound.expanded" @click="inbound.expanded = !inbound.expanded"><span>{{ t('deployments.inbounds.advanced') }}</span><svg :data-testid="`inbound-more-icon-mobile-${index}`" aria-hidden="true" class="h-4 w-4 shrink-0 transition-transform" :class="inbound.expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg></button>
                 <button type="button" :data-testid="`inbound-delete-mobile-${index}`" class="deploy-btn-danger col-start-5 row-start-1 flex min-h-10 min-w-[3.75rem] justify-self-end items-center justify-center whitespace-nowrap border border-red-200 px-3 text-sm font-medium text-red-600 disabled:cursor-not-allowed disabled:opacity-30" :disabled="form.inbounds.length === 1" :title="t('deployments.inbounds.delete')" :aria-label="t('deployments.inbounds.delete')" @click="removeInbound(index)">{{ t('actions.delete') }}</button>

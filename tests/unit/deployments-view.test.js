@@ -903,6 +903,55 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
     expect(wrapper.text()).toContain('The xray core does not support TUIC v5');
   });
 
+  it('selectively reuses a masked deployment template without cloning source secrets', async () => {
+    const deployment = {
+      id: 'deploy-reuse', name: 'Tokyo Edge', schemaVersion: 2, configRevision: 3, status: 'succeeded', updatedAt: '2026-10-30T12:00:00.000Z'
+    };
+    getDeploymentTemplate.mockResolvedValue({
+      success: true,
+      data: {
+        deployment, configRevision: 3, retainedSecrets: true,
+        config: {
+          schemaVersion: 2,
+          runtime: { tier: 'small', core: 'sing-box', channel: 'stable', controlCommand: 'tsub' },
+          certificate: { mode: 'self-signed' }, warp: { provisioning: 'auto', acceptedTerms: false }, firewall: { enabled: true }, edge: { mode: 'disabled' },
+          subscription: { hostname: '203.0.113.10', server: { enabled: true, port: 51250, token: '********', pushEnabled: true, traffic: { enabled: true } } },
+          inbounds: [{ id: 'source-vless', name: 'Tokyo-VLESS', protocol: 'vless', port: 443, transport: 'tcp', outbound: 'direct', credentials: { uuid: '********' }, tls: { mode: 'reality', serverName: 'www.cloudflare.com', realityPrivateKey: '********', realityPublicKey: 'PUBLIC', shortId: 'abcd' }, transportOptions: { path: '/' } }]
+        }
+      }
+    });
+    listDeployments.mockResolvedValue({ success: true, data: [deployment] });
+    createDeployment.mockResolvedValue({ data: { deployment: { id: 'deploy-new' }, command: 'install command', wgetCommand: 'install wget', expiresAt: '' } });
+    wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="deployment-source-manual"]').attributes('aria-pressed')).toBe('true');
+    await wrapper.get('[data-testid="deployment-source-reuse"]').trigger('click');
+    await wrapper.get('[data-testid="deployment-reuse-source"]').setValue('deploy-reuse');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="deployment-reuse-summary"]').text()).toContain('入站 1 个');
+    await wrapper.get('[data-testid="deployment-apply-reuse"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('input[placeholder="HK Edge"]').element.value).toBe('Tokyo Edge-副本');
+    expect(wrapper.get('[data-testid="inbound-node-name"]').element.value).toBe('Tokyo-VLESS');
+    expect(wrapper.get('[data-testid="inbound-port"]').element.value).toBe('');
+    await wrapper.get('[data-testid="inbound-more-0"]').trigger('click');
+    expect(wrapper.get('[data-testid="inbound-uuid"]').element.value).toBe('');
+    expect(wrapper.get('[data-testid="reality-private-key"]').element.value).toBe('');
+    expect(wrapper.get('[data-testid="reality-public-key"]').element.value).toBe('');
+
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    document.querySelector('[data-testid="deployment-risk-panel"] button:last-child').click();
+    await flushPromises();
+    expect(createDeployment).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Tokyo Edge-副本',
+      config: expect.objectContaining({ inbounds: [expect.objectContaining({ name: 'Tokyo-VLESS', port: null, outbound: 'direct' })] })
+    }));
+    expect(createDeployment.mock.calls.at(-1)[0]).not.toHaveProperty('cloneFromDeploymentId');
+  });
+
   it('loads an existing deployment for update, reuses it safely, and exposes uninstall mode', async () => {
     const deployment = {
       id: 'deploy-template', name: 'Singapore Edge', schemaVersion: 2, configRevision: 4, status: 'succeeded',

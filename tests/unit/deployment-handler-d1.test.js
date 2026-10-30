@@ -36,7 +36,7 @@ const V2_CONFIG = {
 };
 
 describe('TSub deployment handler with D1', { timeout: 60_000 }, () => {
-  it('synchronizes a VPS airport subscription and profile references through Miniflare D1', async () => {
+  it('synchronizes a VPS airport subscription and profile references through Miniflare D1', { timeout: 60_000 }, async () => {
     const miniflare = new Miniflare({
       modules: true,
       script: 'export default { fetch() { return new Response("ok"); } }',
