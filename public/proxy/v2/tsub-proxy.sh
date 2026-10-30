@@ -1,6 +1,6 @@
 #!/bin/sh
 # Generated file. Edit runtime/v2/modules/*.sh instead.
-TSUB_RUNTIME_VERSION='1.0.15'
+TSUB_RUNTIME_VERSION='1.0.16'
 # module: 00-common.sh
 # TSub Proxy v2 - POSIX shell only.
 set -eu
@@ -1961,6 +1961,68 @@ firewall_remove() {
   rm -f "$TSUB_STATE/firewall.backend" "$TSUB_STATE/firewall.ports"
 }
 
+# module: 36-chain.sh
+chain_diagnostic_target() {
+  chain_diag_protocol=$1
+  chain_diag_server=$2
+  chain_diag_port=$3
+  chain_diag_transport=$4
+  chain_diag_tag=$5
+
+  case "$chain_diag_server" in
+    ''|*[!0-9A-Fa-f:.]*)
+      if have getent; then
+        getent ahosts "$chain_diag_server" >/dev/null 2>&1 \
+          || i18n_log WARN "链式上游域名解析失败：$chain_diag_server" "Chain upstream DNS resolution failed: $chain_diag_server"
+      elif have nslookup; then
+        nslookup "$chain_diag_server" >/dev/null 2>&1 \
+          || i18n_log WARN "链式上游域名解析失败：$chain_diag_server" "Chain upstream DNS resolution failed: $chain_diag_server"
+      else
+        i18n_log WARN '缺少 getent/nslookup，已跳过链式上游 DNS 检查' 'getent/nslookup is unavailable; skipped chain upstream DNS check'
+      fi
+      ;;
+  esac
+
+  if have nc; then
+    case "$chain_diag_protocol:$chain_diag_transport" in
+      hysteria2:*|tuic:*|*:quic)
+        nc -u -z -w 3 "$chain_diag_server" "$chain_diag_port" >/dev/null 2>&1 \
+          || i18n_log WARN "链式上游 UDP 端口探测失败：$chain_diag_server:$chain_diag_port" "Chain upstream UDP probe failed: $chain_diag_server:$chain_diag_port"
+        ;;
+      *)
+        nc -z -w 3 "$chain_diag_server" "$chain_diag_port" >/dev/null 2>&1 \
+          || i18n_log WARN "链式上游 TCP 端口探测失败：$chain_diag_server:$chain_diag_port" "Chain upstream TCP probe failed: $chain_diag_server:$chain_diag_port"
+        ;;
+    esac
+  else
+    i18n_log WARN '缺少 nc，已跳过链式上游端口可达性检查' 'nc is unavailable; skipped chain upstream port reachability checks'
+  fi
+
+  chain_diag_tag_count=$(grep -F -c "\"$chain_diag_tag\"" "$TSUB_ETC/config.json" 2>/dev/null || true)
+  case "$chain_diag_tag_count" in ''|*[!0-9]*) chain_diag_tag_count=0 ;; esac
+  [ "$chain_diag_tag_count" -ge 2 ] \
+    || i18n_die "核心配置缺少链式上游出站或路由：$chain_diag_tag" "Core configuration is missing the chain upstream outbound or route: $chain_diag_tag"
+}
+
+chain_diagnostics() {
+  chain_diag_count=$(kv_get chain_count); chain_diag_count=${chain_diag_count:-0}
+  case "$chain_diag_count" in ''|*[!0-9]*) chain_diag_count=0 ;; esac
+  [ "$chain_diag_count" -gt 0 ] || return 0
+
+  chain_diag_file="$TSUB_TMP/chain-targets"
+  b64_decode_file chain_targets_b64 "$chain_diag_file" \
+    || i18n_die '链式上游诊断信息无效' 'Chain upstream diagnostic metadata is invalid'
+  chain_diag_seen=0
+  while IFS='|' read -r chain_diag_inbound chain_diag_protocol chain_diag_server chain_diag_port chain_diag_transport chain_diag_tag; do
+    [ -n "$chain_diag_server" ] || continue
+    chain_diag_seen=$((chain_diag_seen + 1))
+    chain_diagnostic_target "$chain_diag_protocol" "$chain_diag_server" "$chain_diag_port" "$chain_diag_transport" "$chain_diag_tag"
+  done <"$chain_diag_file"
+  [ "$chain_diag_seen" -eq "$chain_diag_count" ] \
+    || i18n_die '链式上游诊断数量与配置不一致' 'Chain upstream diagnostic count does not match the configuration'
+  i18n_log INFO "链式上游诊断完成：$chain_diag_seen 个入站" "Chain upstream diagnostics completed for $chain_diag_seen inbound(s)"
+}
+
 # module: 37-traffic.sh
 traffic_state_get() {
   traffic_key=$1
@@ -2674,14 +2736,18 @@ agent_poll_once() {
   agent_rss=$((agent_core_rss + agent_tunnel_rss))
   case "$agent_core" in xray) agent_estimated_core=42 ;; sing-box) agent_estimated_core=44 ;; *) agent_estimated_core=0 ;; esac
   agent_tunnel_count=$(kv_get tunnel_count); case "$agent_tunnel_count" in ''|*[!0-9]*) agent_tunnel_count=0 ;; esac
+  agent_chain_count=$(kv_get chain_count); case "$agent_chain_count" in ''|*[!0-9]*) agent_chain_count=0 ;; esac
+  agent_chain_protocols=$(kv_get chain_protocols)
+  agent_chain_source_types=$(kv_get chain_source_types)
   if [ "$agent_tunnel_count" -gt 0 ]; then agent_estimated_tunnel=45; else agent_estimated_tunnel=0; fi
-  printf '{"runtimeVersion":"%s","core":"%s","coreVersion":"%s","coreIdentity":"%s","osId":"%s","osVersion":"%s","osPrettyName":"%s","hostname":"%s","currentCommandId":"","configRevision":%s,"pollIntervalSeconds":%s,"cgroupLimitMb":%s,"memoryAvailableMb":%s,"swapReported":%s,"swapTotalMb":%s,"swapFreeMb":%s,"swapUsedMb":%s,"cgroupSwapReported":%s,"cgroupSwapCurrentMb":%s,"cgroupSwapLimitMb":%s,"rssMb":%s,"coreRssMb":%s,"cloudflaredRssMb":%s,"estimatedCoreRssMb":%s,"estimatedCloudflaredRssMb":%s,"quickTunnelStatus":"%s"}\n' \
+  printf '{"runtimeVersion":"%s","core":"%s","coreVersion":"%s","coreIdentity":"%s","osId":"%s","osVersion":"%s","osPrettyName":"%s","hostname":"%s","currentCommandId":"","configRevision":%s,"pollIntervalSeconds":%s,"cgroupLimitMb":%s,"memoryAvailableMb":%s,"swapReported":%s,"swapTotalMb":%s,"swapFreeMb":%s,"swapUsedMb":%s,"cgroupSwapReported":%s,"cgroupSwapCurrentMb":%s,"cgroupSwapLimitMb":%s,"rssMb":%s,"coreRssMb":%s,"cloudflaredRssMb":%s,"estimatedCoreRssMb":%s,"estimatedCloudflaredRssMb":%s,"quickTunnelStatus":"%s","chainInboundCount":%s,"chainProtocols":"%s","chainSourceTypes":"%s"}\n' \
     "${TSUB_RUNTIME_VERSION:-unknown}" "$(json_escape "$agent_core")" "$(json_escape "$agent_core_version")" "$(json_escape "$agent_core_identity")" \
     "$(json_escape "${TSUB_OS:-unknown}")" "$(json_escape "${TSUB_OS_VERSION:-unknown}")" "$(json_escape "${TSUB_OS_PRETTY:-unknown}")" \
     "$(json_escape "${TSUB_HOSTNAME:-unknown}")" "$agent_config_revision" "$(agent_poll_interval)" \
     "${TSUB_MEMORY_MB:-0}" "${TSUB_MEMORY_AVAILABLE_MB:-0}" "${TSUB_SWAP_REPORTED:-false}" "${TSUB_SWAP_TOTAL_MB:-0}" "${TSUB_SWAP_FREE_MB:-0}" "${TSUB_SWAP_USED_MB:-0}" \
     "${TSUB_CGROUP_SWAP_REPORTED:-false}" "${TSUB_CGROUP_SWAP_CURRENT_MB:-0}" "${TSUB_CGROUP_SWAP_LIMIT_MB:-0}" \
-    "$agent_rss" "$agent_core_rss" "$agent_tunnel_rss" "$agent_estimated_core" "$agent_estimated_tunnel" "$(tunnel_quick_status)" >"$agent_payload"
+    "$agent_rss" "$agent_core_rss" "$agent_tunnel_rss" "$agent_estimated_core" "$agent_estimated_tunnel" "$(tunnel_quick_status)" \
+    "$agent_chain_count" "$(json_escape "$agent_chain_protocols")" "$(json_escape "$agent_chain_source_types")" >"$agent_payload"
   if [ "$agent_heartbeat_only" = true ]; then
     sed -i 's/}$/,"heartbeatOnly":true}/' "$agent_payload"
   fi
@@ -4239,7 +4305,7 @@ main() {
     plan) plan_runtime; emit_event succeeded "$(i18n_text '计划检查完成' 'Plan completed')" ;;
     apply|update|repair) plan_runtime; apply_runtime; record_runtime_change_time; print_runtime_summary "$action" ;;
     status) plan_runtime; load_installed_core; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '状态采集完成' 'Status collected')" ;;
-    doctor) plan_runtime; load_installed_core; validate_config "$TSUB_ETC/config.json"; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '诊断完成' 'Doctor completed')" ;;
+    doctor) plan_runtime; load_installed_core; validate_config "$TSUB_ETC/config.json"; chain_diagnostics; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '诊断完成' 'Doctor completed')" ;;
     list) export_nodes; push_snapshot || i18n_die "节点同步推送失败" "Node synchronization push failed"; emit_event succeeded "$(i18n_text '节点导出完成' 'Nodes exported')" ;;
     traffic) traffic_ensure_rules; traffic_checkpoint ;;
     push) push_snapshot ;;

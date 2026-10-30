@@ -8,6 +8,7 @@ export const DEFAULT_REUSE_OPTIONS = Object.freeze({
   credentials: false,
   warpIdentity: false,
   subscription: false,
+  chainUpstream: false,
   nodeName: true
 });
 
@@ -99,6 +100,13 @@ export function buildReusableDeploymentConfig(template = {}, options = {}, makeI
     }));
   } else if (config.inbounds.length) {
     config.inbounds = config.inbounds.map(item => ({ ...item, outbound: '' }));
+  }
+  if (!settings.chainUpstream) {
+    config.inbounds = config.inbounds.map(item => {
+      if (item.outbound !== 'chain') return item;
+      const { chain: _chain, ...safeItem } = item;
+      return { ...safeItem, outbound: 'direct' };
+    });
   }
 
   if (!settings.credentials) {

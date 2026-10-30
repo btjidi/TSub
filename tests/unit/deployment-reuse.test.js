@@ -54,4 +54,20 @@ describe('deployment reuse template conversion', () => {
   it('summarizes only non-sensitive template metadata', () => {
     expect(deploymentReuseSummary(template)).toMatchObject({ schemaVersion: 2, inboundCount: 1, core: 'sing-box' });
   });
+
+  it('does not reuse a chain upstream unless explicitly enabled', () => {
+    const source = structuredClone(template);
+    source.inbounds[0].outbound = 'chain';
+    source.inbounds[0].chain = {
+      source: { type: 'deployment', sourceId: 'upstream', nodeKey: '0', label: 'Upstream' },
+      snapshot: { protocol: 'vless', server: 'upstream.example.com', port: 443, transport: { type: 'ws' }, tls: { mode: 'tls' } },
+      retainedCredentials: true
+    };
+    const safeDefault = buildReusableDeploymentConfig(source, {}, index => `new-${index}`);
+    expect(safeDefault.inbounds[0].outbound).toBe('direct');
+    expect(safeDefault.inbounds[0]).not.toHaveProperty('chain');
+
+    const reused = buildReusableDeploymentConfig(source, { chainUpstream: true }, index => `new-${index}`);
+    expect(reused.inbounds[0]).toMatchObject({ outbound: 'chain', chain: { retainedCredentials: true, source: { sourceId: 'upstream' } } });
+  });
 });

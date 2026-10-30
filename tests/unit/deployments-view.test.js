@@ -9,6 +9,8 @@ vi.mock('../../src/lib/deployments.js', () => ({
   checkDeploymentEdgePermissions: vi.fn(), cleanupDeploymentCloudflareResources: vi.fn(),
   probeDeploymentEdge: vi.fn(),
   getDeploymentTemplate: vi.fn(),
+  listDeploymentChainSources: vi.fn(() => Promise.resolve({ success: true, data: { items: [], page: 1, totalPages: 1 } })),
+  previewDeploymentChainSource: vi.fn(),
   getDeploymentDefaults: vi.fn(() => Promise.resolve({ success: true, data: {} })),
   listDeploymentOperations: vi.fn(() => Promise.resolve({ success: true, data: [] })),
   listDeployments: vi.fn(() => Promise.resolve({ success: true, data: [] })),
@@ -16,7 +18,7 @@ vi.mock('../../src/lib/deployments.js', () => ({
 }));
 
 import DeploymentsView from '../../src/views/DeploymentsView.vue';
-import { checkDeploymentEdgePermissions, createDeployment, createDeploymentCommand, createRemoteDeploymentCommand, deleteDeployment, getDeploymentTemplate, listDeploymentOperations, listDeployments, probeDeploymentEdge, restoreDeploymentSource, saveDeploymentDefaults } from '../../src/lib/deployments.js';
+import { checkDeploymentEdgePermissions, createDeployment, createDeploymentCommand, createRemoteDeploymentCommand, deleteDeployment, getDeploymentTemplate, listDeploymentChainSources, listDeploymentOperations, listDeployments, previewDeploymentChainSource, probeDeploymentEdge, restoreDeploymentSource, saveDeploymentDefaults } from '../../src/lib/deployments.js';
 import { useDataStore } from '../../src/stores/useDataStore.js';
 import { createI18n } from '../../src/i18n/index.js';
 
@@ -203,6 +205,34 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
     await firewallMode.setValue('false');
     expect(firewallMode.element.value).toBe('false');
     expect(wrapper.html()).not.toContain('mt-32');
+  });
+
+  it('loads and previews a fail-closed chain upstream for an individual inbound', async () => {
+    listDeploymentChainSources.mockResolvedValue({ success: true, data: { items: [{
+      key: 'deployment:upstream:0', sourceType: 'deployment', sourceId: 'upstream', nodeKey: '0', name: 'Tokyo Upstream',
+      protocol: 'vless', address: 'upstream.example.com', port: 443, transport: 'ws', routeType: 'cdn',
+      preview: { protocol: 'vless', name: 'Tokyo Upstream', server: 'upstream.example.com', port: 443, transport: { type: 'ws' }, tls: { mode: 'tls' } }
+    }], page: 1, totalPages: 1 } });
+    previewDeploymentChainSource.mockResolvedValue({ success: true, data: {
+      protocol: 'tuic', name: 'Pasted TUIC', address: 'tuic.example.com', port: 443, transport: 'quic', routeType: 'direct',
+      preview: { protocol: 'tuic', name: 'Pasted TUIC', server: 'tuic.example.com', port: 443, transport: { type: 'quic' }, tls: { mode: 'tls' } }
+    } });
+    wrapper = mountView();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="inbound-outbound-0"]').setValue('chain');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="inbound-chain-0"]').text()).toContain('不会回退服务器直连');
+    expect(listDeploymentChainSources).toHaveBeenCalledWith(expect.objectContaining({ source: 'deployment' }));
+    await wrapper.get('[data-testid="chain-source-item-0"]').trigger('click');
+    expect(wrapper.get('[data-testid="inbound-chain-0"]').text()).toContain('upstream.example.com:443');
+
+    await wrapper.get('[data-testid="chain-source-type-url-0"]').trigger('click');
+    await wrapper.get('[data-testid="chain-url-0"]').setValue('tuic://uuid:secret@tuic.example.com:443');
+    await wrapper.get('[data-testid="chain-preview-0"]').trigger('click');
+    await flushPromises();
+    expect(previewDeploymentChainSource).toHaveBeenCalledWith('tuic://uuid:secret@tuic.example.com:443');
+    expect(wrapper.get('[data-testid="inbound-chain-0"]').text()).toContain('Pasted TUIC');
   });
 
   it('shows certificate inputs next to the selected certificate strategy', async () => {

@@ -173,7 +173,8 @@ describe('deployment agent control plane', { timeout: 15_000 }, () => {
       cgroupLimitMb: 976, memoryAvailableMb: 901, rssMb: 88, coreRssMb: 43, cloudflaredRssMb: 45,
       swapReported: true, swapTotalMb: 512, swapFreeMb: 384, swapUsedMb: 128,
       cgroupSwapReported: true, cgroupSwapCurrentMb: 32, cgroupSwapLimitMb: 256,
-      estimatedCoreRssMb: 44, estimatedCloudflaredRssMb: 45
+      estimatedCoreRssMb: 44, estimatedCloudflaredRssMb: 45,
+      chainInboundCount: 2, chainProtocols: 'vless,tuic<script>', chainSourceTypes: 'deployment,url/password'
     });
     const state = await listAgentState(storage, 'deploy-agent');
     expect(state.lastSeenAt).not.toBe(first.last_seen_at);
@@ -183,7 +184,8 @@ describe('deployment agent control plane', { timeout: 15_000 }, () => {
       cgroupLimitMb: 976, memoryAvailableMb: 901, rssMb: 88, coreRssMb: 43, cloudflaredRssMb: 45,
       swapReported: true, swapTotalMb: 512, swapFreeMb: 384, swapUsedMb: 128,
       cgroupSwapReported: true, cgroupSwapCurrentMb: 32, cgroupSwapLimitMb: 256,
-      estimatedCoreRssMb: 44, estimatedCloudflaredRssMb: 45
+      estimatedCoreRssMb: 44, estimatedCloudflaredRssMb: 45,
+      chainInboundCount: 2, chainProtocols: 'vless,tuicscript', chainSourceTypes: 'deployment,urlpassword'
     }));
   });
 

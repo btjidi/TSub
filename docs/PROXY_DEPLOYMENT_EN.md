@@ -55,6 +55,29 @@ The generator can use manual configuration or reuse public settings from a contr
 
 After loading a template, individual inbound protocols can be checked for reuse, with all inbounds selected by default. Reuse always creates a new deployment record, never modifies the source, and never reads live server configuration. UUIDs, passwords, Reality/WARP private keys, subscription tokens, Agent tokens, Cloudflare API tokens, and managed Tunnel resources are not reused by default. Even when credential reuse is selected, the template API returns redacted values and the browser cannot recover original secrets. Run “Update Configuration” on the source first when its saved controller configuration must match the server state.
 
+## Single-hop chain proxy
+
+A chain proxy forwards all traffic from one inbound through exactly one upstream node:
+
+```text
+Client → TSub entry server → upstream proxy node → destination
+```
+
+**Chain Proxy** is available only on each inbound's individual outbound selector; the global outbound remains direct or WARP. Different inbounds may choose different upstreams, but the first release supports one upstream per inbound and does not provide multi-hop chains, automatic benchmarks, load balancing, or failover.
+
+Sources include generated nodes from existing deployments, cached nodes from non-deployment subscriptions, manual nodes, and pasted node links. Candidate lists expose only the name, protocol, address, port, transport, and direct/CDN/Tunnel label. The backend parses the selected node and stores UUIDs, passwords, REALITY/WireGuard private keys, and other credentials only inside the target deployment's encrypted configuration. Lists, templates, logs, operation history, and browser forms never return those plaintext values. The current deployment and any deployment already using a chain are excluded to prevent loops and implicit multi-hop routes.
+
+| Upstream protocol | Xray | sing-box | Notes |
+| --- | --- | --- | --- |
+| VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP/HTTPS | Supported | Supported | Public TLS/REALITY and WS, gRPC, or XHTTP settings are snapshotted |
+| Hysteria2, WireGuard | Supported | Supported | UDP/tunnel parameters must be complete |
+| TUIC, AnyTLS, Naive, Snell | Not supported | Supported | Automatic core selection restricts these to sing-box |
+| SSR, SSD | Not supported | Not supported | Rejected in the first release |
+
+Automatic core selection intersects server-inbound compatibility with upstream-client compatibility. A manually selected incompatible core blocks submission, and a NaiveProxy server inbound cannot use a chain outbound. Each chain inbound receives a unique `chain-<inbound-id>` outbound and an exact route. No selector, fallback, or direct backup is emitted, so an unavailable upstream fails closed and cannot leak the entry server's egress IP. Destination DNS is delegated to the upstream whenever the protocol permits; the upstream server hostname is still resolved by the entry server network.
+
+Update and rollback operations restore the encrypted snapshot already stored by the target deployment instead of reading the original source again. To follow source changes, select it again and run **Update Configuration**. Diagnostics check upstream DNS, TCP/UDP reachability, outbound tags, and route rules without printing credentials or complete links. CDN/Tunnel upstreams may add latency; failed reachability checks should be investigated against the entry server's DNS, firewall, and egress path.
+
 ## Low-memory operation
 
 `tiny` is at most 96MB, `small` is 97–192MB, and `standard` is above 192MB. Tiny runs downloads, validation, and configuration tests serially and permits only one main core. Estimated RSS must remain below 80% of the cgroup limit. Xray and sing-box receive a Go memory limit on Tiny nodes, and the kernel is directed to reclaim the core or installer before SSH/Agent during OOM pressure. Runtime does not require Node, Python, jq, compilers, or unzip.

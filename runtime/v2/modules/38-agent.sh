@@ -323,14 +323,18 @@ agent_poll_once() {
   agent_rss=$((agent_core_rss + agent_tunnel_rss))
   case "$agent_core" in xray) agent_estimated_core=42 ;; sing-box) agent_estimated_core=44 ;; *) agent_estimated_core=0 ;; esac
   agent_tunnel_count=$(kv_get tunnel_count); case "$agent_tunnel_count" in ''|*[!0-9]*) agent_tunnel_count=0 ;; esac
+  agent_chain_count=$(kv_get chain_count); case "$agent_chain_count" in ''|*[!0-9]*) agent_chain_count=0 ;; esac
+  agent_chain_protocols=$(kv_get chain_protocols)
+  agent_chain_source_types=$(kv_get chain_source_types)
   if [ "$agent_tunnel_count" -gt 0 ]; then agent_estimated_tunnel=45; else agent_estimated_tunnel=0; fi
-  printf '{"runtimeVersion":"%s","core":"%s","coreVersion":"%s","coreIdentity":"%s","osId":"%s","osVersion":"%s","osPrettyName":"%s","hostname":"%s","currentCommandId":"","configRevision":%s,"pollIntervalSeconds":%s,"cgroupLimitMb":%s,"memoryAvailableMb":%s,"swapReported":%s,"swapTotalMb":%s,"swapFreeMb":%s,"swapUsedMb":%s,"cgroupSwapReported":%s,"cgroupSwapCurrentMb":%s,"cgroupSwapLimitMb":%s,"rssMb":%s,"coreRssMb":%s,"cloudflaredRssMb":%s,"estimatedCoreRssMb":%s,"estimatedCloudflaredRssMb":%s,"quickTunnelStatus":"%s"}\n' \
+  printf '{"runtimeVersion":"%s","core":"%s","coreVersion":"%s","coreIdentity":"%s","osId":"%s","osVersion":"%s","osPrettyName":"%s","hostname":"%s","currentCommandId":"","configRevision":%s,"pollIntervalSeconds":%s,"cgroupLimitMb":%s,"memoryAvailableMb":%s,"swapReported":%s,"swapTotalMb":%s,"swapFreeMb":%s,"swapUsedMb":%s,"cgroupSwapReported":%s,"cgroupSwapCurrentMb":%s,"cgroupSwapLimitMb":%s,"rssMb":%s,"coreRssMb":%s,"cloudflaredRssMb":%s,"estimatedCoreRssMb":%s,"estimatedCloudflaredRssMb":%s,"quickTunnelStatus":"%s","chainInboundCount":%s,"chainProtocols":"%s","chainSourceTypes":"%s"}\n' \
     "${TSUB_RUNTIME_VERSION:-unknown}" "$(json_escape "$agent_core")" "$(json_escape "$agent_core_version")" "$(json_escape "$agent_core_identity")" \
     "$(json_escape "${TSUB_OS:-unknown}")" "$(json_escape "${TSUB_OS_VERSION:-unknown}")" "$(json_escape "${TSUB_OS_PRETTY:-unknown}")" \
     "$(json_escape "${TSUB_HOSTNAME:-unknown}")" "$agent_config_revision" "$(agent_poll_interval)" \
     "${TSUB_MEMORY_MB:-0}" "${TSUB_MEMORY_AVAILABLE_MB:-0}" "${TSUB_SWAP_REPORTED:-false}" "${TSUB_SWAP_TOTAL_MB:-0}" "${TSUB_SWAP_FREE_MB:-0}" "${TSUB_SWAP_USED_MB:-0}" \
     "${TSUB_CGROUP_SWAP_REPORTED:-false}" "${TSUB_CGROUP_SWAP_CURRENT_MB:-0}" "${TSUB_CGROUP_SWAP_LIMIT_MB:-0}" \
-    "$agent_rss" "$agent_core_rss" "$agent_tunnel_rss" "$agent_estimated_core" "$agent_estimated_tunnel" "$(tunnel_quick_status)" >"$agent_payload"
+    "$agent_rss" "$agent_core_rss" "$agent_tunnel_rss" "$agent_estimated_core" "$agent_estimated_tunnel" "$(tunnel_quick_status)" \
+    "$agent_chain_count" "$(json_escape "$agent_chain_protocols")" "$(json_escape "$agent_chain_source_types")" >"$agent_payload"
   if [ "$agent_heartbeat_only" = true ]; then
     sed -i 's/}$/,"heartbeatOnly":true}/' "$agent_payload"
   fi

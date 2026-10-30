@@ -3,12 +3,16 @@ import {
   edgeCompatibilityReason, isCloudflareHttpsPort, isConfigurableTransportProtocol, isQuickTunnelCompatible, protocolCapability,
   tlsModesForProtocol, transportsForProtocol
 } from '../../shared/deployment-capabilities.js';
+import {
+  chainCoresForProtocol, compileSingBoxChainOutbound, compileXrayChainOutbound,
+  normalizeChainSnapshot, normalizeChainSource, publicChainSummary
+} from './deployment-chain.js';
 
 const PROTOCOLS = new Set(Object.keys(PROTOCOL_CAPABILITIES));
 const TRANSPORTS = new Set(ALL_TRANSPORTS);
 const XHTTP_MODES = new Set(['auto', 'packet-up', 'stream-up', 'stream-one']);
 const XHTTP_VERSIONS = new Set(['auto', 'h2', 'h3']);
-const OUTBOUND_POLICIES = new Set(['direct', 'warp-auto', 'warp-v4', 'warp-v6']);
+const OUTBOUND_POLICIES = new Set(['direct', 'warp-auto', 'warp-v4', 'warp-v6', 'chain']);
 const EDGE_MODES = new Set(['disabled', 'manual', 'quick', 'managed']);
 const EDGE_NODE_MODES = new Set(['direct', 'append', 'only']);
 const TIERS = new Set(['auto', 'tiny', 'small', 'standard']);
@@ -432,7 +436,8 @@ function normalizeInbound(raw, index) {
   if (tlsMode !== 'none' && !validHostname(text(raw?.tls?.serverName, 253))) throw new Error(`入站 ${index + 1} 的 TLS 域名无效`);
   const outbound = text(raw?.outbound || 'direct', 16);
   if (!OUTBOUND_POLICIES.has(outbound)) throw new Error('出站策略无效');
-  if (!protocolCapability(protocol).outbounds.includes(outbound)) throw new Error(`${protocol} 不支持 ${outbound} 出站`);
+  if (outbound !== 'chain' && !protocolCapability(protocol).outbounds.includes(outbound)) throw new Error(`${protocol} 不支持 ${outbound} 出站`);
+  if (outbound === 'chain' && protocol === 'naive') throw new Error('Naive 入站不能配置链式代理出口');
   const edgeMode = text(raw?.edgeMode || 'direct', 16).toLowerCase();
   if (!EDGE_NODE_MODES.has(edgeMode)) throw new Error('CDN 节点模式无效');
   const credentials = {};
@@ -470,6 +475,10 @@ function normalizeInbound(raw, index) {
   }
   const udpHopInterval = raw?.transportOptions?.udpHopInterval === '' || raw?.transportOptions?.udpHopInterval == null ? 0 : Number(raw.transportOptions.udpHopInterval);
   if (!Number.isInteger(udpHopInterval) || udpHopInterval < 0 || (udpHopInterval > 0 && udpHopInterval < 5) || udpHopInterval > 300) throw new Error('Hysteria2 跳跃周期必须为 5-300 秒');
+  const chain = outbound === 'chain' ? {
+    source: normalizeChainSource(raw?.chain?.source || {}, raw?.chain?.snapshot || {}),
+    snapshot: normalizeChainSnapshot(raw?.chain?.snapshot || {})
+  } : null;
   return {
     id: text(raw?.id || `inbound-${index + 1}`, 64), name: nodeName(raw?.name), protocol, port: port(raw?.port), transport,
     listen: text(raw?.listen || '0.0.0.0', 64), outbound, edgeMode,
@@ -478,7 +487,8 @@ function normalizeInbound(raw, index) {
       path: text(raw?.transportOptions?.path || '/', 512), host: text(raw?.transportOptions?.host, 253), serviceName: text(raw?.transportOptions?.serviceName || 'tsub', 128),
       xhttpMode, xhttpVersion, bandwidthUp, bandwidthDown, udpHopPorts, udpHopInterval
     },
-    credentials
+    credentials,
+    ...(chain ? { chain } : {})
   };
 }
 
@@ -594,7 +604,11 @@ function chooseCore(inbounds, requested) {
     return 'naive';
   }
   if (!['auto', 'xray', 'sing-box'].includes(requested)) throw new Error('核心选项无效');
-  const candidates = compatibleCoresForInbounds(inbounds.map(item => ({ protocol: item.protocol, transport: item.transport, tlsMode: item.tls.mode, outbound: item.outbound })));
+  let candidates = compatibleCoresForInbounds(inbounds.map(item => ({ protocol: item.protocol, transport: item.transport, tlsMode: item.tls.mode, outbound: item.outbound === 'chain' ? 'direct' : item.outbound })));
+  for (const inbound of inbounds.filter(item => item.outbound === 'chain')) {
+    const upstreamCores = chainCoresForProtocol(inbound.chain.snapshot.protocol);
+    candidates = candidates.filter(core => upstreamCores.includes(core));
+  }
   if (!candidates.length) throw new Error('所选协议、传输、TLS 或出站需要双核心或不受支持，当前单核心部署无法承载该组合');
   if (requested !== 'auto' && !candidates.includes(requested)) throw new Error(`${requested === 'xray' ? 'Xray' : 'sing-box'} 核心不支持当前协议、传输或 TLS 组合`);
   if (requested !== 'auto') return requested;
@@ -615,7 +629,7 @@ export function normalizeV2Config(raw = {}) {
   const channel = text(raw.runtime?.channel || 'stable', 16);
   if (!CHANNELS.has(channel)) throw new Error('核心版本通道无效');
   const core = chooseCore(inbounds, text(raw.runtime?.core || 'auto', 16));
-  const needsWarp = inbounds.some(item => item.outbound !== 'direct');
+  const needsWarp = inbounds.some(item => item.outbound.startsWith('warp-'));
   const warpProvisioning = text(raw.warp?.provisioning || (raw.warp?.privateKey ? 'manual' : 'auto'), 16).toLowerCase();
   if (!['auto', 'manual'].includes(warpProvisioning)) throw new Error('WARP 凭据来源无效');
   const warp = {
@@ -692,7 +706,12 @@ export function normalizeV2Config(raw = {}) {
       : tunnels;
   return {
     schemaVersion: 2, inbounds,
-    outbounds: ['direct', 'warp-auto', 'warp-v4', 'warp-v6'].map(type => ({ type })),
+    outbounds: [
+      ...['direct', 'warp-auto', 'warp-v4', 'warp-v6'].map(type => ({ type })),
+      ...inbounds.filter(item => item.outbound === 'chain').map(item => ({
+        type: 'chain', inboundId: item.id, protocol: item.chain.snapshot.protocol, sourceType: item.chain.source.type
+      }))
+    ],
     tunnels: edgeTunnels,
     certificate,
     runtime: {
@@ -734,7 +753,18 @@ function maskObject(value, key = '') {
   return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [childKey, maskObject(childValue, childKey)]));
 }
 
-export function publicV2Config(config) { return maskObject(config); }
+export function publicV2Config(config) {
+  const masked = maskObject(config);
+  masked.inbounds = (masked.inbounds || []).map((item, index) => {
+    if (config.inbounds?.[index]?.outbound !== 'chain') return item;
+    return { ...item, chain: publicChainSummary(config.inbounds[index].chain) };
+  });
+  return masked;
+}
+
+function chainOutboundTag(inbound) {
+  return `chain-${String(inbound.id || 'inbound').replace(/[^A-Za-z0-9_-]/g, '_')}`;
+}
 
 function realityMarker(item, kind) {
   const id = String(item.id || 'inbound').replace(/[^A-Za-z0-9_]/g, '_');
@@ -786,7 +816,7 @@ function compileXray(config) {
     return inbound;
   });
   const outbounds = [{ tag: 'direct', protocol: 'freedom' }];
-  for (const tag of new Set(config.inbounds.map(item => item.outbound).filter(item => item !== 'direct'))) {
+  for (const tag of new Set(config.inbounds.map(item => item.outbound).filter(item => item.startsWith('warp-')))) {
     const automatic = config.warp.provisioning === 'auto';
     const ipv4 = automatic ? '__TSUB_WARP_IPV4__' : config.warp.ipv4;
     const ipv6 = automatic ? '__TSUB_WARP_IPV6__' : config.warp.ipv6;
@@ -802,7 +832,10 @@ function compileXray(config) {
       }
     });
   }
-  const result = { log: { loglevel: 'warning' }, inbounds, outbounds, routing: { rules: config.inbounds.filter(item => item.outbound !== 'direct').map(item => ({ type: 'field', inboundTag: [item.id], outboundTag: item.outbound })) } };
+  for (const inbound of config.inbounds.filter(item => item.outbound === 'chain')) {
+    outbounds.push(compileXrayChainOutbound(inbound.chain, chainOutboundTag(inbound)));
+  }
+  const result = { log: { loglevel: 'warning' }, inbounds, outbounds, routing: { rules: config.inbounds.filter(item => item.outbound !== 'direct').map(item => ({ type: 'field', inboundTag: [item.id], outboundTag: item.outbound === 'chain' ? chainOutboundTag(item) : item.outbound })) } };
   if (config.subscription.server.traffic.enabled) {
     result.stats = {};
     result.policy = { system: { statsInboundUplink: true, statsInboundDownlink: true } };
@@ -837,7 +870,7 @@ function compileSingBox(config) {
   });
   const outbounds = [{ type: 'direct', tag: 'direct' }];
   const endpoints = [];
-  for (const tag of new Set(config.inbounds.map(item => item.outbound).filter(item => item !== 'direct'))) {
+  for (const tag of new Set(config.inbounds.map(item => item.outbound).filter(item => item.startsWith('warp-')))) {
     const automatic = config.warp.provisioning === 'auto';
     const ipv4 = automatic ? '__TSUB_WARP_IPV4__' : config.warp.ipv4;
     const ipv6 = automatic ? '__TSUB_WARP_IPV6__' : config.warp.ipv6;
@@ -856,7 +889,12 @@ function compileSingBox(config) {
       }]
     });
   }
-  const result = { log: { level: 'warn', timestamp: true }, inbounds, outbounds, route: { rules: config.inbounds.filter(item => item.outbound !== 'direct').map(item => ({ inbound: [item.id], outbound: item.outbound })) } };
+  for (const inbound of config.inbounds.filter(item => item.outbound === 'chain')) {
+    const compiled = compileSingBoxChainOutbound(inbound.chain, chainOutboundTag(inbound));
+    if (compiled.type === 'wireguard') endpoints.push(compiled);
+    else outbounds.push(compiled);
+  }
+  const result = { log: { level: 'warn', timestamp: true }, inbounds, outbounds, route: { rules: config.inbounds.filter(item => item.outbound !== 'direct').map(item => ({ inbound: [item.id], outbound: item.outbound === 'chain' ? chainOutboundTag(item) : item.outbound })) } };
   if (endpoints.length) result.endpoints = endpoints;
   if (config.subscription.server.traffic.enabled) {
     result.experimental = {

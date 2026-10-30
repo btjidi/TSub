@@ -42,7 +42,7 @@ main() {
     plan) plan_runtime; emit_event succeeded "$(i18n_text '计划检查完成' 'Plan completed')" ;;
     apply|update|repair) plan_runtime; apply_runtime; record_runtime_change_time; print_runtime_summary "$action" ;;
     status) plan_runtime; load_installed_core; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '状态采集完成' 'Status collected')" ;;
-    doctor) plan_runtime; load_installed_core; validate_config "$TSUB_ETC/config.json"; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '诊断完成' 'Doctor completed')" ;;
+    doctor) plan_runtime; load_installed_core; validate_config "$TSUB_ETC/config.json"; chain_diagnostics; TSUB_CORE_RSS=$(process_rss_mb); TSUB_CLOUDFLARED_RSS=$(tunnel_health_rss 2>/dev/null || printf 0); TSUB_CURRENT_RSS=$((TSUB_CORE_RSS + TSUB_CLOUDFLARED_RSS)); emit_event succeeded "$(i18n_text '诊断完成' 'Doctor completed')" ;;
     list) export_nodes; push_snapshot || i18n_die "节点同步推送失败" "Node synchronization push failed"; emit_event succeeded "$(i18n_text '节点导出完成' 'Nodes exported')" ;;
     traffic) traffic_ensure_rules; traffic_checkpoint ;;
     push) push_snapshot ;;

@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { storeToRefs } from 'pinia';
 import { useDataStore } from '../stores/useDataStore.js';
 import { useToastStore } from '../stores/toast.js';
-import { DEPLOYMENT_ACTIONS, NATIVE_TRANSPORT_LABELS, OUTBOUND_OPTIONS, PROTOCOL_OPTIONS, RESOURCE_TIERS, RUNTIME_VERSION, TRANSPORT_OPTIONS } from '../constants/deployment-options.js';
+import { DEPLOYMENT_ACTIONS, INBOUND_OUTBOUND_OPTIONS, NATIVE_TRANSPORT_LABELS, OUTBOUND_OPTIONS, PROTOCOL_OPTIONS, RESOURCE_TIERS, RUNTIME_VERSION, TRANSPORT_OPTIONS } from '../constants/deployment-options.js';
 import {
   canonicalTransport, compatibleCoresForInbound, compatibleCoresForInbounds,
   edgeCompatibilityReason, isConfigurableTransportProtocol, isQuickTunnelCompatible, protocolCapability,
@@ -11,7 +11,7 @@ import {
 } from '../../shared/deployment-capabilities.js';
 import {
   checkDeploymentEdgePermissions, cleanupDeploymentCloudflareResources, createDeployment, createDeploymentCommand, createRemoteDeploymentCommand, deleteDeployment, getDeploymentDefaults, getDeploymentTemplate, provisionLocalExecutor, restoreDeploymentSource,
-  listDeploymentOperations, listDeployments, probeDeploymentEdge, resetDeploymentDefaults, saveDeploymentDefaults
+  listDeploymentChainSources, listDeploymentOperations, listDeployments, previewDeploymentChainSource, probeDeploymentEdge, resetDeploymentDefaults, saveDeploymentDefaults
 } from '../lib/deployments.js';
 import { useI18n } from '../i18n/index.js';
 import { DEFAULT_REUSE_OPTIONS, buildReusableDeploymentConfig, deploymentReuseSummary } from '../lib/deployment-reuse.js';
@@ -59,6 +59,12 @@ const PREFERRED_DOMAIN_PRESETS = Object.freeze([
   { key: 'nexusMods', address: 'staticdelivery.nexusmods.com' },
   { key: 'timeIs', address: 'time.is' }
 ]);
+const CHAIN_SOURCE_TYPES = Object.freeze(['deployment', 'subscription', 'manual', 'url']);
+const CHAIN_PROTOCOL_CORES = Object.freeze({
+  vless: ['xray', 'sing-box'], vmess: ['xray', 'sing-box'], trojan: ['xray', 'sing-box'], shadowsocks: ['xray', 'sing-box'],
+  socks5: ['xray', 'sing-box'], http: ['xray', 'sing-box'], https: ['xray', 'sing-box'], hysteria2: ['xray', 'sing-box'],
+  wireguard: ['xray', 'sing-box'], tuic: ['sing-box'], anytls: ['sing-box'], naive: ['sing-box'], snell: ['sing-box']
+});
 const activeTab = ref(readPersistedDeploymentTab());
 persistDeploymentTab(activeTab.value);
 watch(activeTab, persistDeploymentTab);
@@ -149,7 +155,9 @@ const newInbound = () => ({
   id: `inbound-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, protocol: 'vless', port: '', expanded: false,
   name: '', transport: '', outbound: '', tlsMode: '', serverName: '', host: '', uuid: '', username: '', password: '', path: '', serviceName: '',
   certificatePath: '', keyPath: '', realityPrivateKey: '', realityPublicKey: '', shortId: '',
-  xhttpMode: 'auto', xhttpVersion: 'auto', bandwidthUp: '', bandwidthDown: '', udpHopPorts: '', udpHopInterval: '', edgeMode: 'direct'
+  xhttpMode: 'auto', xhttpVersion: 'auto', bandwidthUp: '', bandwidthDown: '', udpHopPorts: '', udpHopInterval: '', edgeMode: 'direct',
+  chainSourceType: 'deployment', chainSource: null, chainPreview: null, chainUrl: '', chainSearch: '', chainProtocol: '',
+  chainSources: [], chainLoading: false, chainPage: 1, chainTotalPages: 1
 });
 
 const global = reactive(blankGlobal());
@@ -191,10 +199,13 @@ const pendingOperationMessage = computed(() => {
   });
 });
 const estimatedCore = computed(() => {
-  const candidates = compatibleCoresForInbounds(form.inbounds.map(item => capabilityShape(item)));
+  let candidates = compatibleCoresForInbounds(form.inbounds.map(item => capabilityShape(item)));
+  for (const inbound of form.inbounds.filter(item => effective(item, 'outbound') === 'chain' && item.chainPreview?.protocol)) {
+    candidates = candidates.filter(core => (CHAIN_PROTOCOL_CORES[inbound.chainPreview.protocol] || []).includes(core));
+  }
   return candidates.includes('xray') ? 'xray' : (candidates[0] || '');
 });
-const needsWarp = computed(() => form.inbounds.some(item => effective(item, 'outbound') !== 'direct'));
+const needsWarp = computed(() => form.inbounds.some(item => effective(item, 'outbound').startsWith('warp-')));
 const edgeEnabled = computed(() => Boolean(global.edge?.mode && global.edge.mode !== 'disabled'));
 const quickInboundCandidates = computed(() => form.inbounds.filter(item => quickInboundEligible(item)));
 const selectedCore = computed(() => global.runtime.core === 'auto' ? estimatedCore.value : global.runtime.core);
@@ -215,7 +226,7 @@ const sharedTlsScope = computed(() => {
 });
 const compatibilityErrors = computed(() => {
   const errors = form.inbounds.map(inbound => inboundCompatibilityError(inbound)).filter(Boolean);
-  if (!compatibleCoresForInbounds(form.inbounds.map(item => capabilityShape(item))).length) errors.push(t('deployments.errors.coreCombinationConflict'));
+  if (!estimatedCore.value) errors.push(t('deployments.errors.coreCombinationConflict'));
   return errors;
 });
 const edgeDetectionReady = computed(() => ['manual', 'managed'].includes(global.edge.mode)
@@ -354,6 +365,9 @@ function systemDetailRows(deployment) {
   const subscription = configSummary.subscriptionServer?.enabled
     ? `${configSummary.subscriptionServer.port || '-'}${configSummary.subscriptionServer.trafficEnabled ? ` · ${t('deployments.trafficSummary')}` : ''}`
     : t('common.disabled');
+  const chainSummary = configSummary.chain?.count
+    ? [t('deployments.record.chainCount', { count: configSummary.chain.count }), ...(configSummary.chain.protocols || []), ...(configSummary.chain.sourceTypes || []).map(type => t(`deployments.chain.sources.${type}`))].join(' · ')
+    : t('common.disabled');
   return [
     [t('deployments.record.nodeAddress'), deploymentAddressSummary(deployment)],
     [t('deployments.record.addressMode'), configSummary.addressMode || '-'],
@@ -365,6 +379,7 @@ function systemDetailRows(deployment) {
     [t('deployments.record.containerInit'), [capabilitiesInfo.container, capabilitiesInfo.init].filter(Boolean).join(' / ') || '-'],
     [t('deployments.record.memory'), deploymentMemorySummary(deployment)],
     [t('deployments.record.protocols'), protocols],
+    [t('deployments.record.chainUpstreams'), chainSummary],
     [t('deployments.record.tls'), configSummary.selfSigned ? t('deployments.selfSignedSummary') : '-'],
     [t('deployments.record.subscription'), subscription],
     [t('deployments.record.trafficBackend'), trafficBackendText(capabilitiesInfo.trafficBackend) || '-'],
@@ -380,6 +395,7 @@ function heartbeatDetailRows(deployment) {
     [t('deployments.record.pollInterval'), heartbeat.pollIntervalSeconds ? t('deployments.options.seconds', { seconds: heartbeat.pollIntervalSeconds }) : '-'],
     [t('deployments.record.hostname'), heartbeat.hostname || '-'],
     [t('deployments.record.configRevision'), heartbeat.configRevision || deployment.configRevision || '-'],
+    [t('deployments.record.chainUpstreams'), heartbeat.chainInboundCount ? [t('deployments.record.chainCount', { count: heartbeat.chainInboundCount }), heartbeat.chainProtocols, heartbeat.chainSourceTypes].filter(Boolean).join(' · ') : t('common.disabled')],
     [t('deployments.record.currentCommand'), heartbeat.currentCommandId || t('deployments.record.noCurrentCommand')]
   ].map(([label, value]) => ({ label, value }));
 }
@@ -431,11 +447,12 @@ function updateSharedServerName() {
   syncSelfSignedTlsServerNames();
 }
 function capabilityShape(inbound, overrides = {}) {
+  const outbound = overrides.outbound || effective(inbound, 'outbound');
   return {
     protocol: inbound.protocol,
     transport: overrides.transport || effective(inbound, 'transport'),
     tlsMode: overrides.tlsMode || effective(inbound, 'tlsMode'),
-    outbound: overrides.outbound || effective(inbound, 'outbound')
+    outbound: outbound === 'chain' ? 'direct' : outbound
   };
 }
 function tlsOptions(inbound) {
@@ -446,7 +463,14 @@ function nativeTransportLabel(inbound) { return NATIVE_TRANSPORT_LABELS[inbound.
 function transportConfigurable(inbound) { return isConfigurableTransportProtocol(inbound.protocol); }
 function coreSupportsProtocol(core, protocol) { return protocolInfo(protocol).cores.includes(core); }
 function protocolDisabled(protocol) { return global.runtime.core !== 'auto' && !coreSupportsProtocol(global.runtime.core, protocol); }
-function outboundDisabled(inbound, outbound) { return !protocolCapability(inbound.protocol).outbounds.includes(outbound); }
+function outboundDisabled(inbound, outbound) {
+  if (outbound === 'chain') {
+    if (inbound.protocol === 'naive') return true;
+    const cores = inbound.chainPreview?.protocol ? (CHAIN_PROTOCOL_CORES[inbound.chainPreview.protocol] || []) : ['xray', 'sing-box'];
+    return global.runtime.core !== 'auto' && !cores.includes(global.runtime.core);
+  }
+  return !protocolCapability(inbound.protocol).outbounds.includes(outbound);
+}
 function sharedOutboundDisabled(outbound) { return form.inbounds.some(inbound => outboundDisabled(inbound, outbound)); }
 function transportDisabled(inbound, transport) {
   if (!transportConfigurable(inbound) || !transportsForProtocol(inbound.protocol, global.runtime.core).includes(transport)) return true;
@@ -459,6 +483,14 @@ function transportDisabled(inbound, transport) {
   return global.runtime.core === 'auto' ? !candidates.length : !candidates.includes(global.runtime.core);
 }
 function inboundCompatibilityError(inbound) {
+  if (effective(inbound, 'outbound') === 'chain') {
+    if (inbound.protocol === 'naive') return t('deployments.chain.naiveInboundUnsupported');
+    if (!inbound.chainPreview) return t('deployments.chain.sourceRequired');
+    const upstreamCores = CHAIN_PROTOCOL_CORES[inbound.chainPreview.protocol] || [];
+    if (global.runtime.core !== 'auto' && !upstreamCores.includes(global.runtime.core)) {
+      return t('deployments.chain.coreUnsupported', { core: global.runtime.core, protocol: String(inbound.chainPreview.protocol || '').toUpperCase() });
+    }
+  }
   const shape = capabilityShape(inbound);
   if (!transportsForProtocol(shape.protocol).includes(shape.transport)) return t('deployments.errors.protocolTransportUnsupported', { protocol: protocolInfo(inbound.protocol).label, transport: shape.transport });
   if (!tlsModesForProtocol(shape.protocol, shape.transport).includes(shape.tlsMode)) {
@@ -509,6 +541,12 @@ function nodeNamePlaceholder(inbound) {
 
 function updateProtocol(inbound) {
   const capability = protocolCapability(inbound.protocol);
+  if (inbound.protocol === 'naive' && effective(inbound, 'outbound') === 'chain') {
+    inbound.outbound = 'direct';
+    inbound.chainSource = null;
+    inbound.chainPreview = null;
+    inbound.chainUrl = '';
+  }
   inbound.transport = capability?.nativeTransport || '';
   if (inbound.tlsMode && !tlsOptions(inbound).includes(inbound.tlsMode)) inbound.tlsMode = '';
   if (effective(inbound, 'tlsMode') !== 'reality') {
@@ -548,9 +586,69 @@ function updateCore() {
   }
 }
 async function updateOutbound(inbound) {
+  if (effective(inbound, 'outbound') === 'chain') {
+    inbound.expanded = true;
+    if (!inbound.chainSources.length && inbound.chainSourceType !== 'url') await loadChainSources(inbound);
+    return;
+  }
+  inbound.chainSource = null;
+  inbound.chainPreview = null;
+  inbound.chainUrl = '';
   if (!effective(inbound, 'outbound').startsWith('warp')) return;
   await nextTick();
   warpSettingsRef.value?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function loadChainSources(inbound, append = false) {
+  if (!CHAIN_SOURCE_TYPES.includes(inbound.chainSourceType) || inbound.chainSourceType === 'url') return;
+  inbound.chainLoading = true;
+  try {
+    const page = append ? inbound.chainPage + 1 : 1;
+    const result = await listDeploymentChainSources({
+      source: inbound.chainSourceType,
+      query: inbound.chainSearch.trim(),
+      protocol: inbound.chainProtocol,
+      deploymentId: deploymentMode.value === 'update' ? targetDeploymentId.value : '',
+      page,
+      pageSize: 40
+    });
+    const data = result.data || {};
+    inbound.chainSources = append ? [...inbound.chainSources, ...(data.items || [])] : (data.items || []);
+    inbound.chainPage = Number(data.page || page);
+    inbound.chainTotalPages = Number(data.totalPages || 1);
+  } catch {
+    toast.showToast(t('deployments.chain.loadFailed'), 'error');
+  } finally { inbound.chainLoading = false; }
+}
+
+async function setChainSourceType(inbound, type) {
+  inbound.chainSourceType = type;
+  inbound.chainSource = null;
+  inbound.chainPreview = null;
+  inbound.chainUrl = '';
+  inbound.chainSources = [];
+  inbound.chainPage = 1;
+  if (type !== 'url') await loadChainSources(inbound);
+}
+
+function selectChainSource(inbound, item) {
+  inbound.chainSource = {
+    type: item.sourceType, key: item.key, sourceId: item.sourceId, nodeKey: item.nodeKey,
+    label: item.sourceLabel || item.name, routeType: item.routeType || 'direct', refresh: true
+  };
+  inbound.chainPreview = { ...(item.preview || {}), protocol: item.protocol, name: item.name, server: item.address, port: item.port };
+}
+
+async function previewChainUrl(inbound) {
+  if (!inbound.chainUrl.trim()) return toast.showToast(t('deployments.chain.urlRequired'), 'warning');
+  inbound.chainLoading = true;
+  try {
+    const result = await previewDeploymentChainSource(inbound.chainUrl.trim());
+    const item = result.data || {};
+    inbound.chainSource = { type: 'url', key: '', sourceId: '', nodeKey: '', label: item.name || '', routeType: 'direct', refresh: true };
+    inbound.chainPreview = { ...(item.preview || {}), protocol: item.protocol, name: item.name, server: item.address, port: item.port };
+  } catch { toast.showToast(t('deployments.chain.previewFailed'), 'error'); }
+  finally { inbound.chainLoading = false; }
 }
 function updateCertificateMode() {
   if (global.certificate.mode === 'self-signed') syncSelfSignedTlsServerNames();
@@ -912,7 +1010,16 @@ function hydrateDeploymentTemplate(payload, mode, options = {}) {
     realityPrivateKey: preserveSecrets ? visibleSecret(item.tls?.realityPrivateKey) : '', realityPublicKey: preserveSecrets ? visibleSecret(item.tls?.realityPublicKey) : '', shortId: item.tls?.shortId || '',
     xhttpMode: item.transportOptions?.xhttpMode || 'auto', xhttpVersion: item.transportOptions?.xhttpVersion || 'auto',
     bandwidthUp: item.transportOptions?.bandwidthUp || '', bandwidthDown: item.transportOptions?.bandwidthDown || '',
-    udpHopPorts: item.transportOptions?.udpHopPorts || '', udpHopInterval: item.transportOptions?.udpHopInterval || '', edgeMode: item.edgeMode || 'direct'
+    udpHopPorts: item.transportOptions?.udpHopPorts || '', udpHopInterval: item.transportOptions?.udpHopInterval || '', edgeMode: item.edgeMode || 'direct',
+    chainSourceType: item.chain?.source?.type || 'deployment',
+    chainSource: item.chain?.source ? clone(item.chain.source) : null,
+    chainPreview: item.chain?.snapshot ? {
+      ...clone(item.chain.snapshot),
+      name: item.chain.snapshot.name || item.chain.source?.label || '',
+      server: item.chain.snapshot.server || '',
+      protocol: item.chain.snapshot.protocol || '',
+      retainedCredentials: item.chain?.retainedCredentials === true
+    } : null
   }));
   form.inbounds.splice(0, form.inbounds.length, ...(hydratedInbounds.length ? hydratedInbounds : [newInbound()]));
   syncSelfSignedTlsServerNames();
@@ -1200,11 +1307,22 @@ function sparseInbound(item, index) {
     if (item.udpHopPorts) transportOptions.udpHopPorts = item.udpHopPorts;
     if (item.udpHopInterval !== '') transportOptions.udpHopInterval = Number(item.udpHopInterval);
   }
+  const chain = effective(item, 'outbound') === 'chain' && item.chainSource ? {
+    source: item.chainSourceType === 'url'
+      ? { ...clone(item.chainSource), type: 'url', url: item.chainUrl.trim() }
+      : clone(item.chainSource),
+    ...(item.chainPreview?.retainedCredentials ? { retainedCredentials: true } : {})
+  } : null;
+  if (chain && item.chainPreview && item.chainPreview.credentials) chain.snapshot = clone(item.chainPreview);
+  if (chain && item.chainPreview && !chain.snapshot && item.chainPreview.retainedCredentials) {
+    chain.snapshot = clone(item.chainPreview);
+  }
   return {
     id: item.id || `inbound-${index + 1}`, name: item.name.trim(), protocol: item.protocol, port: item.port === '' || item.port === null ? null : Number(item.port),
     ...(item.transport ? { transport: item.transport } : {}), ...(item.outbound ? { outbound: item.outbound } : {}), edgeMode: item.edgeMode || 'direct',
     ...(Object.keys(credentials).length ? { credentials } : {}), ...(Object.keys(tls).length ? { tls } : {}),
-    ...(Object.keys(transportOptions).length ? { transportOptions } : {})
+    ...(Object.keys(transportOptions).length ? { transportOptions } : {}),
+    ...(chain ? { chain } : {})
   };
 }
 
@@ -1249,6 +1367,7 @@ function validateForm() {
     if (inbound.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().length > 80) return t('deployments.errors.nodeNameTooLong');
     if (inbound.uuid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(inbound.uuid)) return t('deployments.errors.protocolUuidInvalid', { protocol: protocolInfo(inbound.protocol).label });
     if (inbound.tlsMode && !tlsOptions(inbound).includes(inbound.tlsMode)) return t('deployments.errors.protocolTlsUnsupported', { protocol: protocolInfo(inbound.protocol).label });
+    if (effective(inbound, 'outbound') === 'chain' && (!inbound.chainSource || !inbound.chainPreview)) return t('deployments.chain.sourceRequired');
   }
   if (compatibilityErrors.value.length) return compatibilityErrors.value[0];
   if (needsWarp.value && global.warp.provisioning === 'auto' && !global.warp.acceptedTerms) return t('deployments.errors.warpTerms');
@@ -1308,7 +1427,7 @@ async function generateInstallCommand() {
       }
       toast.showToast(t(reinstallMode.value ? 'deployments.notices.reinstallCommandGenerated' : 'deployments.notices.updateCommandGenerated'), 'success');
     } else {
-      const reuseEncryptedValues = reuseSourceId.value && (reuseOptions.credentials || reuseOptions.warpIdentity || reuseOptions.subscription);
+      const reuseEncryptedValues = reuseSourceId.value && (reuseOptions.credentials || reuseOptions.warpIdentity || reuseOptions.subscription || reuseOptions.chainUpstream);
       result = await createDeployment({
         name: form.name.trim(), nodeGroup: defaults.deployment?.nodeGroup || '', profileId: defaults.deployment?.profileId || '', config: buildConfig(defaults), outputLanguage: locale.value,
         ...(reuseEncryptedValues ? {
@@ -1318,6 +1437,7 @@ async function generateInstallCommand() {
             credentials: reuseOptions.credentials,
             warpIdentity: reuseOptions.warpIdentity,
             subscription: reuseOptions.subscription,
+            chainUpstream: reuseOptions.chainUpstream,
             inboundIndexes: reuseOptions.inbounds ? [...reuseInboundSelections.value].sort((a, b) => a - b) : [],
             inboundMappings: reuseInboundSecretMappings.value
           }
@@ -1738,6 +1858,7 @@ onBeforeUnmount(() => {
                   <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.credentials" data-testid="reuse-option-credentials" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseCredentials') }}</label>
                   <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.warpIdentity" data-testid="reuse-option-warp" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseWarp') }}</label>
                   <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.subscription" data-testid="reuse-option-subscription" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseSubscription') }}</label>
+                  <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.chainUpstream" data-testid="reuse-option-chain" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseChainUpstream') }}</label>
                   <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.nodeName" data-testid="reuse-option-node-name" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseNodeName') }}</label>
                 </div>
                 <fieldset v-if="reuseOptions.inbounds && reuseInboundChoices.length" data-testid="deployment-reuse-inbound-choices" class="rounded-lg border border-gray-200 p-3 dark:border-white/10">
@@ -1859,13 +1980,43 @@ onBeforeUnmount(() => {
               <label class="col-span-2 min-w-0 text-xs text-gray-500 sm:col-span-1 lg:col-span-1" :for="`inbound-port-${index}`">{{ t('deployments.inbounds.port') }}<input :id="`inbound-port-${index}`" v-model="inbound.port" data-testid="inbound-port" inputmode="numeric" class="mt-1 min-h-10 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" :placeholder="t('deployments.placeholders.random')" /></label>
               <label class="col-span-5 min-w-0 text-xs text-gray-500 sm:col-span-4 sm:col-start-3 sm:row-start-1 lg:col-span-1 lg:col-start-auto lg:row-start-auto">{{ t('deployments.inbounds.nodeName') }}<input v-model="inbound.name" data-testid="inbound-node-name" maxlength="80" class="mt-1 min-h-10 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" :placeholder="nodeNamePlaceholder(inbound)" /></label>
               <div class="col-span-2 col-start-1 row-start-3 min-w-0 text-xs text-gray-500 sm:row-start-2 lg:col-span-1 lg:col-start-auto lg:row-start-auto"><DeploymentHelpLabel :for-id="`inbound-transport-${index}`" :label="t('deployments.inbounds.transport')" :help="t('deployments.help.inboundTransport')" :open="deploymentInfoPopoverKey === generatorHelpKey(`inbound-${index}-transport`)" :test-id="`inbound-transport-help-${index}`" @update:open="value => setDeploymentInfoPopover(generatorHelpKey(`inbound-${index}-transport`), value)" /><DeploymentSelectShell v-if="transportConfigurable(inbound)"><select :id="`inbound-transport-${index}`" v-model="inbound.transport" :data-testid="`inbound-transport-${index}`" class="min-h-10 min-w-0 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" @change="updateTransport(inbound)"><option value="">{{ t('deployments.inbounds.inherit', { value: effective(inbound, 'transport') }) }}</option><option v-for="([value,label]) in TRANSPORT_OPTIONS" :key="value" :value="value" :disabled="transportDisabled(inbound, value)">{{ label }}</option></select></DeploymentSelectShell><output v-else :id="`inbound-transport-${index}`" :data-testid="`inbound-transport-${index}`" class="mt-1 flex min-h-10 w-full items-center border bg-gray-50 px-2 text-sm text-gray-700 dark:bg-white/5 dark:text-gray-200">{{ nativeTransportLabel(inbound) }}</output></div>
-              <div class="col-span-2 col-start-3 row-start-3 min-w-0 text-xs text-gray-500 sm:row-start-2 lg:col-span-1 lg:col-start-auto lg:row-start-auto"><DeploymentHelpLabel :for-id="`inbound-outbound-${index}`" :label="t('deployments.inbounds.outbound')" :help="t('deployments.help.inboundOutbound')" :open="deploymentInfoPopoverKey === generatorHelpKey(`inbound-${index}-outbound`)" :test-id="`inbound-outbound-help-${index}`" @update:open="value => setDeploymentInfoPopover(generatorHelpKey(`inbound-${index}-outbound`), value)" /><DeploymentSelectShell><select :id="`inbound-outbound-${index}`" v-model="inbound.outbound" :data-testid="`inbound-outbound-${index}`" class="min-h-10 min-w-0 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" @change="updateOutbound(inbound)"><option value="">{{ t('deployments.inbounds.inherit', { value: effective(inbound, 'outbound') }) }}</option><option v-for="([value,label]) in OUTBOUND_OPTIONS" :key="value" :value="value" :disabled="outboundDisabled(inbound, value)">{{ label.startsWith('deployments.') ? t(label) : label }}{{ outboundDisabled(inbound, value) ? ` ${t('deployments.inbounds.unsupportedOutbound')}` : '' }}</option></select></DeploymentSelectShell></div>
+              <div class="col-span-2 col-start-3 row-start-3 min-w-0 text-xs text-gray-500 sm:row-start-2 lg:col-span-1 lg:col-start-auto lg:row-start-auto"><DeploymentHelpLabel :for-id="`inbound-outbound-${index}`" :label="t('deployments.inbounds.outbound')" :help="t('deployments.help.inboundOutbound')" :open="deploymentInfoPopoverKey === generatorHelpKey(`inbound-${index}-outbound`)" :test-id="`inbound-outbound-help-${index}`" @update:open="value => setDeploymentInfoPopover(generatorHelpKey(`inbound-${index}-outbound`), value)" /><DeploymentSelectShell><select :id="`inbound-outbound-${index}`" v-model="inbound.outbound" :data-testid="`inbound-outbound-${index}`" class="min-h-10 min-w-0 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" @change="updateOutbound(inbound)"><option value="">{{ t('deployments.inbounds.inherit', { value: effective(inbound, 'outbound') }) }}</option><option v-for="([value,label]) in INBOUND_OUTBOUND_OPTIONS" :key="value" :value="value" :disabled="outboundDisabled(inbound, value)">{{ label.startsWith('deployments.') ? t(label) : label }}{{ outboundDisabled(inbound, value) ? ` ${t('deployments.inbounds.unsupportedOutbound')}` : '' }}</option></select></DeploymentSelectShell></div>
               <div class="contents sm:hidden" data-testid="inbound-mobile-actions">
                 <button type="button" :data-testid="`inbound-more-mobile-${index}`" class="deploy-btn-neutral col-start-5 row-start-3 flex min-h-10 w-fit justify-self-end items-center justify-center gap-0.5 whitespace-nowrap border px-2 text-sm" :aria-expanded="inbound.expanded" @click="inbound.expanded = !inbound.expanded"><span>{{ t('deployments.inbounds.advanced') }}</span><svg :data-testid="`inbound-more-icon-mobile-${index}`" aria-hidden="true" class="h-4 w-4 shrink-0 transition-transform" :class="inbound.expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg></button>
                 <button type="button" :data-testid="`inbound-delete-mobile-${index}`" class="deploy-btn-danger col-start-5 row-start-1 flex min-h-10 min-w-[3.75rem] justify-self-end items-center justify-center whitespace-nowrap border border-red-200 px-3 text-sm font-medium text-red-600 disabled:cursor-not-allowed disabled:opacity-30" :disabled="form.inbounds.length === 1" :title="t('deployments.inbounds.delete')" :aria-label="t('deployments.inbounds.delete')" @click="removeInbound(index)">{{ t('actions.delete') }}</button>
               </div>
               <button type="button" :data-testid="`inbound-more-${index}`" class="deploy-btn-neutral hidden min-h-10 w-fit shrink-0 justify-self-end items-center justify-center gap-0.5 whitespace-nowrap border px-2 text-sm sm:col-start-5 sm:row-start-2 sm:flex lg:col-start-auto lg:row-start-auto" :aria-expanded="inbound.expanded" @click="inbound.expanded = !inbound.expanded"><span>{{ t('deployments.inbounds.advanced') }}</span><svg :data-testid="`inbound-more-icon-${index}`" aria-hidden="true" class="h-4 w-4 shrink-0 transition-transform" :class="inbound.expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg></button>
               <button type="button" :data-testid="`inbound-delete-${index}`" class="deploy-btn-danger hidden min-h-10 w-fit shrink-0 justify-self-end whitespace-nowrap border border-red-200 px-2 text-sm font-medium text-red-600 disabled:cursor-not-allowed disabled:opacity-30 sm:col-start-6 sm:row-start-2 sm:block lg:col-start-auto lg:row-start-auto" :disabled="form.inbounds.length === 1" :title="t('deployments.inbounds.delete')" :aria-label="t('deployments.inbounds.delete')" @click="removeInbound(index)">{{ t('actions.delete') }}</button>
+            </div>
+            <div v-if="effective(inbound, 'outbound') === 'chain'" :data-testid="`inbound-chain-${index}`" class="border-t bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/[0.03] sm:p-4">
+              <div class="flex flex-wrap gap-2">
+                <button v-for="type in CHAIN_SOURCE_TYPES" :key="type" type="button" :data-testid="`chain-source-type-${type}-${index}`" class="deploy-btn-neutral min-h-9 border px-3 text-xs font-medium" :class="inbound.chainSourceType === type ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300' : ''" @click="setChainSourceType(inbound, type)">{{ t(`deployments.chain.sources.${type}`) }}</button>
+              </div>
+              <div v-if="inbound.chainSourceType !== 'url'" class="mt-3 space-y-3">
+                <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px_auto]">
+                  <input v-model="inbound.chainSearch" :data-testid="`chain-search-${index}`" class="min-h-10 w-full border bg-transparent px-3 text-sm" :placeholder="t('deployments.chain.search')" @keyup.enter="loadChainSources(inbound)" />
+                  <DeploymentSelectShell><select v-model="inbound.chainProtocol" class="min-h-10 w-full border bg-transparent px-2 text-sm" @change="loadChainSources(inbound)"><option value="">{{ t('deployments.chain.allProtocols') }}</option><option v-for="protocol in Object.keys(CHAIN_PROTOCOL_CORES)" :key="protocol" :value="protocol">{{ protocol.toUpperCase() }}</option></select></DeploymentSelectShell>
+                  <button type="button" class="deploy-btn-neutral min-h-10 border px-4 text-sm" :disabled="inbound.chainLoading" @click="loadChainSources(inbound)">{{ t('actions.refresh') }}</button>
+                </div>
+                <div v-if="inbound.chainSources.length" class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  <button v-for="item in inbound.chainSources" :key="item.key" type="button" :data-testid="`chain-source-item-${index}`" class="rounded-lg border p-3 text-left text-xs transition" :class="inbound.chainSource?.key === item.key ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10' : 'border-gray-200 bg-white hover:border-primary-300 dark:border-white/10 dark:bg-white/5'" @click="selectChainSource(inbound, item)">
+                    <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ item.name }}</span>
+                    <span class="mt-1 block truncate text-gray-500">{{ item.protocol.toUpperCase() }} · {{ item.address }}:{{ item.port }} · {{ item.transport }}</span>
+                    <span class="mt-1 inline-flex rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600 dark:bg-white/10 dark:text-gray-300">{{ t(`deployments.chain.routes.${item.routeType}`) }}</span>
+                  </button>
+                </div>
+                <p v-else-if="!inbound.chainLoading" class="text-xs text-gray-500">{{ t('deployments.chain.empty') }}</p>
+                <button v-if="inbound.chainPage < inbound.chainTotalPages" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="inbound.chainLoading" @click="loadChainSources(inbound, true)">{{ t('deployments.chain.loadMore') }}</button>
+              </div>
+              <div v-else class="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input v-model="inbound.chainUrl" :data-testid="`chain-url-${index}`" class="min-h-10 min-w-0 flex-1 border bg-transparent px-3 font-mono text-xs" :placeholder="t('deployments.chain.urlPlaceholder')" />
+                <button type="button" :data-testid="`chain-preview-${index}`" class="deploy-btn-primary min-h-10 bg-primary-600 px-4 text-sm font-medium text-white" :disabled="inbound.chainLoading" @click="previewChainUrl(inbound)">{{ t('deployments.chain.preview') }}</button>
+              </div>
+              <div v-if="inbound.chainPreview" class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+                <p class="font-semibold">{{ inbound.chainPreview.name || inbound.chainSource?.label }} · {{ String(inbound.chainPreview.protocol || '').toUpperCase() }}</p>
+                <p class="mt-1">{{ inbound.chainPreview.server }}:{{ inbound.chainPreview.port }} · {{ inbound.chainPreview.transport?.type || 'tcp' }}</p>
+              </div>
+              <div class="mt-3 space-y-1 text-xs leading-5 text-amber-700 dark:text-amber-300"><p>{{ t('deployments.chain.snapshotHint') }}</p><p>{{ t('deployments.chain.failClosedHint') }}</p><p>{{ t('deployments.chain.savedRecordHint') }}</p></div>
             </div>
             <p v-if="inboundCompatibilityError(inbound)" class="border-t border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">{{ inboundCompatibilityError(inbound) }}</p>
             <div v-if="inbound.expanded" :data-testid="`inbound-advanced-${index}`" class="grid grid-cols-2 gap-2.5 border-t p-3 sm:gap-3 lg:grid-cols-4 lg:p-4 dark:border-white/10">

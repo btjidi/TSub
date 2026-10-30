@@ -18,6 +18,7 @@ import { DEFAULT_SETTINGS, KV_KEY_SETTINGS } from './config.js';
 import { transformBuiltinSubscriptionDetailed } from './subscription/transformer-factory.js';
 import { determineTargetFormat, isMetaCore } from './subscription/user-agent-utils.js';
 import { reconcileNodeSelection } from './utils/node-fingerprint.js';
+import { normalizeChainNodeUrl, publicChainSummary } from './deployment-chain.js';
 
 const LEGACY_DEPLOYMENTS_KEY = 'tsub_deployments_v1';
 const BOOTSTRAP_TOKEN_PREFIX = 'tsub_bootstrap_token_v2:';
@@ -196,6 +197,7 @@ export async function handleDeploymentDefaultsRequest(request, env) {
 }
 
 function summarizeConfig(config) {
+  const chainInbounds = config.inbounds.filter(item => item.outbound === 'chain');
   return {
     schemaVersion: 2,
     runtime: config.runtime,
@@ -213,7 +215,12 @@ function summarizeConfig(config) {
       trafficEnabled: config.subscription.server.traffic.enabled,
       quotaBytes: config.subscription.server.traffic.quotaBytes
     },
-    addressMode: config.subscription.addressMode || 'auto'
+    addressMode: config.subscription.addressMode || 'auto',
+    chain: {
+      count: chainInbounds.length,
+      protocols: [...new Set(chainInbounds.map(item => item.chain?.snapshot?.protocol).filter(Boolean))],
+      sourceTypes: [...new Set(chainInbounds.map(item => item.chain?.source?.type).filter(Boolean))]
+    }
   };
 }
 
@@ -244,6 +251,14 @@ function normalizeOutputLanguage(value) {
 
 function cloneJson(value) { return JSON.parse(JSON.stringify(value)); }
 function missingSecret(value) { return value === '' || value === null || value === undefined || value === '********'; }
+const SERVER_RESTORED_CHAIN = '__tsubServerRestoredChain';
+
+function stripServerChainMarkers(config) {
+  for (const inbound of Array.isArray(config?.inbounds) ? config.inbounds : []) {
+    if (inbound?.chain && typeof inbound.chain === 'object') delete inbound.chain[SERVER_RESTORED_CHAIN];
+  }
+  return config;
+}
 
 function sharedCredentialValue(config, key, protocols) {
   const values = (config.inbounds || [])
@@ -297,6 +312,16 @@ function restoreDeploymentSecrets(requestConfig, sourceConfig, preserveMachineSe
     }
     restored.tls ||= {};
     if (missingSecret(restored.tls.realityPrivateKey) && source.tls?.realityPrivateKey) restored.tls.realityPrivateKey = source.tls.realityPrivateKey;
+    if (restored.outbound === 'chain' && source.outbound === 'chain' && source.chain) {
+      const requestedSource = restored.chain?.source || {};
+      const sameSource = !requestedSource.type
+        || (requestedSource.type === source.chain.source?.type
+          && (!requestedSource.key || requestedSource.key === source.chain.source?.key));
+      if (sameSource && requestedSource.refresh !== true && (restored.chain?.retainedCredentials === true || !restored.chain?.snapshot?.credentials)) {
+        restored.chain = cloneJson(source.chain);
+        restored.chain[SERVER_RESTORED_CHAIN] = true;
+      }
+    }
     return restored;
   });
 
@@ -377,6 +402,7 @@ function restoreSelectiveCloneSecrets(requestConfig, sourceConfig, rawOptions = 
     credentials: rawOptions?.credentials === true,
     warpIdentity: rawOptions?.warpIdentity === true,
     subscription: rawOptions?.subscription === true,
+    chainUpstream: rawOptions?.chainUpstream === true,
     inboundIndexes,
     inboundMappings
   };
@@ -419,6 +445,17 @@ function restoreSelectiveCloneSecrets(requestConfig, sourceConfig, rawOptions = 
     next.subscription.server.traffic ||= {};
     if (missingSecret(next.subscription.server.traffic.apiSecret) && sourceServer.traffic?.apiSecret) next.subscription.server.traffic.apiSecret = sourceServer.traffic.apiSecret;
   }
+  if (options.chainUpstream) {
+    next.inbounds = (Array.isArray(next.inbounds) ? next.inbounds : []).map((item, index) => {
+      const mappedSourceIndex = options.inboundMappings.find(mapping => mapping.targetId === item.id)?.sourceIndex;
+      const sourceIndex = options.inboundMappings.length
+        ? mappedSourceIndex
+        : (options.inboundIndexes.length ? options.inboundIndexes[index] : index);
+      const source = Number.isInteger(sourceIndex) ? sourceConfig.inbounds?.[sourceIndex] : null;
+      if (!source || source.outbound !== 'chain' || !source.chain || item.outbound !== 'chain') return item;
+      return { ...item, chain: { ...cloneJson(source.chain), [SERVER_RESTORED_CHAIN]: true } };
+    });
+  }
   return next;
 }
 
@@ -433,7 +470,8 @@ async function prepareDeploymentUpdate(storage, deployment, body, env, pendingOp
   const nextName = String(body.name || deployment.name).trim().slice(0, 120) || deployment.name;
   const sourceConfig = await decryptDeploymentConfig(deployment.encryptedConfig, env);
   const systemDefaults = await readDeploymentDefaults(storage, env);
-  const restoredConfig = restoreDeploymentSecrets(body.config, sourceConfig, true);
+  let restoredConfig = restoreDeploymentSecrets(stripServerChainMarkers(cloneJson(body.config || {})), sourceConfig, true);
+  restoredConfig = await resolveChainSourcesInConfig(restoredConfig, storage, env, deployment.id);
   const configDefaults = mergeDeploymentDefaults(systemDefaults, restoredConfig.defaults || {});
   const config = resolveV2Config(restoredConfig, systemDefaults, { deploymentName: nextName });
   await resolveCloudflareEdgeMetadata(config);
@@ -517,6 +555,170 @@ function normalizeCallbackNodes(lines) {
     if (accepted.length >= MAX_NODES) break;
   }
   return { accepted, rejected };
+}
+
+function deploymentSourceKind(value) {
+  return String(value || '').startsWith('tsub-deployment');
+}
+
+function chainRouteType(name, url) {
+  const value = `${name || ''} ${url || ''}`.toLowerCase();
+  if (/tunnel|argo|trycloudflare/.test(value)) return 'tunnel';
+  if (/cdn|cloudflare/.test(value)) return 'cdn';
+  return 'direct';
+}
+
+async function cachedSubscriptionNodes(storage, subscription) {
+  let cached = await storage.get(buildSubscriptionNodeCacheKey(subscription));
+  if (subscription?.source?.deploymentId && isRowStorage(storage) && storage.db) {
+    const row = await storage.db.prepare('SELECT data FROM deployment_snapshots WHERE deployment_id = ?')
+      .bind(subscription.source.deploymentId).first();
+    if (row?.data) { try { cached = JSON.parse(row.data); } catch { /* use generic cache */ } }
+  }
+  return Array.isArray(cached?.nodes) ? cached.nodes.filter(node => NODE_PROTOCOL_REGEX.test(String(node || ''))) : [];
+}
+
+async function deploymentChainNodes(storage, deploymentId) {
+  const subscriptions = typeof storage.getAllSubscriptions === 'function'
+    ? await storage.getAllSubscriptions()
+    : await readCollection(storage, 'tsub_subscriptions_v1');
+  const directNodes = subscriptions
+    .filter(item => item?.source?.kind === 'tsub-deployment' && item.source.deploymentId === deploymentId && item.enabled !== false)
+    .map(item => item.url)
+    .filter(Boolean);
+  const airport = subscriptions.find(item => item.id === `tsub_airport_${deploymentId}`);
+  const snapshotNodes = airport ? await cachedSubscriptionNodes(storage, airport) : [];
+  return [...new Set([...directNodes, ...snapshotNodes])];
+}
+
+async function assertChainSourceDeployment(storage, env, deploymentId, currentDeploymentId = '') {
+  if (!deploymentId || deploymentId === currentDeploymentId) throw new Error('不能选择当前部署作为链式上游');
+  const deployment = await findDeployment(storage, deploymentId);
+  if (!deployment || deployment.demo || deployment.schemaVersion !== 2) throw new Error('链式上游部署不可用');
+  const config = await decryptDeploymentConfig(deployment.encryptedConfig, env);
+  if ((config.inbounds || []).some(item => item.outbound === 'chain')) throw new Error('不能选择已经使用链式代理的部署作为上游');
+  return { deployment, config };
+}
+
+async function resolveChainSourceUrl(storage, env, source, currentDeploymentId = '') {
+  const type = String(source?.type || '').toLowerCase();
+  if (type === 'url') {
+    const url = String(source.url || source.link || '').trim();
+    if (!url) throw new Error('请粘贴链式上游节点链接');
+    return { url, source: { type: 'url', key: '', sourceId: '', nodeKey: '', label: source.label || '', routeType: source.routeType || 'direct' } };
+  }
+  const subscriptions = typeof storage.getAllSubscriptions === 'function'
+    ? await storage.getAllSubscriptions()
+    : await readCollection(storage, 'tsub_subscriptions_v1');
+  if (type === 'manual') {
+    const item = subscriptions.find(entry => entry.id === source.sourceId && !/^https?:\/\//i.test(String(entry?.url || '')));
+    if (!item?.url || deploymentSourceKind(item?.source?.kind)) throw new Error('手动链式上游节点不存在');
+    return { url: item.url, source: { type, key: source.key || `manual:${item.id}`, sourceId: item.id, nodeKey: item.id, label: item.name || '', routeType: chainRouteType(item.name, item.url) } };
+  }
+  if (type === 'subscription') {
+    const item = subscriptions.find(entry => entry.id === source.sourceId && /^https?:\/\//i.test(String(entry?.url || '')));
+    if (!item || deploymentSourceKind(item?.source?.kind)) throw new Error('订阅链式上游来源不存在');
+    const nodes = await cachedSubscriptionNodes(storage, item);
+    const index = Number(source.nodeKey);
+    if (!Number.isInteger(index) || index < 0 || index >= nodes.length) throw new Error('订阅链式上游节点已变化，请重新选择');
+    return { url: nodes[index], source: { type, key: source.key || `subscription:${item.id}:${index}`, sourceId: item.id, nodeKey: String(index), label: source.label || item.name || '', routeType: chainRouteType(source.label || item.name, nodes[index]) } };
+  }
+  if (type === 'deployment') {
+    const { deployment } = await assertChainSourceDeployment(storage, env, source.sourceId, currentDeploymentId);
+    const nodes = await deploymentChainNodes(storage, deployment.id);
+    const index = Number(source.nodeKey);
+    if (!Number.isInteger(index) || index < 0 || index >= nodes.length) throw new Error('部署链式上游节点已变化，请重新选择');
+    return { url: nodes[index], source: { type, key: source.key || `deployment:${deployment.id}:${index}`, sourceId: deployment.id, nodeKey: String(index), label: source.label || deployment.name || '', routeType: chainRouteType(source.label || deployment.name, nodes[index]) } };
+  }
+  throw new Error('链式上游来源类型无效');
+}
+
+async function resolveChainSourcesInConfig(rawConfig, storage, env, currentDeploymentId = '') {
+  const config = cloneJson(rawConfig || {});
+  config.inbounds = await Promise.all((Array.isArray(config.inbounds) ? config.inbounds : []).map(async inbound => {
+    if (inbound?.outbound !== 'chain') {
+      if (inbound && typeof inbound === 'object') delete inbound.chain;
+      return inbound;
+    }
+    const restoredByServer = inbound.chain?.[SERVER_RESTORED_CHAIN] === true;
+    if (inbound.chain && typeof inbound.chain === 'object') delete inbound.chain[SERVER_RESTORED_CHAIN];
+    if (restoredByServer && inbound.chain?.snapshot?.credentials && inbound.chain.snapshot.protocol && inbound.chain.snapshot.server) return inbound;
+    const selected = await resolveChainSourceUrl(storage, env, inbound.chain?.source || {}, currentDeploymentId);
+    const normalized = normalizeChainNodeUrl(selected.url, selected.source);
+    return { ...inbound, chain: normalized };
+  }));
+  return config;
+}
+
+function chainSourceItem(normalized, source) {
+  const summary = publicChainSummary(normalized);
+  return {
+    key: source.key,
+    sourceType: source.type,
+    sourceId: source.sourceId,
+    nodeKey: source.nodeKey,
+    name: normalized.snapshot.name,
+    protocol: normalized.snapshot.protocol,
+    address: normalized.snapshot.server,
+    port: normalized.snapshot.port,
+    transport: normalized.snapshot.transport?.type || 'tcp',
+    tlsMode: normalized.snapshot.tls?.mode || 'none',
+    routeType: source.routeType || 'direct',
+    sourceLabel: source.label || '',
+    preview: summary.snapshot
+  };
+}
+
+async function listChainSources(storage, env, request) {
+  const url = new URL(request.url);
+  const currentDeploymentId = String(url.searchParams.get('deploymentId') || '').trim();
+  const requestedSource = String(url.searchParams.get('source') || '').trim().toLowerCase();
+  const protocol = String(url.searchParams.get('protocol') || '').trim().toLowerCase();
+  const query = String(url.searchParams.get('query') || '').trim().toLowerCase();
+  const page = Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get('pageSize') || '40', 10) || 40));
+  const subscriptions = typeof storage.getAllSubscriptions === 'function'
+    ? await storage.getAllSubscriptions()
+    : await readCollection(storage, 'tsub_subscriptions_v1');
+  const items = [];
+  if (!requestedSource || requestedSource === 'manual') {
+    for (const item of subscriptions.filter(entry => entry.enabled !== false && !deploymentSourceKind(entry?.source?.kind) && !/^https?:\/\//i.test(String(entry?.url || '')))) {
+      try {
+        const source = { type: 'manual', key: `manual:${item.id}`, sourceId: item.id, nodeKey: item.id, label: item.name || '', routeType: chainRouteType(item.name, item.url) };
+        items.push(chainSourceItem(normalizeChainNodeUrl(item.url, source), source));
+      } catch { /* omit unsupported manual nodes */ }
+    }
+  }
+  if (!requestedSource || requestedSource === 'subscription') {
+    for (const item of subscriptions.filter(entry => entry.enabled !== false && !deploymentSourceKind(entry?.source?.kind) && /^https?:\/\//i.test(String(entry?.url || '')))) {
+      const nodes = await cachedSubscriptionNodes(storage, item);
+      nodes.forEach((node, index) => {
+        try {
+          const source = { type: 'subscription', key: `subscription:${item.id}:${index}`, sourceId: item.id, nodeKey: String(index), label: item.name || '', routeType: chainRouteType(item.name, node) };
+          items.push(chainSourceItem(normalizeChainNodeUrl(node, source), source));
+        } catch { /* omit unsupported subscription nodes */ }
+      });
+    }
+  }
+  if (!requestedSource || requestedSource === 'deployment') {
+    const deployments = await listWithLegacyDrafts(storage);
+    for (const deployment of deployments.filter(item => item.schemaVersion === 2 && !item.demo && item.id !== currentDeploymentId)) {
+      try {
+        await assertChainSourceDeployment(storage, env, deployment.id, currentDeploymentId);
+        const nodes = await deploymentChainNodes(storage, deployment.id);
+        nodes.forEach((node, index) => {
+          try {
+            const source = { type: 'deployment', key: `deployment:${deployment.id}:${index}`, sourceId: deployment.id, nodeKey: String(index), label: deployment.name || '', routeType: chainRouteType(deployment.name, node) };
+            items.push(chainSourceItem(normalizeChainNodeUrl(node, source), source));
+          } catch { /* omit unsupported deployment nodes */ }
+        });
+      } catch { /* omit unavailable or chained deployments */ }
+    }
+  }
+  const filtered = items.filter(item => (!protocol || item.protocol === protocol)
+    && (!query || `${item.name} ${item.address} ${item.sourceLabel} ${item.protocol}`.toLowerCase().includes(query)));
+  const start = (page - 1) * pageSize;
+  return { items: filtered.slice(start, start + pageSize), page, pageSize, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)) };
 }
 
 function validTuicCertificatePin(value) {
@@ -986,6 +1188,15 @@ export function compileBootstrapConfig(config, callbackToken, callbackUrl, deplo
   const legoAsset = !['existing', 'self-signed'].includes(config.certificate.mode) && certificateDomain ? coreAssetLines('lego', { channel: 'stable', core: 'lego' }, env) : null;
   const busyboxAsset = config.subscription.server.enabled ? coreAssetLines('busybox', { channel: 'stable', core: 'busybox' }, env) : null;
   const realityAutoIds = config.inbounds.filter(item => item.tls.mode === 'reality' && item.tls.autoGenerate).map(item => String(item.id).replace(/[^A-Za-z0-9_]/g, '_')).join(',');
+  const chainInbounds = config.inbounds.filter(item => item.outbound === 'chain' && item.chain?.snapshot);
+  const chainProtocols = [...new Set(chainInbounds.map(item => item.chain.snapshot.protocol).filter(Boolean))].join(',');
+  const chainSourceTypes = [...new Set(chainInbounds.map(item => item.chain?.source?.type).filter(Boolean))].join(',');
+  const chainTargets = chainInbounds.map(item => {
+    const snapshot = item.chain.snapshot;
+    const safe = value => String(value || '').replace(/[|\r\n]/g, ' ').slice(0, 253);
+    const diagnosticTag = `chain-${String(item.id || 'inbound').replace(/[^A-Za-z0-9_-]/g, '_')}`;
+    return [safe(item.id), safe(snapshot.protocol), safe(snapshot.server), Number(snapshot.port) || 0, safe(snapshot.transport?.type || 'tcp'), safe(diagnosticTag)].join('|');
+  }).join('\n');
   const udpHopRules = config.inbounds.filter(item => item.protocol === 'hysteria2' && item.transportOptions.udpHopPorts).map(item => `${item.port}:${item.transportOptions.udpHopPorts.replace(/,/g, '+')}`).join(' ');
   const inboundSummary = config.inbounds.map(item => {
     const network = ['hysteria2', 'tuic'].includes(item.protocol) || (item.transport === 'xhttp' && item.transportOptions.xhttpVersion === 'h3') ? 'UDP' : 'TCP';
@@ -1016,6 +1227,7 @@ export function compileBootstrapConfig(config, callbackToken, callbackUrl, deplo
     `control_command=${config.runtime.controlCommand || 'tsub'}`,
     `${core}_version=${mainAsset.version}`,
     `inbound_count=${config.inbounds.length}`, `tunnel_count=${config.tunnels.length}`,
+    `chain_count=${chainInbounds.length}`, `chain_protocols=${chainProtocols}`, `chain_source_types=${chainSourceTypes}`, `chain_targets_b64=${base64Utf8(chainTargets)}`,
     `inbound_ports=${config.inbounds.map(item => `${item.port}/${['hysteria2', 'tuic'].includes(item.protocol) || (item.transport === 'xhttp' && item.transportOptions.xhttpVersion === 'h3') ? 'udp' : 'tcp'}`).join(',')}`,
     `udp_hop_rules=${udpHopRules}`,
     `firewall_enabled=${config.firewall.enabled}`, `warp_backend=${config.inbounds.some(item => item.outbound.startsWith('warp')) ? 'userspace' : 'none'}`,
@@ -2148,7 +2360,7 @@ export async function handleDeploymentsRequest(request, env, path) {
     let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.deployment); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
     const name = String(body?.name || '').trim().slice(0, 120);
     if (!name) return createErrorResponse('Deployment name is required', 400);
-    let config; let encryptedConfig; let defaults; let requestConfig = body.config || {};
+    let config; let encryptedConfig; let defaults; let requestConfig = stripServerChainMarkers(cloneJson(body.config || {}));
     try {
       const systemDefaults = await readDeploymentDefaults(storage, env);
       if (body.cloneFromDeploymentId) {
@@ -2162,6 +2374,7 @@ export async function handleDeploymentsRequest(request, env, path) {
           ? restoreSelectiveCloneSecrets(requestConfig, sourceConfig, body.selectiveCloneOptions)
           : restoreDeploymentSecrets(requestConfig, sourceConfig, false, body.resetInheritedNodeNames === true);
       }
+      requestConfig = await resolveChainSourcesInConfig(requestConfig, storage, env, '');
       defaults = mergeDeploymentDefaults(systemDefaults, requestConfig.defaults || {});
       config = resolveV2Config(requestConfig, systemDefaults, { deploymentName: name });
       await resolveCloudflareEdgeMetadata(config);
@@ -2186,6 +2399,17 @@ export async function handleDeploymentsRequest(request, env, path) {
     if (body.createCommand === false) return createJsonResponse({ success: true, data: { deployment: publicDeployment(deployment) } }, 201);
     const response = await createOperation(request, storage, deployment, 'apply', env, { outputLanguage: body.outputLanguage }); const result = await response.json();
     return createJsonResponse({ success: true, data: { deployment: publicDeployment(deployment), ...result.data } }, 201);
+  }
+  if (id === 'chain-sources' && !child && request.method === 'GET') {
+    try { return createJsonResponse({ success: true, data: await listChainSources(storage, env, request) }, 200, { 'Cache-Control': 'no-store' }); }
+    catch (error) { return createErrorResponse(error.message || 'Unable to list chain sources', error.status || 400); }
+  }
+  if (id === 'chain-sources' && child === 'preview' && request.method === 'POST') {
+    let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.small); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
+    try {
+      const normalized = normalizeChainNodeUrl(body?.url, { type: 'url', label: body?.label || '', routeType: 'direct' });
+      return createJsonResponse({ success: true, data: chainSourceItem(normalized, normalized.source) }, 200, { 'Cache-Control': 'no-store' });
+    } catch (error) { return createErrorResponse(error.message || 'Unable to parse node URL', 400); }
   }
   const demoDeployment = id ? (demoData?.deployments || []).find(item => item.id === id) : null;
   const deployment = demoDeployment || (id ? await findDeployment(storage, id) : null);
@@ -2228,7 +2452,8 @@ export async function handleDeploymentsRequest(request, env, path) {
       try {
         const sourceConfig = await decryptDeploymentConfig(deployment.encryptedConfig, env);
         const systemDefaults = await readDeploymentDefaults(storage, env);
-        const restoredConfig = restoreDeploymentSecrets(body.config, sourceConfig, true);
+        let restoredConfig = restoreDeploymentSecrets(stripServerChainMarkers(cloneJson(body.config)), sourceConfig, true);
+        restoredConfig = await resolveChainSourcesInConfig(restoredConfig, storage, env, deployment.id);
         const configDefaults = mergeDeploymentDefaults(systemDefaults, restoredConfig.defaults || {});
         const config = resolveV2Config(restoredConfig, systemDefaults, { deploymentName: deployment.name });
         await resolveCloudflareEdgeMetadata(config);

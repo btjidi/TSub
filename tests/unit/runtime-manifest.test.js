@@ -223,6 +223,23 @@ describe('generated TSub Proxy v2', () => {
     expect(main).toContain('restart) plan_runtime; load_installed_core; ensure_tunnel_binary; prepare_service_identity;');
   });
 
+  it('reports redacted chain metadata and diagnoses upstream routes without credentials', async () => {
+    const [chain, agent, main] = await Promise.all([
+      readFile('runtime/v2/modules/36-chain.sh', 'utf8'),
+      readFile('runtime/v2/modules/38-agent.sh', 'utf8'),
+      readFile('runtime/v2/modules/90-main.sh', 'utf8')
+    ]);
+    expect(chain).toContain('b64_decode_file chain_targets_b64');
+    expect(chain).toContain('getent ahosts');
+    expect(chain).toContain('nc -u -z -w 3');
+    expect(chain).toContain('grep -F -c "\\"$chain_diag_tag\\""');
+    expect(chain).not.toMatch(/password|private[_-]?key|token_b64/i);
+    expect(agent).toContain('"chainInboundCount":%s');
+    expect(agent).toContain('"chainProtocols":"%s"');
+    expect(agent).toContain('"chainSourceTypes":"%s"');
+    expect(main).toContain('validate_config "$TSUB_ETC/config.json"; chain_diagnostics;');
+  });
+
   it('suppresses unattended summaries and redacts runtime logs in place', async () => {
     const common = await readFile('runtime/v2/modules/00-common.sh', 'utf8');
     const maintenance = await readFile('runtime/v2/modules/55-maintenance.sh', 'utf8');

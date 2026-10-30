@@ -2,6 +2,11 @@ import { api } from './http.js';
 
 export const listDeployments = () => api.get('/api/deployments');
 export const getDeploymentTemplate = id => api.get(`/api/deployments/${encodeURIComponent(id)}/template`);
+export const listDeploymentChainSources = (params = {}) => {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== null && value !== undefined));
+  return api.get(`/api/deployments/chain-sources${query.toString() ? `?${query}` : ''}`);
+};
+export const previewDeploymentChainSource = url => api.post('/api/deployments/chain-sources/preview', { url });
 export const createDeployment = payload => api.post('/api/deployments', payload);
 export const updateDeployment = (id, payload) => api.patch(`/api/deployments/${encodeURIComponent(id)}`, payload);
 export const deleteDeployment = (id, options = {}) => {

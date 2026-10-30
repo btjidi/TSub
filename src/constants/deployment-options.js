@@ -20,6 +20,11 @@ export const OUTBOUND_OPTIONS = [
   ['direct', 'deployments.options.direct'], ['warp-auto', 'deployments.options.warpAuto'], ['warp-v4', 'WARP IPv4'], ['warp-v6', 'WARP IPv6']
 ];
 
+export const INBOUND_OUTBOUND_OPTIONS = [
+  ...OUTBOUND_OPTIONS,
+  ['chain', 'deployments.options.chain']
+];
+
 export const RESOURCE_TIERS = [
   ['auto', 'deployments.options.autoDetect'], ['tiny', 'Tiny (<=96MB)'], ['small', 'Small (97-192MB)'], ['standard', 'Standard (>192MB)']
 ];

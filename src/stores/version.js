@@ -11,11 +11,12 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.15**
-- 已有部署配置可按具体入站协议逐项勾选复用，默认全选。
-- 只复制选中的入站，端口和敏感凭据仍遵循原有独立复用选项。
-- 复用敏感凭据时按新入站标识与来源索引精确恢复，避免选择或编辑部分协议后错配。
-- “载入并应用配置”按钮增加固定主色背景，不再依赖鼠标悬停显示。`;
+    const localChangelog = `**TSub 1.0.16**
+- 每个入站可选择单级链式代理，将流量固定转发到一个上游节点。
+- 支持从已有部署、订阅节点、手动节点或粘贴链接创建加密上游快照。
+- 自动计算服务端入站与上游客户端协议的 Xray/sing-box 兼容核心。
+- 上游失败时严格失败关闭，不回退入口服务器直连。
+- Agent 心跳和诊断增加脱敏的链式数量、协议、来源、DNS、端口和路由标签检查。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

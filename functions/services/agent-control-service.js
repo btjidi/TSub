@@ -241,7 +241,10 @@ export async function pollAgent(request, env, storage, payload = {}) {
     cloudflaredRssMb: Math.max(0, Number(payload.cloudflaredRssMb || 0) || 0),
     estimatedCoreRssMb: Math.max(0, Number(payload.estimatedCoreRssMb || 0) || 0),
     estimatedCloudflaredRssMb: Math.max(0, Number(payload.estimatedCloudflaredRssMb || 0) || 0),
-    quickTunnelStatus: ['ready', 'pending', 'not-required'].includes(payload.quickTunnelStatus) ? payload.quickTunnelStatus : 'not-required'
+    quickTunnelStatus: ['ready', 'pending', 'not-required'].includes(payload.quickTunnelStatus) ? payload.quickTunnelStatus : 'not-required',
+    chainInboundCount: Math.max(0, Math.min(20, Number(payload.chainInboundCount || 0) || 0)),
+    chainProtocols: String(payload.chainProtocols || '').replace(/[^a-z0-9,-]/gi, '').slice(0, 256),
+    chainSourceTypes: String(payload.chainSourceTypes || '').replace(/[^a-z0-9,-]/gi, '').slice(0, 128)
   };
   const heartbeatData = JSON.stringify(heartbeat);
   const heartbeatChanged = !previous || previous.data !== heartbeatData;
