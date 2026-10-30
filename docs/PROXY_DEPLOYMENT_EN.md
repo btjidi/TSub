@@ -53,7 +53,7 @@ Auto mode calculates the capability intersection across all inbounds. Shared tra
 
 The generator can use manual configuration or reuse public settings from a controller-saved V2 deployment template. Inbound protocols and transport, public TLS/REALITY settings, outbound policy, ports, WARP identity, subscription service, and node names can be selected independently. The resulting form remains editable, so inbounds and outbound policies may still be changed manually.
 
-Reuse always creates a new deployment record, never modifies the source, and never reads live server configuration. UUIDs, passwords, Reality/WARP private keys, subscription tokens, Agent tokens, Cloudflare API tokens, and managed Tunnel resources are not reused by default. Even when credential reuse is selected, the template API returns redacted values and the browser cannot recover original secrets. Run “Update Configuration” on the source first when its saved controller configuration must match the server state.
+After loading a template, individual inbound protocols can be checked for reuse, with all inbounds selected by default. Reuse always creates a new deployment record, never modifies the source, and never reads live server configuration. UUIDs, passwords, Reality/WARP private keys, subscription tokens, Agent tokens, Cloudflare API tokens, and managed Tunnel resources are not reused by default. Even when credential reuse is selected, the template API returns redacted values and the browser cannot recover original secrets. Run “Update Configuration” on the source first when its saved controller configuration must match the server state.
 
 ## Low-memory operation
 

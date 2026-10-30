@@ -69,6 +69,9 @@ function publicInbound(source, options, makeId, index) {
 export function buildReusableDeploymentConfig(template = {}, options = {}, makeId) {
   const settings = { ...DEFAULT_REUSE_OPTIONS, ...(options || {}) };
   const source = clone(template || {});
+  const selectedInboundIndexes = Array.isArray(settings.inboundIndexes)
+    ? new Set(settings.inboundIndexes.filter(index => Number.isInteger(index) && index >= 0 && index < 20))
+    : null;
   const config = {
     schemaVersion: 2,
     runtime: clone(source.runtime || {}),
@@ -82,12 +85,17 @@ export function buildReusableDeploymentConfig(template = {}, options = {}, makeI
   if (settings.inbounds) {
     config.inbounds = (Array.isArray(source.inbounds) ? source.inbounds : [])
       .slice(0, 20)
-      .map((item, index) => publicInbound(item, settings, makeId, index));
+      .map((item, sourceIndex) => ({ item, sourceIndex }))
+      .filter(({ sourceIndex }) => !selectedInboundIndexes || selectedInboundIndexes.has(sourceIndex))
+      .map(({ item }, index) => publicInbound(item, settings, makeId, index));
   }
   if (settings.outbound && config.inbounds.length) {
+    const selectedSourceInbounds = (Array.isArray(source.inbounds) ? source.inbounds : [])
+      .slice(0, 20)
+      .filter((_, sourceIndex) => !selectedInboundIndexes || selectedInboundIndexes.has(sourceIndex));
     config.inbounds = config.inbounds.map((item, index) => ({
       ...item,
-      outbound: source.inbounds?.[index]?.outbound || item.outbound || 'direct'
+      outbound: selectedSourceInbounds[index]?.outbound || item.outbound || 'direct'
     }));
   } else if (config.inbounds.length) {
     config.inbounds = config.inbounds.map(item => ({ ...item, outbound: '' }));

@@ -916,7 +916,10 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
           runtime: { tier: 'small', core: 'sing-box', channel: 'stable', controlCommand: 'tsub' },
           certificate: { mode: 'self-signed' }, warp: { provisioning: 'auto', acceptedTerms: false }, firewall: { enabled: true }, edge: { mode: 'disabled' },
           subscription: { hostname: '203.0.113.10', server: { enabled: true, port: 51250, token: '********', pushEnabled: true, traffic: { enabled: true } } },
-          inbounds: [{ id: 'source-vless', name: 'Tokyo-VLESS', protocol: 'vless', port: 443, transport: 'tcp', outbound: 'direct', credentials: { uuid: '********' }, tls: { mode: 'reality', serverName: 'www.cloudflare.com', realityPrivateKey: '********', realityPublicKey: 'PUBLIC', shortId: 'abcd' }, transportOptions: { path: '/' } }]
+          inbounds: [
+            { id: 'source-vless', name: 'Tokyo-VLESS', protocol: 'vless', port: 443, transport: 'tcp', outbound: 'direct', credentials: { uuid: '********' }, tls: { mode: 'reality', serverName: 'www.cloudflare.com', realityPrivateKey: '********', realityPublicKey: 'PUBLIC', shortId: 'abcd' }, transportOptions: { path: '/' } },
+            { id: 'source-vmess', name: 'Tokyo-VMess', protocol: 'vmess', port: 8443, transport: 'ws', outbound: 'direct', credentials: { uuid: '********' }, tls: { mode: 'none' }, transportOptions: { path: '/vmess' } }
+          ]
         }
       }
     });
@@ -929,7 +932,11 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
     await wrapper.get('[data-testid="deployment-source-reuse"]').trigger('click');
     await wrapper.get('[data-testid="deployment-reuse-source"]').setValue('deploy-reuse');
     await flushPromises();
-    expect(wrapper.get('[data-testid="deployment-reuse-summary"]').text()).toContain('入站 1 个');
+    expect(wrapper.get('[data-testid="deployment-reuse-summary"]').text()).toContain('入站 2 个');
+    expect(wrapper.get('[data-testid="deployment-apply-reuse"]').classes()).toContain('bg-primary-600');
+    expect(wrapper.get('[data-testid="reuse-inbound-choice-0"]').element.checked).toBe(true);
+    expect(wrapper.get('[data-testid="reuse-inbound-choice-1"]').element.checked).toBe(true);
+    await wrapper.get('[data-testid="reuse-inbound-choice-1"]').setValue(false);
     await wrapper.get('[data-testid="deployment-apply-reuse"]').trigger('click');
     await flushPromises();
 
@@ -940,6 +947,7 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
     expect(wrapper.get('[data-testid="inbound-uuid"]').element.value).toBe('');
     expect(wrapper.get('[data-testid="reality-private-key"]').element.value).toBe('');
     expect(wrapper.get('[data-testid="reality-public-key"]').element.value).toBe('');
+    expect(wrapper.findAll('[data-testid="inbound-protocol"]')).toHaveLength(1);
 
     await wrapper.find('form').trigger('submit');
     await flushPromises();

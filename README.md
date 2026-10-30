@@ -9,7 +9,7 @@
   <a href="#部署教程"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
   <a href="#服务器部署"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
-  <a href="#版本更新说明"><img src="https://img.shields.io/badge/TSub-v1.0.14-2563eb.svg" alt="TSub v1.0.14"></a>
+  <a href="#版本更新说明"><img src="https://img.shields.io/badge/TSub-v1.0.15-2563eb.svg" alt="TSub v1.0.15"></a>
 </p>
 
 TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节点管理平台，包含订阅管理、节点管理、Profile、多客户端转换、代理部署、远程 Agent、本机执行器、通知、备份和外部管理 API。
@@ -265,7 +265,7 @@ curl -I http://127.0.0.1:8787/login
 
 ### 版本更新说明
 
-当前版本 `1.0.14`：代理部署生成器增加“手动配置”和“从已有部署复用”两种来源，可分别复用入站、TLS/Reality 公共参数、出站、端口、节点名称、WARP 身份和订阅服务；默认重新生成端口、UUID、密码、私钥与订阅 Token。用户明确选择复用敏感项时，后端只从加密源配置定向恢复对应类别，模板接口与浏览器仍不会获得原始密钥；直连与三种 WARP 出站继续使用统一兼容性校验。
+当前版本 `1.0.15`：已有部署配置现在可按具体入站协议逐项勾选复用，默认全选；只复制选中的入站，端口和敏感凭据继续遵循独立复用选项。选择复用敏感凭据时，后端会按新入站标识与来源索引精确恢复，避免选择或编辑部分协议后发生错配；“载入并应用配置”按钮也改为始终显示主色背景。
 
 服务器主控部署的完整说明已整合在本 README 的[服务器部署](#服务器部署)章节，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 

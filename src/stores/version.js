@@ -11,13 +11,11 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.14**
-- 代理部署生成器增加手动配置与已有部署公共配置复用入口。
-- 可分别复用入站、TLS/REALITY 公共参数、出站、端口、节点名称、WARP 身份和订阅服务。
-- 默认重新生成端口、UUID、密码、私钥和订阅 Token，避免新部署与来源节点冲突。
-- 选择复用敏感项时由后端从加密配置中定向恢复，浏览器和模板接口不接触原始密钥。
-- 直连、WARP 自动、WARP IPv4 和 WARP IPv6 出站继续使用统一兼容性校验。
-- 修正 Miniflare D1 集成用例的独立超时配置，提升全量测试稳定性。`;
+    const localChangelog = `**TSub 1.0.15**
+- 已有部署配置可按具体入站协议逐项勾选复用，默认全选。
+- 只复制选中的入站，端口和敏感凭据仍遵循原有独立复用选项。
+- 复用敏感凭据时按新入站标识与来源索引精确恢复，避免选择或编辑部分协议后错配。
+- “载入并应用配置”按钮增加固定主色背景，不再依赖鼠标悬停显示。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

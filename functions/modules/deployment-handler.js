@@ -365,10 +365,20 @@ function restoreDeploymentSecrets(requestConfig, sourceConfig, preserveMachineSe
 }
 
 function restoreSelectiveCloneSecrets(requestConfig, sourceConfig, rawOptions = {}) {
+  const inboundIndexes = Array.isArray(rawOptions?.inboundIndexes)
+    ? rawOptions.inboundIndexes.filter(index => Number.isInteger(index) && index >= 0 && index < 20)
+    : [];
+  const inboundMappings = Array.isArray(rawOptions?.inboundMappings)
+    ? rawOptions.inboundMappings
+      .filter(item => item && typeof item.targetId === 'string' && Number.isInteger(item.sourceIndex) && item.sourceIndex >= 0 && item.sourceIndex < 20)
+      .map(item => ({ targetId: item.targetId.slice(0, 160), sourceIndex: item.sourceIndex }))
+    : [];
   const options = {
     credentials: rawOptions?.credentials === true,
     warpIdentity: rawOptions?.warpIdentity === true,
-    subscription: rawOptions?.subscription === true
+    subscription: rawOptions?.subscription === true,
+    inboundIndexes,
+    inboundMappings
   };
   const next = cloneJson(requestConfig || {});
   if (options.credentials) {
@@ -379,7 +389,11 @@ function restoreSelectiveCloneSecrets(requestConfig, sourceConfig, rawOptions = 
     if (missingSecret(next.defaults.credentials.uuid) && sourceSharedUuid) next.defaults.credentials.uuid = sourceSharedUuid;
     if (missingSecret(next.defaults.credentials.password) && sourceSharedPassword) next.defaults.credentials.password = sourceSharedPassword;
     next.inbounds = (Array.isArray(next.inbounds) ? next.inbounds : []).map((item, index) => {
-      const source = sourceConfig.inbounds?.[index];
+      const mappedSourceIndex = options.inboundMappings.find(mapping => mapping.targetId === item.id)?.sourceIndex;
+      const sourceIndex = options.inboundMappings.length
+        ? mappedSourceIndex
+        : (options.inboundIndexes.length ? options.inboundIndexes[index] : index);
+      const source = Number.isInteger(sourceIndex) ? sourceConfig.inbounds?.[sourceIndex] : null;
       if (!source || source.protocol !== item.protocol) return item;
       const restored = cloneJson(item);
       restored.credentials ||= {};

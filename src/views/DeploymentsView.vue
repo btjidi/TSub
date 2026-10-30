@@ -73,6 +73,8 @@ const reuseSourceId = ref('');
 const reuseTemplate = ref(null);
 const reuseLoading = ref(false);
 const reuseOptions = reactive({ ...DEFAULT_REUSE_OPTIONS });
+const reuseInboundSelections = ref([]);
+const reuseInboundSecretMappings = ref([]);
 const showLoadConfigDialog = ref(false);
 const pendingTemplateRecord = ref(null);
 const pendingTemplateRemote = ref(false);
@@ -161,6 +163,16 @@ const reuseEligibleDeployments = computed(() => deployments.value.filter(item =>
 const reuseSummary = computed(() => reuseTemplate.value
   ? deploymentReuseSummary({ ...(reuseTemplate.value.config || {}), deployment: reuseTemplate.value.sourceDeployment })
   : null);
+const reuseInboundChoices = computed(() => (Array.isArray(reuseTemplate.value?.config?.inbounds)
+  ? reuseTemplate.value.config.inbounds.slice(0, 20).map((item, index) => ({
+    index,
+    protocol: String(item.protocol || '-').toUpperCase(),
+    name: String(item.name || ''),
+    port: item.port ?? ''
+  }))
+  : []));
+const canApplyReuse = computed(() => Boolean(reuseTemplate.value) && !reuseLoading.value
+  && (!reuseOptions.inbounds || reuseInboundSelections.value.length > 0));
 const visibleDeploymentActions = computed(() => DEPLOYMENT_ACTIONS.filter(([action]) => !['plan', 'apply'].includes(action)));
 const showEditableConfig = computed(() => deploymentMode.value === 'install'
   || (deploymentMode.value === 'update' && preparedUpdateTargetId.value && preparedUpdateTargetId.value === targetDeploymentId.value));
@@ -937,6 +949,8 @@ function setConfigSourceMode(mode) {
   if (mode === 'manual') {
     reuseSourceId.value = '';
     reuseTemplate.value = null;
+    reuseInboundSelections.value = [];
+    reuseInboundSecretMappings.value = [];
     resetReuseOptions();
   }
 }
@@ -948,6 +962,8 @@ function reuseInboundId(index) {
 async function loadReuseTemplate() {
   const deployment = reuseEligibleDeployments.value.find(item => item.id === reuseSourceId.value);
   reuseTemplate.value = null;
+  reuseInboundSelections.value = [];
+  reuseInboundSecretMappings.value = [];
   if (!deployment) return;
   reuseLoading.value = true;
   try {
@@ -957,6 +973,7 @@ async function loadReuseTemplate() {
       throw new Error('Template unavailable');
     }
     reuseTemplate.value = { ...payload, sourceDeployment: deployment };
+    reuseInboundSelections.value = payload.config.inbounds.slice(0, 20).map((_, index) => index);
   } catch {
     reuseSourceId.value = '';
     toast.showToast(t('deployments.errors.loadReuseTemplate'), 'error');
@@ -972,7 +989,15 @@ function applyReuseTemplate() {
   const previousControlCommand = form.controlCommand;
   const previousInbounds = clone(form.inbounds);
   const sourceInbounds = Array.isArray(payload.config?.inbounds) ? payload.config.inbounds : [];
-  const config = buildReusableDeploymentConfig(payload.config || {}, reuseOptions, reuseInboundId);
+  const selectedInboundIndexes = reuseOptions.inbounds ? [...reuseInboundSelections.value].sort((a, b) => a - b) : [];
+  const config = buildReusableDeploymentConfig(payload.config || {}, {
+    ...reuseOptions,
+    inboundIndexes: selectedInboundIndexes
+  }, reuseInboundId);
+  reuseInboundSecretMappings.value = config.inbounds.map((item, index) => ({
+    targetId: item.id,
+    sourceIndex: selectedInboundIndexes[index]
+  })).filter(item => Number.isInteger(item.sourceIndex));
   hydrateDeploymentTemplate({ ...payload, config, deployment: source }, 'install', {
     preserveNodeNames: reuseOptions.nodeName,
     selectiveReuse: true,
@@ -1087,6 +1112,8 @@ function setDeploymentMode(mode) {
     configSourceMode.value = 'manual';
     reuseSourceId.value = '';
     reuseTemplate.value = null;
+    reuseInboundSelections.value = [];
+    reuseInboundSecretMappings.value = [];
     resetReuseOptions();
   } else if (mode === 'uninstall') {
     targetDeploymentId.value = '';
@@ -1097,6 +1124,8 @@ function setDeploymentMode(mode) {
     configSourceMode.value = 'manual';
     reuseSourceId.value = '';
     reuseTemplate.value = null;
+    reuseInboundSelections.value = [];
+    reuseInboundSecretMappings.value = [];
     resetReuseOptions();
   } else if (templateSourceId.value) {
     targetDeploymentId.value = templateSourceId.value;
@@ -1288,7 +1317,9 @@ async function generateInstallCommand() {
           selectiveCloneOptions: {
             credentials: reuseOptions.credentials,
             warpIdentity: reuseOptions.warpIdentity,
-            subscription: reuseOptions.subscription
+            subscription: reuseOptions.subscription,
+            inboundIndexes: reuseOptions.inbounds ? [...reuseInboundSelections.value].sort((a, b) => a - b) : [],
+            inboundMappings: reuseInboundSecretMappings.value
           }
         } : {}),
         ...(templateSourceId.value && !reuseSourceId.value ? {
@@ -1709,8 +1740,18 @@ onBeforeUnmount(() => {
                   <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.subscription" data-testid="reuse-option-subscription" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseSubscription') }}</label>
                   <label class="flex items-start gap-2 text-xs"><input v-model="reuseOptions.nodeName" data-testid="reuse-option-node-name" type="checkbox" class="mt-0.5" />{{ t('deployments.source.reuseNodeName') }}</label>
                 </div>
+                <fieldset v-if="reuseOptions.inbounds && reuseInboundChoices.length" data-testid="deployment-reuse-inbound-choices" class="rounded-lg border border-gray-200 p-3 dark:border-white/10">
+                  <legend class="px-1 text-xs font-semibold">{{ t('deployments.source.selectInbounds') }}</legend>
+                  <div class="grid gap-2 sm:grid-cols-2">
+                    <label v-for="choice in reuseInboundChoices" :key="choice.index" class="flex min-w-0 items-start gap-2 text-xs">
+                      <input v-model="reuseInboundSelections" :data-testid="`reuse-inbound-choice-${choice.index}`" type="checkbox" :value="choice.index" class="mt-0.5 shrink-0" />
+                      <span class="min-w-0"><strong>{{ choice.protocol }}</strong><span v-if="choice.name"> · {{ choice.name }}</span><span v-if="choice.port"> · :{{ choice.port }}</span></span>
+                    </label>
+                  </div>
+                  <p v-if="!reuseInboundSelections.length" class="mt-2 text-xs text-red-600 dark:text-red-300">{{ t('deployments.source.selectInboundRequired') }}</p>
+                </fieldset>
                 <p class="text-xs leading-5 text-gray-500">{{ t('deployments.source.sensitiveHint') }}</p>
-                <button type="button" data-testid="deployment-apply-reuse" class="deploy-btn-primary min-h-10 w-full px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50" :disabled="!reuseTemplate || reuseLoading" @click="applyReuseTemplate">{{ t('deployments.source.apply') }}</button>
+                <button type="button" data-testid="deployment-apply-reuse" class="deploy-btn-primary min-h-10 w-full bg-primary-600 px-4 text-sm font-medium text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50" :disabled="!canApplyReuse" @click="applyReuseTemplate">{{ t('deployments.source.apply') }}</button>
               </template>
             </div>
           </section>

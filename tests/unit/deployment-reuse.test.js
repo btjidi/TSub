@@ -39,8 +39,19 @@ describe('deployment reuse template conversion', () => {
     expect(result.inbounds[0].transportOptions).toEqual({});
   });
 
+  it('reuses only the individually selected inbound protocols', () => {
+    const source = structuredClone(template);
+    source.inbounds.push({
+      id: 'source-vmess', name: '新加坡 VMess', protocol: 'vmess', port: 8443, transport: 'ws', outbound: 'direct',
+      credentials: { uuid: '********' }, tls: { mode: 'none' }, transportOptions: { path: '/vmess' }
+    });
+    const result = buildReusableDeploymentConfig(source, { inboundIndexes: [1] }, index => `new-${index}`);
+    expect(result.inbounds).toHaveLength(1);
+    expect(result.inbounds[0]).toMatchObject({ id: 'new-0', protocol: 'vmess', name: '新加坡 VMess', outbound: 'direct' });
+    expect(result.inbounds[0].credentials).toEqual({});
+  });
+
   it('summarizes only non-sensitive template metadata', () => {
     expect(deploymentReuseSummary(template)).toMatchObject({ schemaVersion: 2, inboundCount: 1, core: 'sing-box' });
   });
 });
-

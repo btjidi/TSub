@@ -1370,6 +1370,39 @@ describe('TSub V2 deployment handler', () => {
     expect(clonedConfig.tunnels).toEqual([]);
   });
 
+  it('restores credentials from the original index when only one inbound is selected', async () => {
+    const env = createEnv();
+    const source = await createAndBootstrap(env, config({
+      defaults: { credentials: { sharedUuidEnabled: false, sharedPasswordEnabled: false } },
+      inbounds: [
+        { id: 'source-vless', protocol: 'vless', port: 443, transport: 'tcp', outbound: 'direct', credentials: { uuid: '79411d85-b0dc-4cd2-b46c-01789a18c650' }, tls: { mode: 'reality', serverName: 'www.example.com', realityPrivateKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', realityPublicKey: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', shortId: 'a1b2c3d4' } },
+        { id: 'source-trojan', protocol: 'trojan', port: 8443, transport: 'tcp', outbound: 'direct', credentials: { password: 'second-inbound-secret' }, tls: { mode: 'tls', serverName: 'www.example.com' } }
+      ]
+    }));
+    const sourceId = source.body.data.deployment.id;
+    const template = (await (await handleDeploymentsRequest(jsonRequest(`/deployments/${sourceId}/template`, 'GET'), env, `/deployments/${sourceId}/template`)).json()).data;
+    const selectedInbound = structuredClone(template.config.inbounds[1]);
+    selectedInbound.id = 'fresh-trojan';
+    selectedInbound.credentials = {};
+    const requestConfig = { ...structuredClone(template.config), inbounds: [selectedInbound] };
+    requestConfig.subscription.server.token = '';
+    requestConfig.subscription.server.pushToken = '';
+    requestConfig.subscription.server.pushGeneration = '';
+    requestConfig.subscription.server.traffic.apiSecret = '';
+
+    const cloned = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', {
+      name: 'Selected Trojan Clone', cloneFromDeploymentId: sourceId, configRevision: template.configRevision,
+      selectiveCloneOptions: { credentials: true, inboundIndexes: [1], inboundMappings: [{ targetId: 'fresh-trojan', sourceIndex: 1 }] }, config: requestConfig
+    }), env, '/deployments');
+    expect(cloned.status).toBe(201);
+    const body = await cloned.json();
+    const record = env.TSUB_KV.dump('tsub_deployments_v2').find(item => item.id === body.data.deployment.id);
+    const clonedConfig = await decryptDeploymentConfig(record.encryptedConfig, env);
+    expect(clonedConfig.inbounds).toHaveLength(1);
+    expect(clonedConfig.inbounds[0].protocol).toBe('trojan');
+    expect(clonedConfig.inbounds[0].credentials.password).toBe('second-inbound-secret');
+  });
+
   it('does not copy a deleted inbound secret into a newly added inbound', async () => {
     const env = createEnv();
     const source = await createAndBootstrap(env, config({
