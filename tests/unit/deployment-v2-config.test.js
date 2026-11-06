@@ -34,6 +34,14 @@ describe('schemaVersion 2 compiler', () => {
     });
   });
 
+  it('ignores an incomplete default Reality key pair and allows automatic generation', () => {
+    const defaults = normalizeDeploymentDefaults({ protocolDefaults: {
+      vless: { realityPrivateKey: '', realityPublicKey: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB' }
+    } });
+    expect(defaults.protocolDefaults.vless).toMatchObject({ realityPrivateKey: '', realityPublicKey: '' });
+    expect(resolveV2Config({ defaults, inbounds: [{ protocol: 'vless' }] }).inbounds[0].tls.autoGenerate).toBe(true);
+  });
+
   it('validates the configurable Agent connection interval', () => {
     for (const seconds of [15, 30, 60, 120, 180, 300]) {
       expect(normalizeV2Config({ inbounds: [inbound()], runtime: { agentPollIntervalSeconds: seconds } }).runtime.agentPollIntervalSeconds).toBe(seconds);

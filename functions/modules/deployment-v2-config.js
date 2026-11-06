@@ -143,11 +143,15 @@ export function normalizeDeploymentDefaults(raw = {}) {
     if (tlsMode && !tlsModesForProtocol(protocol, effectiveTransport).includes(tlsMode)) throw new Error(`${protocol} 不支持 ${effectiveTransport} + ${tlsMode} 组合`);
     const outbound = text(source.outbound, 16);
     if (outbound && !protocolCapability(protocol).outbounds.includes(outbound)) throw new Error(`${protocol} 不支持 ${outbound} 出站`);
+    const realityPrivateKey = text(source.realityPrivateKey, 128) === MASK ? '' : text(source.realityPrivateKey, 128);
+    const realityPublicKey = text(source.realityPublicKey, 128);
     protocolDefaults[protocol] = {
       transport, outbound, tlsMode,
       serverName: text(source.serverName, 253), path: text(source.path, 512), serviceName: text(source.serviceName, 128),
-      realityPrivateKey: text(source.realityPrivateKey, 128) === MASK ? '' : text(source.realityPrivateKey, 128),
-      realityPublicKey: text(source.realityPublicKey, 128), shortId: text(source.shortId, 32)
+      // A default key pair is optional. If history contains only one half,
+      // discard both halves and let deployment generation create a new pair.
+      realityPrivateKey: realityPrivateKey && realityPublicKey ? realityPrivateKey : '',
+      realityPublicKey: realityPrivateKey && realityPublicKey ? realityPublicKey : '', shortId: text(source.shortId, 32)
     };
   }
   return {
