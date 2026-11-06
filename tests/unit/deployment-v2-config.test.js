@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  compileCoreConfig, compileNodeUrls, normalizeDeploymentDefaults, normalizeV2Config, publicDeploymentDefaults,
+  compileCoreConfig, compileNodeUrls, mergeDeploymentDefaults, normalizeDeploymentDefaults, normalizeV2Config, publicDeploymentDefaults,
   publicV2Config, resolveBootstrapConfig, resolveV2Config
 } from '../../functions/modules/deployment-v2-config.js';
 
@@ -18,6 +18,20 @@ describe('schemaVersion 2 compiler', () => {
     expect(defaults.deployment.addressMode).toBe('auto');
     expect(defaults.subscriptionServer.pushAddressMode).toBe('auto');
     expect(defaults.runtime.agentPollIntervalSeconds).toBe(30);
+  });
+
+  it('preserves masked protocol Reality private keys when defaults are submitted again', () => {
+    const stored = normalizeDeploymentDefaults({ protocolDefaults: {
+      vless: { realityPrivateKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', realityPublicKey: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB' }
+    } });
+    const submitted = mergeDeploymentDefaults(stored, { protocolDefaults: {
+      vless: { realityPrivateKey: '********', realityPublicKey: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB' }
+    } });
+    expect(submitted.protocolDefaults.vless.realityPrivateKey).toBe('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    expect(resolveV2Config({ defaults: submitted, inbounds: [{ protocol: 'vless' }] }).inbounds[0].tls).toMatchObject({
+      realityPrivateKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      realityPublicKey: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'
+    });
   });
 
   it('validates the configurable Agent connection interval', () => {

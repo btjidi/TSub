@@ -146,7 +146,8 @@ export function normalizeDeploymentDefaults(raw = {}) {
     protocolDefaults[protocol] = {
       transport, outbound, tlsMode,
       serverName: text(source.serverName, 253), path: text(source.path, 512), serviceName: text(source.serviceName, 128),
-      realityPrivateKey: text(source.realityPrivateKey, 128), realityPublicKey: text(source.realityPublicKey, 128), shortId: text(source.shortId, 32)
+      realityPrivateKey: text(source.realityPrivateKey, 128) === MASK ? '' : text(source.realityPrivateKey, 128),
+      realityPublicKey: text(source.realityPublicKey, 128), shortId: text(source.shortId, 32)
     };
   }
   return {
@@ -225,6 +226,10 @@ export function mergeDeploymentDefaults(systemDefaults = {}, requestDefaults = {
     ['credentials', 'password'], ['certificate', 'apiToken'], ['warp', 'privateKey'],
     ['edge', 'cloudflare', 'apiToken'], ['tunnel', 'token']
   ]) preserve(path);
+  // Protocol defaults are returned to the editor with Reality private keys masked.
+  // Keep the encrypted value when the client submits that mask back, otherwise
+  // the placeholder is treated as a real key and fails the paired-key check.
+  for (const protocol of PROTOCOLS) preserve(['protocolDefaults', protocol, 'realityPrivateKey']);
   return normalizeDeploymentDefaults(merged);
 }
 
