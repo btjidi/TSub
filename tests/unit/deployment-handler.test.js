@@ -1229,6 +1229,10 @@ describe('TSub V2 deployment handler', () => {
     expect(template.config.inbounds[0].tls.realityPrivateKey).toBe('********');
     expect(template.config.subscription.server.token).toBe('********');
 
+    // Older editors could submit a masked template without the public half.
+    // Updating must restore the complete Reality pair from the encrypted source.
+    template.config.inbounds[0].tls.realityPublicKey = '';
+
     const updateResponse = await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/operations`, 'POST', {
       action: 'update', name: 'HK Updated', nodeGroup: 'Updated', profileId: 'profile-1', configRevision: 1, config: template.config
     }), env, `/deployments/${id}/operations`);
@@ -1236,6 +1240,11 @@ describe('TSub V2 deployment handler', () => {
     const updateBody = await updateResponse.json();
     const storedPending = env.TSUB_KV.dump('tsub_deployments_v2')[0];
     expect(storedPending).toMatchObject({ id, name: 'HK Updated', nodeGroup: 'Updated', configRevision: 2, status: 'pending', pendingReason: 'config' });
+    const updatedConfig = await decryptDeploymentConfig(storedPending.encryptedConfig, env);
+    expect(updatedConfig.inbounds[0].tls).toMatchObject({
+      realityPrivateKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      realityPublicKey: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'
+    });
 
     const conflict = await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/operations`, 'POST', {
       action: 'update', configRevision: 1, config: template.config

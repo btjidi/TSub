@@ -311,7 +311,9 @@ function restoreDeploymentSecrets(requestConfig, sourceConfig, preserveMachineSe
       if (missingSecret(restored.credentials[key]) && source.credentials?.[key]) restored.credentials[key] = source.credentials[key];
     }
     restored.tls ||= {};
-    if (missingSecret(restored.tls.realityPrivateKey) && source.tls?.realityPrivateKey) restored.tls.realityPrivateKey = source.tls.realityPrivateKey;
+    for (const key of ['realityPrivateKey', 'realityPublicKey']) {
+      if (missingSecret(restored.tls[key]) && source.tls?.[key]) restored.tls[key] = source.tls[key];
+    }
     if (restored.outbound === 'chain' && source.outbound === 'chain' && source.chain) {
       const requestedSource = restored.chain?.source || {};
       const sameSource = !requestedSource.type
