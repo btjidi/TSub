@@ -21,7 +21,7 @@ jobs:
         uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca # master 2026-08-01
         with:
           scandir: public/proxy/v2
-          ignore_paths: public/proxy/v2/history
+          ignore_paths: history
           severity: warning
       - name: ShellCheck runtime tests
         uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca # master 2026-08-01
