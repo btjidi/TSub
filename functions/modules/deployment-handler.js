@@ -572,12 +572,17 @@ function chainRouteType(name, url) {
 
 async function cachedSubscriptionNodes(storage, subscription) {
   let cached = await storage.get(buildSubscriptionNodeCacheKey(subscription));
+  if (typeof cached === 'string') {
+    try { cached = JSON.parse(cached); } catch { cached = null; }
+  }
   if (subscription?.source?.deploymentId && isRowStorage(storage) && storage.db) {
     const row = await storage.db.prepare('SELECT data FROM deployment_snapshots WHERE deployment_id = ?')
       .bind(subscription.source.deploymentId).first();
-    if (row?.data) { try { cached = JSON.parse(row.data); } catch { /* use generic cache */ } }
+    if (row?.data) { try { cached = typeof row.data === 'string' ? JSON.parse(row.data) : row.data; } catch { /* use generic cache */ } }
   }
-  return Array.isArray(cached?.nodes) ? cached.nodes.filter(node => NODE_PROTOCOL_REGEX.test(String(node || ''))) : [];
+  return Array.isArray(cached?.nodes)
+    ? cached.nodes.filter(node => NODE_PROTOCOL_REGEX.test(String(node || '')))
+    : [];
 }
 
 async function deploymentChainNodes(storage, deploymentId) {

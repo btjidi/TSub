@@ -279,6 +279,31 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
     expect(wrapper.get('[data-testid="chain-source-item-0"]').text()).toContain('Manual Node');
   });
 
+  it('shows a loading indicator while manual chain nodes are loading', async () => {
+    let resolveNodes;
+    listDeploymentChainSources.mockImplementation(params => {
+      if (params.source === 'manual') return new Promise(resolve => { resolveNodes = resolve; });
+      return Promise.resolve({ success: true, data: { items: [], page: 1, totalPages: 1 } });
+    });
+    wrapper = mountView();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="inbound-outbound-0"]').setValue('chain');
+    await flushPromises();
+    await wrapper.get('[data-testid="chain-source-type-0"]').setValue('manual');
+    await wrapper.vm.$nextTick();
+
+    const chainPanel = wrapper.get('[data-testid="inbound-chain-0"]');
+    expect(chainPanel.attributes('aria-busy')).toBe('true');
+    expect(chainPanel.get('[role="status"]').text()).toContain('正在加载节点');
+    expect(chainPanel.get('[data-testid="chain-search-0"]').attributes('disabled')).toBeDefined();
+
+    resolveNodes({ success: true, data: { items: [], page: 1, totalPages: 1 } });
+    await flushPromises();
+    expect(chainPanel.attributes('aria-busy')).toBe('false');
+    expect(chainPanel.text()).toContain('该来源没有可用节点');
+  });
+
   it('retains the encrypted chain preview when an edited source no longer exists', async () => {
     const deployment = {
       id: 'chain-target', name: 'Chain Target', schemaVersion: 2, configRevision: 2, status: 'succeeded',

@@ -158,7 +158,7 @@ const newInbound = () => ({
   xhttpMode: 'auto', xhttpVersion: 'auto', bandwidthUp: '', bandwidthDown: '', udpHopPorts: '', udpHopInterval: '', edgeMode: 'direct',
   chainSourceType: 'deployment', chainSource: null, chainPreview: null, chainUrl: '', chainSearch: '', chainProtocol: '',
   chainGroupId: '', chainGroups: [], chainGroupPage: 1, chainGroupTotalPages: 1, chainSourceMissing: false,
-  chainSources: [], chainLoading: false, chainPage: 1, chainTotalPages: 1
+  chainSources: [], chainLoading: false, chainLoadError: '', chainRequestId: 0, chainPage: 1, chainTotalPages: 1
 });
 
 const global = reactive(blankGlobal());
@@ -608,6 +608,9 @@ function resetChainNodeSelection(inbound, { preservePreview = false } = {}) {
   inbound.chainSource = null;
   if (!preservePreview) inbound.chainPreview = null;
   inbound.chainSources = [];
+  inbound.chainLoading = false;
+  inbound.chainLoadError = '';
+  inbound.chainRequestId = Number(inbound.chainRequestId || 0) + 1;
   inbound.chainPage = 1;
   inbound.chainTotalPages = 1;
   inbound.chainSourceMissing = false;
@@ -615,7 +618,10 @@ function resetChainNodeSelection(inbound, { preservePreview = false } = {}) {
 
 async function loadChainGroups(inbound, append = false) {
   if (!groupedChainSource(inbound.chainSourceType)) return;
+  const requestId = Number(inbound.chainRequestId || 0) + 1;
+  inbound.chainRequestId = requestId;
   inbound.chainLoading = true;
+  inbound.chainLoadError = '';
   try {
     const page = append ? inbound.chainGroupPage + 1 : 1;
     const result = await listDeploymentChainSources({
@@ -625,6 +631,7 @@ async function loadChainGroups(inbound, append = false) {
       page,
       pageSize: 100
     });
+    if (requestId !== inbound.chainRequestId) return;
     const data = result.data || {};
     inbound.chainGroups = append ? [...inbound.chainGroups, ...(data.items || [])] : (data.items || []);
     inbound.chainGroupPage = Number(data.page || page);
@@ -632,8 +639,12 @@ async function loadChainGroups(inbound, append = false) {
     if (inbound.chainGroupId && inbound.chainGroups.some(item => item.sourceId === inbound.chainGroupId)) inbound.chainSourceMissing = false;
     else if (inbound.chainGroupId && inbound.chainGroupPage >= inbound.chainGroupTotalPages) inbound.chainSourceMissing = true;
   } catch {
+    if (requestId !== inbound.chainRequestId) return;
+    inbound.chainLoadError = 'groups';
     toast.showToast(t('deployments.chain.loadFailed'), 'error');
-  } finally { inbound.chainLoading = false; }
+  } finally {
+    if (requestId === inbound.chainRequestId) inbound.chainLoading = false;
+  }
 }
 
 async function loadChainSources(inbound, append = false) {
@@ -642,7 +653,10 @@ async function loadChainSources(inbound, append = false) {
     inbound.chainSources = [];
     return;
   }
+  const requestId = Number(inbound.chainRequestId || 0) + 1;
+  inbound.chainRequestId = requestId;
   inbound.chainLoading = true;
+  inbound.chainLoadError = '';
   try {
     const page = append ? inbound.chainPage + 1 : 1;
     const result = await listDeploymentChainSources({
@@ -655,6 +669,7 @@ async function loadChainSources(inbound, append = false) {
       page,
       pageSize: 40
     });
+    if (requestId !== inbound.chainRequestId) return;
     const data = result.data || {};
     inbound.chainSources = append ? [...inbound.chainSources, ...(data.items || [])] : (data.items || []);
     inbound.chainPage = Number(data.page || page);
@@ -662,9 +677,13 @@ async function loadChainSources(inbound, append = false) {
     if (inbound.chainSource && inbound.chainSources.some(item => item.key === inbound.chainSource.key)) inbound.chainSourceMissing = false;
     else if (inbound.chainSource && inbound.chainPage >= inbound.chainTotalPages) inbound.chainSourceMissing = true;
   } catch {
+    if (requestId !== inbound.chainRequestId) return;
     if (inbound.chainSource) inbound.chainSourceMissing = true;
+    inbound.chainLoadError = 'nodes';
     toast.showToast(t('deployments.chain.loadFailed'), 'error');
-  } finally { inbound.chainLoading = false; }
+  } finally {
+    if (requestId === inbound.chainRequestId) inbound.chainLoading = false;
+  }
 }
 
 async function initializeChainSource(inbound) {
@@ -686,6 +705,7 @@ async function setChainSourceType(inbound) {
   inbound.chainGroups = [];
   inbound.chainGroupPage = 1;
   inbound.chainGroupTotalPages = 1;
+  inbound.chainLoadError = '';
   await initializeChainSource(inbound);
 }
 
@@ -708,6 +728,7 @@ function selectChainSource(inbound, item) {
 async function previewChainUrl(inbound) {
   if (!inbound.chainUrl.trim()) return toast.showToast(t('deployments.chain.urlRequired'), 'warning');
   inbound.chainLoading = true;
+  inbound.chainLoadError = '';
   try {
     const result = await previewDeploymentChainSource(inbound.chainUrl.trim());
     const item = result.data || {};
@@ -2058,7 +2079,7 @@ onBeforeUnmount(() => {
               <button type="button" :data-testid="`inbound-more-${index}`" class="deploy-btn-neutral hidden min-h-10 w-fit shrink-0 justify-self-end items-center justify-center gap-0.5 whitespace-nowrap border px-2 text-sm sm:col-start-5 sm:row-start-2 sm:flex lg:col-start-auto lg:row-start-auto" :aria-expanded="inbound.expanded" @click="inbound.expanded = !inbound.expanded"><span>{{ t('deployments.inbounds.advanced') }}</span><svg :data-testid="`inbound-more-icon-${index}`" aria-hidden="true" class="h-4 w-4 shrink-0 transition-transform" :class="inbound.expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg></button>
               <button type="button" :data-testid="`inbound-delete-${index}`" class="deploy-btn-danger hidden min-h-10 w-fit shrink-0 justify-self-end whitespace-nowrap border border-red-200 px-2 text-sm font-medium text-red-600 disabled:cursor-not-allowed disabled:opacity-30 sm:col-start-6 sm:row-start-2 sm:block lg:col-start-auto lg:row-start-auto" :disabled="form.inbounds.length === 1" :title="t('deployments.inbounds.delete')" :aria-label="t('deployments.inbounds.delete')" @click="removeInbound(index)">{{ t('actions.delete') }}</button>
             </div>
-            <div v-if="effective(inbound, 'outbound') === 'chain'" :data-testid="`inbound-chain-${index}`" class="border-t bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/[0.03] sm:p-4">
+            <div v-if="effective(inbound, 'outbound') === 'chain'" :data-testid="`inbound-chain-${index}`" :aria-busy="inbound.chainLoading ? 'true' : 'false'" class="border-t bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/[0.03] sm:p-4">
               <div class="mb-3 border-b border-slate-200 pb-3 dark:border-white/10">
                 <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('deployments.chain.title') }}</h4>
                 <p class="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-300">{{ t('deployments.chain.failClosedHint') }}</p>
@@ -2071,14 +2092,20 @@ onBeforeUnmount(() => {
                   <DeploymentSelectShell><select v-model="inbound.chainGroupId" :data-testid="`chain-group-${index}`" class="min-h-10 w-full border bg-transparent px-2 text-sm text-gray-900 dark:text-white" :disabled="inbound.chainLoading" @change="setChainGroup(inbound)"><option value="">{{ t(inbound.chainSourceType === 'deployment' ? 'deployments.chain.deploymentRequired' : 'deployments.chain.subscriptionRequired') }}</option><option v-for="group in inbound.chainGroups" :key="group.sourceId" :value="group.sourceId">{{ group.name }} · {{ t('deployments.nodeCount', { count: group.nodeCount }) }} · {{ (group.protocols || []).map(value => value.toUpperCase()).join('/') || '-' }}</option></select></DeploymentSelectShell>
                 </label>
               </div>
+              <div v-if="inbound.chainLoading && groupedChainSource(inbound.chainSourceType) && !inbound.chainGroupId" class="mt-3 flex items-center gap-2 text-xs text-gray-500" role="status" aria-live="polite"><span class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" aria-hidden="true"></span>{{ t('deployments.chain.loadingSources') }}</div>
+              <p v-else-if="inbound.chainLoadError === 'groups'" class="mt-3 text-xs text-red-600 dark:text-red-300">{{ t('deployments.chain.loadSourcesFailed') }}</p>
+              <p v-else-if="!inbound.chainLoading && groupedChainSource(inbound.chainSourceType) && !inbound.chainGroups.length" class="mt-3 text-xs text-gray-500">{{ t('deployments.chain.noSources') }}</p>
+              <button v-if="groupedChainSource(inbound.chainSourceType) && inbound.chainLoadError === 'groups'" type="button" class="deploy-btn-neutral mt-2 min-h-9 border px-3 text-xs" :disabled="inbound.chainLoading" @click="loadChainGroups(inbound)">{{ t('actions.refresh') }}</button>
               <button v-if="groupedChainSource(inbound.chainSourceType) && inbound.chainGroupPage < inbound.chainGroupTotalPages" type="button" class="deploy-btn-neutral mt-2 min-h-9 border px-3 text-xs" :disabled="inbound.chainLoading" @click="loadChainGroups(inbound, true)">{{ t('deployments.chain.loadMoreSources') }}</button>
               <div v-if="inbound.chainSourceType !== 'url'" class="mt-3 space-y-3">
                 <div v-if="!groupedChainSource(inbound.chainSourceType) || inbound.chainGroupId" class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px_auto]">
-                  <input v-model="inbound.chainSearch" :data-testid="`chain-search-${index}`" class="min-h-10 w-full border bg-transparent px-3 text-sm" :placeholder="t('deployments.chain.search')" @keyup.enter="loadChainSources(inbound)" />
-                  <DeploymentSelectShell><select v-model="inbound.chainProtocol" class="min-h-10 w-full border bg-transparent px-2 text-sm" @change="loadChainSources(inbound)"><option value="">{{ t('deployments.chain.allProtocols') }}</option><option v-for="protocol in Object.keys(CHAIN_PROTOCOL_CORES)" :key="protocol" :value="protocol">{{ protocol.toUpperCase() }}</option></select></DeploymentSelectShell>
+                  <input v-model="inbound.chainSearch" :data-testid="`chain-search-${index}`" :disabled="inbound.chainLoading" class="min-h-10 w-full border bg-transparent px-3 text-sm disabled:opacity-60" :placeholder="t('deployments.chain.search')" @keyup.enter="loadChainSources(inbound)" />
+                  <DeploymentSelectShell><select v-model="inbound.chainProtocol" :disabled="inbound.chainLoading" class="min-h-10 w-full border bg-transparent px-2 text-sm disabled:opacity-60" @change="loadChainSources(inbound)"><option value="">{{ t('deployments.chain.allProtocols') }}</option><option v-for="protocol in Object.keys(CHAIN_PROTOCOL_CORES)" :key="protocol" :value="protocol">{{ protocol.toUpperCase() }}</option></select></DeploymentSelectShell>
                   <button type="button" class="deploy-btn-neutral min-h-10 border px-4 text-sm" :disabled="inbound.chainLoading" @click="loadChainSources(inbound)">{{ t('actions.refresh') }}</button>
                 </div>
-                <p v-if="groupedChainSource(inbound.chainSourceType) && !inbound.chainGroupId" class="text-xs text-gray-500">{{ t(inbound.chainSourceType === 'deployment' ? 'deployments.chain.deploymentRequired' : 'deployments.chain.subscriptionRequired') }}</p>
+                <div v-if="inbound.chainLoading && (!groupedChainSource(inbound.chainSourceType) || inbound.chainGroupId)" class="flex items-center gap-2 text-xs text-gray-500" role="status" aria-live="polite"><span class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" aria-hidden="true"></span>{{ t('deployments.chain.loadingNodes') }}</div>
+                <p v-else-if="inbound.chainLoadError === 'nodes'" class="text-xs text-red-600 dark:text-red-300">{{ t('deployments.chain.loadNodesFailed') }}</p>
+                <p v-else-if="groupedChainSource(inbound.chainSourceType) && !inbound.chainGroupId" class="text-xs text-gray-500">{{ t(inbound.chainSourceType === 'deployment' ? 'deployments.chain.deploymentRequired' : 'deployments.chain.subscriptionRequired') }}</p>
                 <div v-else-if="inbound.chainSources.length" class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                   <button v-for="item in inbound.chainSources" :key="item.key" type="button" :data-testid="`chain-source-item-${index}`" class="rounded-lg border p-3 text-left text-xs transition" :class="inbound.chainSource?.key === item.key ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10' : 'border-gray-200 bg-white hover:border-primary-300 dark:border-white/10 dark:bg-white/5'" @click="selectChainSource(inbound, item)">
                     <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ item.name }}</span>
@@ -2086,7 +2113,7 @@ onBeforeUnmount(() => {
                     <span class="mt-1 inline-flex rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600 dark:bg-white/10 dark:text-gray-300">{{ t(`deployments.chain.routes.${item.routeType}`) }}</span>
                   </button>
                 </div>
-                <p v-else-if="!inbound.chainLoading && (!groupedChainSource(inbound.chainSourceType) || inbound.chainGroupId)" class="text-xs text-gray-500">{{ t('deployments.chain.empty') }}</p>
+                <p v-else-if="!inbound.chainLoading && (!groupedChainSource(inbound.chainSourceType) || inbound.chainGroupId)" class="text-xs text-gray-500">{{ inbound.chainSourceType === 'subscription' ? t('deployments.chain.subscriptionEmpty') : t('deployments.chain.empty') }}</p>
                 <button v-if="inbound.chainPage < inbound.chainTotalPages" type="button" class="deploy-btn-neutral min-h-9 border px-3 text-xs" :disabled="inbound.chainLoading" @click="loadChainSources(inbound, true)">{{ t('deployments.chain.loadMore') }}</button>
               </div>
               <div v-else class="mt-3 flex flex-col gap-2 sm:flex-row">

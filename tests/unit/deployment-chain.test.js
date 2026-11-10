@@ -273,4 +273,22 @@ describe('single-hop chain proxy', () => {
     const selectedNodes = await handleDeploymentsRequest(request('/deployments/chain-sources?view=nodes&source=subscription&sourceId=ordinary-sub'), env, '/deployments/chain-sources');
     expect((await selectedNodes.json()).data.items).toEqual([expect.objectContaining({ sourceId: 'ordinary-sub', address: 'upstream.example.com' })]);
   });
+
+  it('only exposes subscription groups with non-empty cached nodes', async () => {
+    const cached = { id: 'cached-sub', name: 'Cached provider', url: 'https://cached.example/sub', enabled: true };
+    const missing = { id: 'missing-sub', name: 'Missing provider', url: 'https://missing.example/sub', enabled: true };
+    const empty = { id: 'empty-sub', name: 'Empty provider', url: 'https://empty.example/sub', enabled: true };
+    const env = {
+      TSUB_KV: createKv({
+        worker_settings_v1: { storageType: 'kv' },
+        tsub_subscriptions_v1: [cached, missing, empty], tsub_profiles_v1: [],
+        [buildSubscriptionNodeCacheKey(cached)]: JSON.stringify({ nodes: [vlessUrl] }),
+        [buildSubscriptionNodeCacheKey(empty)]: { nodes: [] }
+      })
+    };
+    const response = await handleDeploymentsRequest(request('/deployments/chain-sources?view=groups&source=subscription'), env, '/deployments/chain-sources');
+    const body = await response.json();
+    expect(body.data.items).toEqual([expect.objectContaining({ sourceId: 'cached-sub', nodeCount: 1 })]);
+    expect(JSON.stringify(body)).not.toContain('cached.example/sub');
+  });
 });
