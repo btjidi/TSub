@@ -4,6 +4,7 @@ import { parseNodeInfo } from '../utils/geo-utils.js';
 import { calculateProtocolStats, calculateRegionStats } from '../utils/node-parser.js';
 import { KV_KEY_SUBS } from '../config.js';
 import { fetchSubscriptionNodes } from './node-fetcher.js';
+import { writeSubscriptionNodeCache } from '../../services/subscription-service.js';
 
 /**
  * 处理单个订阅模式的节点获取
@@ -55,6 +56,14 @@ export async function handleSingleSubscriptionMode(request, env, subscriptionId,
 
     // HTTP订阅：获取节点
     const result = await fetchSubscriptionNodes(subscription.url, subscription.name, userAgent, subscription.customUserAgent, false, subscription.exclude, subscription.fetchProxy, skipCertVerify, Boolean(subscription?.plusAsSpace), subscription?.enableNodeCache === true);
+
+    if (subscription.enableNodeCache === true && result.success && Array.isArray(result.nodes) && result.nodes.length > 0) {
+        try {
+            await writeSubscriptionNodeCache(storageAdapter, subscription, result.nodes.map(node => node.url).filter(Boolean));
+        } catch (error) {
+            console.warn('[SubscriptionPreview] Failed to write subscription node cache:', error?.message || error);
+        }
+    }
 
     return {
         success: true,

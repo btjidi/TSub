@@ -4,7 +4,7 @@ import { NODE_PROTOCOL_REGEX } from './utils/node-parser.js';
 import { createErrorResponse, createJsonResponse, JSON_BODY_LIMITS, readJsonWithLimit } from './utils.js';
 import { compileCoreConfig, compileNodeUrls, mergeDeploymentDefaults, normalizeDeploymentDefaults, publicDeploymentDefaults, publicV2Config, resolveBootstrapConfig, resolveV2Config } from './deployment-v2-config.js';
 import { decryptDeploymentConfig, encryptDeploymentConfig } from './deployment-crypto.js';
-import { buildSubscriptionNodeCacheKey } from '../services/subscription-service.js';
+import { buildSubscriptionNodeCacheKey, normalizeSubscriptionNodeCacheNodes } from '../services/subscription-service.js';
 import { isDemoView, readDemoData } from './demo-data-handler.js';
 import { hasTrafficUsage, resolveEffectiveTrafficTotal } from './traffic-quota.js';
 import { createDeploymentRepository, DEPLOYMENTS_KEY, OPERATIONS_KEY } from '../services/deployment-repository.js';
@@ -572,17 +572,12 @@ function chainRouteType(name, url) {
 
 async function cachedSubscriptionNodes(storage, subscription) {
   let cached = await storage.get(buildSubscriptionNodeCacheKey(subscription));
-  if (typeof cached === 'string') {
-    try { cached = JSON.parse(cached); } catch { cached = null; }
-  }
   if (subscription?.source?.deploymentId && isRowStorage(storage) && storage.db) {
     const row = await storage.db.prepare('SELECT data FROM deployment_snapshots WHERE deployment_id = ?')
       .bind(subscription.source.deploymentId).first();
-    if (row?.data) { try { cached = typeof row.data === 'string' ? JSON.parse(row.data) : row.data; } catch { /* use generic cache */ } }
+    if (row?.data) cached = row.data;
   }
-  return Array.isArray(cached?.nodes)
-    ? cached.nodes.filter(node => NODE_PROTOCOL_REGEX.test(String(node || '')))
-    : [];
+  return normalizeSubscriptionNodeCacheNodes(cached).filter(node => NODE_PROTOCOL_REGEX.test(node));
 }
 
 async function deploymentChainNodes(storage, deploymentId) {

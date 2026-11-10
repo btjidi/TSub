@@ -282,7 +282,7 @@ describe('single-hop chain proxy', () => {
       TSUB_KV: createKv({
         worker_settings_v1: { storageType: 'kv' },
         tsub_subscriptions_v1: [cached, missing, empty], tsub_profiles_v1: [],
-        [buildSubscriptionNodeCacheKey(cached)]: JSON.stringify({ nodes: [vlessUrl] }),
+        [buildSubscriptionNodeCacheKey(cached)]: { nodes: `${vlessUrl}\nnot-a-proxy-node` },
         [buildSubscriptionNodeCacheKey(empty)]: { nodes: [] }
       })
     };

@@ -9,6 +9,7 @@ import { createJsonResponse, createErrorResponse, JSON_BODY_LIMITS, readJsonWith
 import { parseNodeList } from '../utils/node-parser.js';
 import { getProcessedUserAgent } from '../../utils/format-utils.js';
 import { buildFetchProxyUrl } from '../../utils/fetch-proxy-utils.js';
+import { writeSubscriptionNodeCache } from '../../services/subscription-service.js';
 
 // 创建用于全局匹配的协议正则表达式
 const NODE_PROTOCOL_GLOBAL_REGEX = new RegExp('^(ss|ssr|vmess|vless|trojan|hysteria2?|hy|hy2|tuic|anytls|socks5|socks):\\/\\/', 'gm');
@@ -78,6 +79,7 @@ export async function handleNodeCountRequest(request, env) {
         let trafficRequestSucceeded = false;
         let nodeCountRequestSucceeded = false;
         let fetchError = null;
+        let cacheNodeUrls = [];
 
         let requestUrl = subUrl;
         const requestedUserAgent = typeof customUserAgent === 'string' ? customUserAgent.trim() : '';
@@ -234,6 +236,7 @@ export async function handleNodeCountRequest(request, env) {
 
                     // 使用 parseNodeList 函数，与预览功能完全一致
                     const parsedNodes = parseNodeList(text, { plusAsSpace: Boolean(plusAsSpace) });
+                    cacheNodeUrls = parsedNodes.map(node => node.url).filter(Boolean);
 
                     // [回退2] 如果响应头中也没有流量信息，尝试从 body 伪节点中解析
                     // 这在使用 FetchProxy（如 Vercel）时非常重要，因为代理会丢弃上游响应头
@@ -358,10 +361,19 @@ export async function handleNodeCountRequest(request, env) {
             // 只有在至少获取到一个有效信息时，才更新数据库
             if (result.count > 0) {
                 const storageAdapter = StorageFactory.createAdapter(env, await StorageFactory.getStorageType(env));
-                const originalSubs = await storageAdapter.get('tsub_subscriptions_v1') || [];
+                const originalSubs = typeof storageAdapter.getAllSubscriptions === 'function'
+                    ? await storageAdapter.getAllSubscriptions()
+                    : await storageAdapter.get('tsub_subscriptions_v1') || [];
                 const subToUpdate = originalSubs.find(s => s.url === subUrl);
 
                 if (subToUpdate) {
+                    if (subToUpdate.enableNodeCache === true && cacheNodeUrls.length > 0) {
+                        try {
+                            await writeSubscriptionNodeCache(storageAdapter, subToUpdate, cacheNodeUrls);
+                        } catch (cacheError) {
+                            console.warn('[NodeHandler] Failed to write subscription node cache:', cacheError?.message || cacheError);
+                        }
+                    }
                     if (typeof storageAdapter.updateSubscriptionById === 'function') {
                         await storageAdapter.updateSubscriptionById(subToUpdate.id, current => ({
                             ...current,

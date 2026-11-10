@@ -48,6 +48,18 @@ export function isRealProxyNode(node) {
     return REAL_PROXY_PROTOCOLS.some(protocol => trimmed.startsWith(protocol));
 }
 
+export function normalizeSubscriptionNodeCacheNodes(value) {
+    let cached = value;
+    for (let attempt = 0; typeof cached === 'string' && attempt < 2; attempt++) {
+        try { cached = JSON.parse(cached); } catch { return []; }
+    }
+    if (!cached || typeof cached !== 'object') return [];
+    const nodes = Array.isArray(cached.nodes)
+        ? cached.nodes
+        : typeof cached.nodes === 'string' ? cached.nodes.split(/\r?\n/) : [];
+    return nodes.map(node => String(node || '').trim()).filter(isRealProxyNode);
+}
+
 export function parseSubscriptionUserInfoHeader(header) {
     if (typeof header !== 'string' || !header.trim()) return null;
 
@@ -78,22 +90,25 @@ export function buildSubscriptionNodeCacheKey(sub = {}) {
     return `node_cache_subscription_url_${Math.abs(hash).toString(36)}`;
 }
 
-async function readSubscriptionNodeCache(storage, sub) {
+export async function readSubscriptionNodeCache(storage, sub) {
     if (!storage?.get) return null;
     try {
         const cached = await storage.get(buildSubscriptionNodeCacheKey(sub));
-        if (!cached || !Array.isArray(cached.nodes)) return null;
-        const nodes = cached.nodes.filter(isRealProxyNode);
-        return nodes.length > 0 ? { ...cached, nodes } : null;
+        const nodes = normalizeSubscriptionNodeCacheNodes(cached);
+        let metadata = cached;
+        while (typeof metadata === 'string') {
+            try { metadata = JSON.parse(metadata); } catch { metadata = {}; break; }
+        }
+        return nodes.length > 0 ? { ...(metadata && typeof metadata === 'object' ? metadata : {}), nodes } : null;
     } catch (error) {
         console.warn('[SubscriptionCache] Failed to read cache:', error);
         return null;
     }
 }
 
-async function writeSubscriptionNodeCache(storage, sub, nodes) {
+export async function writeSubscriptionNodeCache(storage, sub, nodes) {
     if (!storage?.put) return false;
-    const realNodes = Array.isArray(nodes) ? nodes.filter(isRealProxyNode) : [];
+    const realNodes = normalizeSubscriptionNodeCacheNodes({ nodes });
     if (realNodes.length === 0) return false;
 
     try {
@@ -102,8 +117,7 @@ async function writeSubscriptionNodeCache(storage, sub, nodes) {
             nodeCount: realNodes.length,
             updatedAt: new Date().toISOString(),
             sourceId: sub?.id || null,
-            sourceName: sub?.name || '',
-            sourceUrl: sub?.url || ''
+            sourceName: sub?.name || ''
         });
         return true;
     } catch (error) {
