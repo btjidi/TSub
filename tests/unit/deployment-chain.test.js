@@ -88,6 +88,27 @@ describe('single-hop chain proxy', () => {
     expect(() => normalizeChainNodeUrl('ssr://Zm9v', { type: 'url' })).toThrow(/SSR\/SSD|无法解析/);
   });
 
+  it('includes the required uTLS client for sing-box Reality chain outbounds', () => {
+    const reality = snapshot('vless', { uuid: 'uuid' }, {
+      tls: {
+        enabled: true,
+        mode: 'reality',
+        serverName: 'www.cloudflare.com',
+        publicKey: 'public-key',
+        shortId: '01234567'
+      }
+    });
+    const outbound = compileSingBoxChainOutbound(reality, 'chain-reality');
+    expect(outbound.tls).toMatchObject({
+      enabled: true,
+      reality: { enabled: true, public_key: 'public-key', short_id: '01234567' },
+      utls: { enabled: true, fingerprint: 'chrome' }
+    });
+
+    reality.snapshot.tls.clientFingerprint = 'firefox';
+    expect(compileSingBoxChainOutbound(reality, 'chain-reality').tls.utls).toEqual({ enabled: true, fingerprint: 'firefox' });
+  });
+
   it('lists manual sources and previews pasted links without leaking secrets', async () => {
     const manual = { id: 'manual-1', name: 'Manual Upstream', url: vlessUrl, enabled: true };
     const env = {

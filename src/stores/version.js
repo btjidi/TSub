@@ -11,12 +11,9 @@ export const useVersionStore = defineStore('version', () => {
     const showUpdateNotice = ref(false);
     const upstreamRepo = 'btjidi/TSub';
 
-    const localChangelog = `**TSub 1.0.17**
-- 链式代理配置增加独立标题分区和统一的来源类型下拉框。
-- 部署节点改为先选择部署，再展示该部署生成的节点。
-- 订阅节点改为先选择订阅源，再展示该订阅缓存中的节点。
-- 手动节点和粘贴节点链接继续保持直接选择与解析预览。
-- 编辑已有部署时可恢复来源层级；来源已删除时保留加密快照并提示重新选择。`;
+    const localChangelog = `**TSub 1.0.18**
+- 修复 sing-box 链式 Reality 上游缺少 uTLS 客户端配置导致配置校验失败。
+- Reality 上游默认使用 Chrome 指纹，并保留来源节点提供的客户端指纹。`;
 
     // --- Getters ---
     const hasUpdate = computed(() => {

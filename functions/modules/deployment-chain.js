@@ -210,10 +210,12 @@ function singTransport(snapshot) {
 function singTls(snapshot) {
   const tls = snapshot.tls || {};
   if (!tls.enabled) return undefined;
+  const reality = tls.mode === 'reality';
   return {
     enabled: true, server_name: tls.serverName || snapshot.server, insecure: tls.insecure === true,
     alpn: tls.alpn?.length ? tls.alpn : undefined,
-    reality: tls.mode === 'reality' ? { enabled: true, public_key: tls.publicKey, short_id: tls.shortId } : undefined
+    reality: reality ? { enabled: true, public_key: tls.publicKey, short_id: tls.shortId } : undefined,
+    utls: reality ? { enabled: true, fingerprint: tls.clientFingerprint || 'chrome' } : undefined
   };
 }
 

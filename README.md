@@ -9,7 +9,7 @@
   <a href="#部署教程"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
   <a href="#服务器部署"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
-  <a href="#版本更新说明"><img src="https://img.shields.io/badge/TSub-v1.0.17-2563eb.svg" alt="TSub v1.0.17"></a>
+  <a href="#版本更新说明"><img src="https://img.shields.io/badge/TSub-v1.0.18-2563eb.svg" alt="TSub v1.0.18"></a>
 </p>
 
 TSub 是可部署在 Cloudflare Pages 或自有服务器上的订阅与代理节点管理平台，包含订阅管理、节点管理、Profile、多客户端转换、代理部署、远程 Agent、本机执行器、通知、备份和外部管理 API。
@@ -272,7 +272,7 @@ Xray 与 sing-box 均支持 VLESS、VMess、Trojan、Shadowsocks、SOCKS5、HTTP
 
 ### 版本更新说明
 
-当前版本 `1.0.17`：链式代理配置增加独立标题分区和统一来源类型下拉框。部署节点采用“选择部署 → 展示节点”，订阅节点采用“选择订阅源 → 展示节点”，手动节点和粘贴链接保持直接选择；编辑已有配置时可恢复来源层级，原来源不存在时继续保留加密快照并提示重新选择。
+当前版本 `1.0.18`：修复 sing-box 链式 Reality 上游缺少 uTLS 客户端配置导致核心配置校验失败；默认使用 Chrome 指纹，并保留上游节点提供的客户端指纹。
 
 服务器主控部署的完整说明已整合在本 README 的[服务器部署](#服务器部署)章节，架构说明见[总体架构](docs/ARCHITECTURE.md)。
 

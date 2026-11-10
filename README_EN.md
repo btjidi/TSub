@@ -9,7 +9,7 @@
   <a href="#deployment-guide"><img src="https://img.shields.io/badge/deploy-Cloudflare%20Pages-f38020.svg" alt="Cloudflare Pages"></a>
   <a href="docs/SERVER_DEPLOYMENT_EN.md#docker-compose"><img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ed.svg" alt="Docker Compose"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-42b883.svg" alt="Vue 3.x"></a>
-  <a href="#release-notes"><img src="https://img.shields.io/badge/TSub-v1.0.17-2563eb.svg" alt="TSub v1.0.17"></a>
+  <a href="#release-notes"><img src="https://img.shields.io/badge/TSub-v1.0.18-2563eb.svg" alt="TSub v1.0.18"></a>
 </p>
 
 TSub is a subscription and proxy-node management platform for Cloudflare Pages or a self-hosted server. It includes Profiles, conversion, proxy deployment, remote agents, local execution, notifications, backups, and an external management API.
@@ -86,7 +86,7 @@ Both Xray and sing-box support VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP/H
 
 ### Release Notes
 
-Current version `1.0.17`: chain proxy settings now use a dedicated section and one source-type selector. Deployment nodes follow “select deployment → select node,” subscription nodes follow “select subscription → select node,” while manual nodes and pasted links remain direct choices. Editing restores the source hierarchy, and a removed source keeps the encrypted snapshot with a reselect warning.
+Current version `1.0.18`: fixes sing-box chain Reality outbounds failing core validation because the required uTLS client was missing. Chrome is used by default, and a fingerprint supplied by the upstream node is preserved.
 
 ## Local development
 
