@@ -215,6 +215,7 @@ function singTls(snapshot) {
     enabled: true, server_name: tls.serverName || snapshot.server, insecure: tls.insecure === true,
     alpn: tls.alpn?.length ? tls.alpn : undefined,
     reality: reality ? { enabled: true, public_key: tls.publicKey, short_id: tls.shortId } : undefined,
+    // sing-box requires a uTLS client whenever a Reality client is enabled.
     utls: reality ? { enabled: true, fingerprint: tls.clientFingerprint || 'chrome' } : undefined
   };
 }
