@@ -9,7 +9,7 @@ import { buildFetchProxyUrl } from '../utils/fetch-proxy-utils.js';
 import { prependNodeName, addFlagEmoji, removeFlagEmoji, fixNodeUrlEncoding, sanitizeNodeForYaml } from '../utils/node-utils.js';
 import { runOperatorChain } from '../utils/operator-runner.js';
 import { createTimeoutFetch } from '../modules/utils.js';
-import { assertPublicNetworkUrl } from '../modules/security-utils.js';
+import { assertPublicNetworkUrl, redactErrorMessage } from '../modules/security-utils.js';
 import { filterNodesBySelection } from '../modules/utils/node-fingerprint.js';
 
 /**
@@ -246,7 +246,7 @@ async function fetchWithRetry(url, init = {}, options = {}) {
             }
 
             const delay = baseDelay * Math.pow(2, attempt);
-            console.warn(`[Retry] ${error.message} (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms`);
+            console.warn(`[Retry] ${redactErrorMessage(error)} (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }

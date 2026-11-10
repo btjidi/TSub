@@ -145,14 +145,14 @@ describe('external subscription batch/validate/refresh operations', () => {
     });
     expect(body.data.results).toEqual([
       expect.objectContaining({ id: 'sub-1', success: true, nodeCount: 1, lastError: '' }),
-      expect.objectContaining({ id: 'sub-2', success: false, nodeCount: 0, lastError: 'HTTP 403: Forbidden' })
+      expect.objectContaining({ id: 'sub-2', success: false, nodeCount: 0, lastError: 'HTTP 403: 上游订阅请求失败' })
     ]);
 
     const listResponse = await handleApiRequest(createRequest('/subscriptions'), env);
     const listBody = await listResponse.json();
     expect(listBody.data).toEqual([
       expect.objectContaining({ id: 'sub-1', nodeCount: 1, lastError: '' }),
-      expect.objectContaining({ id: 'sub-2', nodeCount: 0, lastError: 'HTTP 403: Forbidden' })
+      expect.objectContaining({ id: 'sub-2', nodeCount: 0, lastError: 'HTTP 403: 上游订阅请求失败' })
     ]);
   });
 });

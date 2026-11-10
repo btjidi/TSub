@@ -47,7 +47,7 @@ import {
 } from './handlers/guestbook-handler.js';
 import { handleGithubReleaseRequest } from './handlers/github-proxy-handler.js'; // [NEW] Import handler
 import { handleParseSubscription } from './parse-subscription-handler.js';
-import { safeFetchPublicUrl, validatePublicFetchUrl, redactUrl } from './security-utils.js';
+import { safeFetchPublicUrl, validatePublicFetchUrl, redactErrorMessage, redactSensitiveText, redactUrl } from './security-utils.js';
 import { normalizeSubconverterBackend } from './subscription/main-handler.js';
 import { maybeRunScheduledTasks } from './scheduled-task-runner.js';
 import { handleExternalNodesCallbackRequest } from '../services/external-nodes-callback-service.js';
@@ -149,7 +149,7 @@ export async function handleApiRequest(request, env, context = null) {
             });
 
         } catch (error) {
-            console.error('[API Error /migrate_to_d1]', error);
+            console.error('[API Error /migrate_to_d1]', redactErrorMessage(error));
             return createErrorResponse(error, 500);
         }
     }
@@ -162,7 +162,7 @@ export async function handleApiRequest(request, env, context = null) {
             const result = await DataMigrator.detectLegacyD1MainRows(env);
             return createJsonResponse({ success: true, data: result });
         } catch (error) {
-            console.error('[API Error /detect_legacy_d1]', error);
+            console.error('[API Error /detect_legacy_d1]', redactErrorMessage(error));
             return createErrorResponse(error, 500);
         }
     }
@@ -187,7 +187,7 @@ export async function handleApiRequest(request, env, context = null) {
                 details: migrationResult
             });
         } catch (error) {
-            console.error('[API Error /migrate_legacy_d1]', error);
+            console.error('[API Error /migrate_legacy_d1]', redactErrorMessage(error));
             return createErrorResponse(error, 500);
         }
     }
@@ -220,7 +220,7 @@ export async function handleApiRequest(request, env, context = null) {
 
             return createJsonResponse({ success: true, message: '数据迁移成功！' }, 200);
         } catch (e) {
-            console.error('[API Error /migrate]', e);
+            console.error('[API Error /migrate]', redactErrorMessage(e));
             return createErrorResponse(e, 500);
         }
     }
@@ -460,7 +460,7 @@ export async function handleApiRequest(request, env, context = null) {
                 }
             });
         } catch (e) {
-            return createJsonResponse({ success: false, error: e.message });
+            return createJsonResponse({ success: false, error: 'Storage diagnostic failed', code: 'STORAGE_DIAGNOSTIC_FAILED' });
         }
     }
 
@@ -648,7 +648,7 @@ export async function handleSubconverterTestRequest(request, env) {
         clearTimeout(timeoutId);
 
         const text = await response.text();
-        const sample = text.slice(0, 200);
+        const sample = redactSensitiveText(text).slice(0, 200);
         const hasUsableOutput = response.ok && /TSub-Test-Node|proxies:|proxy-groups:|trojan/i.test(text);
 
         return createJsonResponse({
@@ -668,14 +668,14 @@ export async function handleSubconverterTestRequest(request, env) {
         const isTimeout = error.name === 'AbortError';
         console.error('[Subconverter Test] Error:', {
             backend: endpoint ? `${endpoint.origin}${endpoint.pathname}` : '[invalid]',
-            error: error.message,
+            error: redactErrorMessage(error),
             type: isTimeout ? 'timeout' : 'network'
         });
         return createJsonResponse({
             success: false,
             available: false,
             endpoint: endpoint ? `${endpoint.origin}${endpoint.pathname}` : null,
-            error: isTimeout ? `测试超时（${normalizedTimeout}ms）` : `无法连接转换后端：${error.message}`,
+            error: isTimeout ? `测试超时（${normalizedTimeout}ms）` : '无法连接转换后端，请稍后重试',
             errorType: isTimeout ? 'timeout' : 'network'
         }, 502);
     }
@@ -734,12 +734,17 @@ export async function handleExternalFetchRequest(request, env) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[External Fetch] HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+            console.error('[External Fetch] Upstream request failed:', {
+                status: response.status,
+                bodyLength: errorText.length,
+                errorType: 'upstream_http_error'
+            });
 
             return createJsonResponse({
-                error: `Failed to fetch external URL: HTTP ${response.status} ${response.statusText}`,
+                error: `Failed to fetch external URL: HTTP ${response.status}`,
+                code: 'UPSTREAM_HTTP_ERROR',
                 status: response.status,
-                statusText: response.statusText
+                statusText: 'Upstream request failed'
             }, response.status);
         }
 
@@ -767,7 +772,7 @@ export async function handleExternalFetchRequest(request, env) {
             contentBase64,
             contentType,
             size: buffer.byteLength,
-            url: externalUrl,
+            url: redactUrl(externalUrl),
             success: true
         }), {
             headers: {
@@ -785,22 +790,22 @@ export async function handleExternalFetchRequest(request, env) {
             errorDetails = { type: 'timeout', timeout };
         } else if (error.message.includes('network') || error.message.includes('fetch')) {
             errorMessage = 'Network error - unable to reach the server';
-            errorDetails = { type: 'network', originalError: error.message };
+            errorDetails = { type: 'network' };
         } else if (error.message.includes('DNS')) {
             errorMessage = 'DNS resolution failed';
-            errorDetails = { type: 'dns', originalError: error.message };
+            errorDetails = { type: 'dns' };
         } else {
-            errorMessage = `Request failed: ${error.message}`;
-            errorDetails = { type: 'unknown', originalError: error.message };
+            errorMessage = 'Request failed';
+            errorDetails = { type: 'unknown' };
         }
 
         console.error(`[External Fetch] Error:`, {
             url: redactUrl(externalUrl),
-            error: error.message,
+            error: redactErrorMessage(error),
             errorType: errorDetails.type
         });
 
-        return createErrorResponse(errorMessage, 500);
+        return createJsonResponse({ success: false, error: errorMessage, code: 'EXTERNAL_FETCH_FAILED', errorType: errorDetails.type, requestId: crypto.randomUUID() }, 500);
     }
 }
 
@@ -848,7 +853,7 @@ async function handleCronStatusRequest(env) {
                 }
             }
         } catch (error) {
-            console.warn('[Cron Status] Failed to fetch last execution:', error);
+            console.warn('[Cron Status] Failed to fetch last execution:', redactErrorMessage(error));
         }
 
         const statusData = {
@@ -871,7 +876,7 @@ async function handleCronStatusRequest(env) {
         return createJsonResponse(statusData);
 
     } catch (error) {
-        console.error('[Cron Status Error]', error);
+        console.error('[Cron Status Error]', redactErrorMessage(error));
         return createErrorResponse(error, 500);
     }
 }
@@ -919,14 +924,14 @@ async function handleCronTriggerRequest(env) {
                 await kv.put('cron_last_execution', executionStatus);
             }
         } catch (error) {
-            console.warn('[Cron Trigger] Failed to save execution status:', error);
+            console.warn('[Cron Trigger] Failed to save execution status:', redactErrorMessage(error));
         }
 
         const scheduledTasks = await maybeRunScheduledTasks({ env }, {
             source: 'external-cron',
             forceCheck: true,
             awaitRun: true
-        }).catch(error => ({ success: false, error: error?.message || String(error) }));
+        }).catch(() => ({ success: false, error: 'Scheduled task failed' }));
 
         return createJsonResponse({
             success: true,
@@ -937,7 +942,7 @@ async function handleCronTriggerRequest(env) {
         });
 
     } catch (error) {
-        console.error('[Cron Trigger Error]', error);
+        console.error('[Cron Trigger Error]', redactErrorMessage(error));
         return createErrorResponse(error, 500);
     }
 }

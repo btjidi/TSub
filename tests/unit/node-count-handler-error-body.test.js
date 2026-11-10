@@ -59,9 +59,11 @@ describe('handleNodeCountRequest error body handling', () => {
             expect(data.errorType).toBe('server');
             expect(data.error).toContain('HTTP 400');
             expect(data.count).toBe(0);
-            expect(warnSpy).toHaveBeenCalledWith('[NodeHandler] Node count response contains upstream error: HTTP 400: failed to fetch remote profile with status 400 Bad Request');
-            expect(warnSpy).toHaveBeenCalledWith('[NodeHandler] Skipping node count fallback because upstream returned an error body: HTTP 400: failed to fetch remote profile with status 400 Bad Request');
-            expect(errorSpy).toHaveBeenCalledWith('[Node Count] Node count update failed for https://airport.example/sub: HTTP 400: failed to fetch remote profile with status 400 Bad Request');
+            const logs = JSON.stringify([...warnSpy.mock.calls, ...errorSpy.mock.calls]);
+            expect(logs).toContain('HTTP 400');
+            expect(logs).toContain('airport.example');
+            expect(logs).not.toContain(errorText);
+            expect(logs).not.toContain('https://airport.example/sub');
             expect(adapter.updateSubscriptionById).not.toHaveBeenCalled();
         } finally {
             warnSpy.mockRestore();

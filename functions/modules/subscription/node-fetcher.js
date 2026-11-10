@@ -1,5 +1,6 @@
 import { parseNodeList } from '../utils/node-parser.js';
 import { fetchWithRetry } from '../../services/fetch-utils.js';
+import { redactErrorMessage } from '../security-utils.js';
 import { buildFetchProxyUrl } from '../../utils/fetch-proxy-utils.js';
 import {
     filterNodeObjects,
@@ -88,14 +89,14 @@ export async function fetchSubscriptionNodes(url, subscriptionName, userAgent, c
         };
     } catch (e) {
         if (shouldDebug) {
-            console.debug(`[DEBUG PREVIEW] Error: ${e.message}`);
+            console.debug(`[DEBUG PREVIEW] Error: ${redactErrorMessage(e)}`);
         }
         return {
             subscriptionName,
             url,
             success: false,
             nodes: [],
-            error: e.message
+            error: 'Subscription request failed'
         };
     }
 }

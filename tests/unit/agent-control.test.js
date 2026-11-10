@@ -56,6 +56,28 @@ describe('deployment agent control plane', { timeout: 15_000 }, () => {
     expect(await repository.getDeployment('deploy-agent')).toMatchObject({ status: 'succeeded', nodeCount: 7, lastError: '' });
   });
 
+  it('redacts command events before storing operation and deployment errors', async () => {
+    const provisioned = await ensureDeploymentAgent(storage, { id: 'deploy-agent' });
+    const request = lease => new Request('https://example.com/events', {
+      method: 'POST', headers: { Authorization: `Bearer ${provisioned.token}`, ...(lease ? { 'X-TSub-Lease': lease } : {}) }
+    });
+    const operation = { id: 'op-redaction', deploymentId: 'deploy-agent', action: 'repair', status: 'pending', events: [], createdAt: new Date().toISOString() };
+    await pollAgent(request(), env, storage, { runtimeVersion: '1.0.18' });
+    await repository.putOperation(operation);
+    const command = await queueAgentCommand(storage, { id: 'deploy-agent' }, operation);
+    const claimed = await pollAgent(request(), env, storage, {});
+    await reportAgentCommand(request(claimed.command.leaseId), env, storage, command.id, {
+      status: 'failed', stage: 'repair',
+      message: 'Failed https://controller.example/short?token=fixture-token Bearer fixture-bearer',
+      resources: { nodeCount: 2, privateKey: 'fixture-private', nested: [{ password: 'fixture-password' }] }
+    });
+    const stored = await repository.getOperation(operation.id);
+    const serialized = JSON.stringify({ stored, deployment: await repository.getDeployment('deploy-agent') });
+    for (const secret of ['fixture-token', 'fixture-bearer', 'fixture-private', 'fixture-password']) expect(serialized).not.toContain(secret);
+    expect(stored.events[0].resources.nodeCount).toBe(2);
+    expect(stored.message).toContain('controller.example');
+  });
+
   it('renews a running command lease without adding duplicate operation events', async () => {
     const provisioned = await ensureDeploymentAgent(storage, { id: 'deploy-agent' });
     const request = lease => new Request('https://example.com/api/deploy/agent/poll', {

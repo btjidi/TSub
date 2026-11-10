@@ -41,7 +41,7 @@ export function extractNodeName(url) {
                     ps = node.ps || '';
                 } catch (e) {
                     // 如果解码失败，可以保留一个回退逻辑，或者直接返回空字符串
-                    console.error("Failed to decode vmess link:", e);
+                    console.error('Failed to decode vmess link');
                 }
                 return ps;
             }
@@ -61,7 +61,7 @@ export function extractNodeName(url) {
                     if (ssDecodedAtIndex !== -1) return decodedSS.substring(ssDecodedAtIndex + 1).split(':')[0] || '';
                 } catch (e) {
                     if (isDev) {
-                        console.debug('[Utils] Failed to decode SS base64, using raw text:', e);
+                        console.debug('[Utils] Failed to decode SS base64, using raw text');
                     }
                 }
                 return '';
@@ -141,7 +141,7 @@ export function extractHostAndPort(url) {
                 decoded = true;
             } catch (e) {
                 if (isDev) {
-                    console.debug('[Utils] Failed to decode base64 host segment, using raw text:', e);
+                    console.debug('[Utils] Failed to decode base64 host segment, using raw text');
                 }
             }
         }
@@ -194,7 +194,7 @@ export function extractHostAndPort(url) {
         throw new Error(t('utils.customParseFailed'));
 
     } catch (e) {
-        console.error("提取主机和端口失败:", url, e);
+        console.error('提取主机和端口失败');
         return { host: t('utils.parseHostFailed'), port: 'N/A' };
     }
 }

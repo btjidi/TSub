@@ -8,8 +8,9 @@ import { createJsonResponse, createErrorResponse, JSON_BODY_LIMITS, readJsonWith
 import { handleSubscriptionNodesRequest } from '../subscription-handler.js';
 import { debugTgNotification } from '../../services/notification-service.js';
 import { parseNodeList, calculateProtocolStats, calculateRegionStats } from '../utils/node-parser.js';
-import { redactSensitiveObject, redactUrl, safeFetchPublicUrl, validatePublicFetchUrl } from '../security-utils.js';
+import { redactErrorMessage, redactSensitiveObject, redactSensitiveText, redactUrl, safeFetchPublicUrl, validatePublicFetchUrl } from '../security-utils.js';
 import { KV_KEY_SETTINGS } from '../config.js';
+import yaml from 'js-yaml';
 
 /**
  * 调试订阅信息和节点内容
@@ -48,7 +49,7 @@ export async function handleDebugSubscriptionRequest(request, env) {
         if (!nodeResult.success) {
             return createJsonResponse({
                 error: '获取订阅信息失败',
-                details: nodeResult.error
+                details: 'Subscription request failed'
             }, 400);
         }
 
@@ -75,7 +76,7 @@ export async function handleDebugSubscriptionRequest(request, env) {
                 url: redactUrl(sub.url),
                 success: sub.success,
                 nodeCount: sub.nodes?.length || 0,
-                error: sub.error,
+                error: sub.error ? 'Subscription request failed' : null,
                 isManualNode: sub.isManualNode || false,
                 protocols: sub.success ? calculateProtocolStats(sub.nodes || []) : {},
                 regions: sub.success ? calculateRegionStats(sub.nodes || []) : {}
@@ -90,13 +91,10 @@ export async function handleDebugSubscriptionRequest(request, env) {
 
         return createJsonResponse({
             success: true,
-            debugInfo
+            debugInfo: redactSensitiveObject(debugInfo)
         });
     } catch (e) {
-        return createJsonResponse({
-            error: `调试失败: ${e.message}`,
-            stack: e.stack
-        }, 500);
+        return createJsonResponse({ error: '调试失败，请稍后重试', errorType: 'internal_error' }, 500);
     }
 }
 
@@ -237,7 +235,7 @@ export async function handleStorageTestRequest(request, env) {
         });
     } catch (e) {
         return createJsonResponse({
-            error: `存储测试失败: ${e.message}`,
+            error: '存储测试失败，请稍后重试',
             storageType: await StorageFactory.getStorageType(env)
         }, 500);
     }
@@ -362,9 +360,9 @@ export async function handlePreviewContentRequest(request, env) {
         }
 
         // 检测内容格式
-        if (decodedContent.includes('proxies:') && decodedContent.includes('rules:')) {
+        if (decodedContent.includes('proxies:') || decodedContent.includes('"proxies"')) {
             contentInfo.contentType = 'clash-config';
-        } else if (decodedContent.includes('outbounds') && decodedContent.includes('inbounds')) {
+        } else if (decodedContent.includes('outbounds') || decodedContent.includes('inbounds')) {
             contentInfo.contentType = 'singbox-config';
         } else {
             const nodeMatches = decodedContent.match(/^(ss|ssr|vmess|vless|trojan|hysteria2?|hy|hy2|tuic|anytls|socks5|socks):\/\//gm);
@@ -375,18 +373,28 @@ export async function handlePreviewContentRequest(request, env) {
         }
 
         // 截取内容用于预览
-        const previewContent = decodedContent.length > maxLength
-            ? decodedContent.substring(0, maxLength) + '\n...[内容已截断]'
-            : decodedContent;
+        let safeContent = isBase64 && !contentInfo.decodeSuccess
+            ? '[内容已编码，无法安全预览]'
+            : redactSensitiveText(decodedContent);
+        if (contentInfo.contentType === 'clash-config' || contentInfo.contentType === 'singbox-config') {
+            try {
+                safeContent = JSON.stringify(redactSensitiveObject(yaml.load(decodedContent)), null, 2);
+            } catch {
+                safeContent = '[配置解析失败，无法安全预览]';
+            }
+        }
+        const previewContent = safeContent.length > maxLength
+            ? safeContent.substring(0, maxLength) + '\n...[内容已截断]'
+            : safeContent;
 
         return createJsonResponse({
             success: true,
             contentInfo,
             previewContent,
-            fullContent: request.fullExport ? decodedContent : null
+            fullContent: requestData.fullExport === true ? safeContent : null
         });
     } catch (e) {
-        return createErrorResponse(`内容预览失败: ${e.message}`, e.status || 500);
+        return createErrorResponse(`内容预览失败: ${redactErrorMessage(e)}`, e.status || 500);
     }
 }
 
@@ -410,9 +418,9 @@ export async function handleTestNotificationRequest(request, env) {
         const result = await debugTgNotification(settings, '🔔 <b>通知测试</b> 🔔\n\n这是来自 TSub 的测试消息，用于验证您的配置是否正确。');
 
         if (result.success) {
-            return createJsonResponse({ success: true, detail: result.response });
+            return createJsonResponse({ success: true, detail: { ok: true } });
         } else {
-            return createJsonResponse({ success: false, error: result.error, detail: result.response }, 400);
+            return createJsonResponse({ success: false, error: '通知发送失败，请检查配置后重试', code: 'NOTIFICATION_FAILED' }, 400);
         }
 
     } catch (e) {

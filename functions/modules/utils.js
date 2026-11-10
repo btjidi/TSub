@@ -5,6 +5,7 @@
 
 import { normalizeTrafficNodeDisplay } from './traffic-node-settings.js';
 import { StorageFactory, StorageInitializationError } from '../storage-adapter.js';
+import { redactErrorMessage, redactSensitiveObject, redactSensitiveText } from './security-utils.js';
 
 /**
  * 计算数据的简单哈希值，用于检测变更
@@ -597,7 +598,7 @@ export async function retryFetch(input, init = {}, options = {}) {
 
             // 计算延迟时间（指数退避）
             const delay = baseDelay * Math.pow(2, attempt);
-            console.warn(`[Retry] Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms:`, error.message);
+            console.warn(`[Retry] Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms:`, redactErrorMessage(error));
 
             // 等待延迟
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -620,7 +621,7 @@ export async function safeStorageOperation(operation, fallback = null, context =
     try {
         return await operation();
     } catch (error) {
-        console.error(`[Storage] ${context} failed:`, error);
+        console.error(`[Storage] ${redactSensitiveText(context)} failed:`, redactErrorMessage(error));
         return fallback;
     }
 }
@@ -632,6 +633,8 @@ export async function safeStorageOperation(operation, fallback = null, context =
  * @param {any} data - 附加数据
  */
 export function log(level, message, data = null) {
+    message = redactSensitiveText(message);
+    data = redactSensitiveObject(data);
     const timestamp = new Date().toISOString();
     const logEntry = {
         timestamp,
@@ -835,13 +838,13 @@ export function createErrorResponse(error, status = 500) {
 
     if (error instanceof APIError) {
         status = error.status;
-        message = error.message;
+        message = redactSensitiveText(error.message);
         code = error.code;
-        details = error.details;
+        details = error.details == null ? null : redactSensitiveObject(error.details);
     } else if (error instanceof Error && status < 500) {
-        message = error.message;
+        message = redactSensitiveText(error.message);
     } else if (typeof error === 'string' && status < 500) {
-        message = error;
+        message = redactSensitiveText(error);
     }
 
     const requestId = status >= 500 ? crypto.randomUUID() : undefined;

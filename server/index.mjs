@@ -8,6 +8,7 @@ import { ensureD1Schema, SettingsCache } from '../functions/storage-adapter.js';
 import { createServerDatabaseManager } from './database.mjs';
 import { startInternalScheduler } from './scheduler.mjs';
 import { probeEdgeHandshake } from './edge-probe.mjs';
+import { redactSensitiveObject } from '../functions/modules/security-utils.js';
 
 process.umask(0o077);
 
@@ -175,7 +176,7 @@ const handler = async (req, res) => {
     const response = await onRequest({ request, env, next: () => staticResponse(request) });
     await sendWebResponse(res, response);
   } catch (error) {
-    console.error('[Server]', error?.stack || error);
+    console.error('[Server]', redactSensitiveObject({ message: error?.message, stack: error?.stack }));
     res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ error: 'internal_error' }));
   }

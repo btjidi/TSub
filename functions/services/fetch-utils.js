@@ -3,6 +3,8 @@
  * 提供自动重试、并发控制和超时处理
  */
 
+import { redactErrorMessage, redactUrl } from '../modules/security-utils.js';
+
 const DEFAULT_RETRY_OPTIONS = {
     MAX_RETRIES: 2,        // 最多重试 2 次
     BASE_DELAY: 1000,      // 重试基础延迟 1 秒
@@ -53,12 +55,12 @@ export async function fetchWithRetry(url, init = {}, options = {}) {
 
             // 指数退避策略: 1s, 2s, 4s...
             const delay = baseDelay * Math.pow(2, attempt);
-            console.warn(`[Fetch Retry] Attempt ${attempt + 1}/${maxRetries} failed for ${url}: ${error.message}. Retrying in ${delay / 1000}s...`);
+            console.warn(`[Fetch Retry] Attempt ${attempt + 1}/${maxRetries} failed for ${redactUrl(url)}: ${redactErrorMessage(error)}. Retrying in ${delay / 1000}s...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
 
-    throw lastError || new Error(`Failed to fetch ${url} after ${maxRetries} retries`);
+    throw lastError || new Error(`Failed to fetch ${redactUrl(url)} after ${maxRetries} retries`);
 }
 
 /**
@@ -181,7 +183,7 @@ export async function robustCollect(taskFactories, timeoutMs) {
         } catch (e) {
             // 被 controller.abort() 的 AbortError 和常规执行错误都会在这里被忽略
             if (e.name !== 'AbortError') {
-                console.warn('[robustCollect] Task error:', e.message);
+                console.warn('[robustCollect] Task error:', redactErrorMessage(e));
             }
         }
     });

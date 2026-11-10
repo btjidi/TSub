@@ -108,14 +108,14 @@ describe('external manual-node/profile validate and refresh operations', () => {
     });
     expect(body.data.results).toEqual([
       expect.objectContaining({ id: 'sub-1', success: true, nodeCount: 1, lastError: '' }),
-      expect.objectContaining({ id: 'sub-2', success: false, nodeCount: 0, lastError: 'HTTP 403: Forbidden' })
+      expect.objectContaining({ id: 'sub-2', success: false, nodeCount: 0, lastError: 'HTTP 403: 上游订阅请求失败' })
     ]);
 
     const subscriptionsResponse = await handleApiRequest(createRequest('/subscriptions'), env);
     const subscriptionsBody = await subscriptionsResponse.json();
     expect(subscriptionsBody.data).toEqual([
       expect.objectContaining({ id: 'sub-1', nodeCount: 1, userInfo: { upload: 100, download: 200, total: 300, expire: 400 } }),
-      expect.objectContaining({ id: 'sub-2', nodeCount: 0, lastError: 'HTTP 403: Forbidden' })
+      expect.objectContaining({ id: 'sub-2', nodeCount: 0, lastError: 'HTTP 403: 上游订阅请求失败' })
     ]);
   });
 });

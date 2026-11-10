@@ -1,5 +1,6 @@
 import { createDeploymentRepository } from './deployment-repository.js';
 import { getPlatformCapabilities } from './platform-capabilities.js';
+import { redactSensitiveObject, redactSensitiveText } from '../modules/security-utils.js';
 
 const COMMAND_TTL_MS = 30 * 60 * 1000;
 const LEASE_TTL_MS = 120 * 1000;
@@ -319,9 +320,9 @@ export async function reportAgentCommand(request, env, storage, commandId, paylo
   const operation = await repository.getOperation(auth.command.operation_id);
   if (!operation) return { error: { status: 404, code: 'operation_not_found' } };
   const event = {
-    at: nowIso(), status, stage: String(payload.stage || auth.command.action).slice(0, 64),
-    message: String(payload.message || '').slice(-500), errorCode: String(payload.errorCode || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64),
-    resources: payload.resources && typeof payload.resources === 'object' ? payload.resources : {}
+    at: nowIso(), status, stage: redactSensitiveText(String(payload.stage || auth.command.action)).slice(0, 64),
+    message: redactSensitiveText(String(payload.message || '')).slice(-500), errorCode: String(payload.errorCode || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64),
+    resources: payload.resources && typeof payload.resources === 'object' ? redactSensitiveObject(payload.resources) : {}
   };
   if (status === 'succeeded' && typeof hooks.beforeSuccess === 'function') {
     try {

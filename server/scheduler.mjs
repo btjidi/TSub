@@ -1,5 +1,6 @@
 import { handleCronTrigger } from '../functions/modules/notifications.js';
 import { cleanupAgentControl } from '../functions/services/agent-control-service.js';
+import { redactErrorMessage } from '../functions/modules/security-utils.js';
 
 const owner = `server_${crypto.randomUUID()}`;
 
@@ -25,7 +26,7 @@ export function startInternalScheduler(env) {
         await cleanupAgentControl({ db: env.TSUB_SQL_DB });
         await handleCronTrigger(env);
       }
-    } catch (error) { console.error('[Scheduler]', error?.message || error); }
+    } catch (error) { console.error('[Scheduler]', redactErrorMessage(error)); }
     finally { running = false; }
   };
   const timer = setInterval(tick, 60_000);

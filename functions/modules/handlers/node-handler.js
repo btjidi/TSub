@@ -10,6 +10,7 @@ import { parseNodeList } from '../utils/node-parser.js';
 import { getProcessedUserAgent } from '../../utils/format-utils.js';
 import { buildFetchProxyUrl } from '../../utils/fetch-proxy-utils.js';
 import { writeSubscriptionNodeCache } from '../../services/subscription-service.js';
+import { redactErrorMessage, redactUrl } from '../security-utils.js';
 
 // 创建用于全局匹配的协议正则表达式
 const NODE_PROTOCOL_GLOBAL_REGEX = new RegExp('^(ss|ssr|vmess|vless|trojan|hysteria2?|hy|hy2|tuic|anytls|socks5|socks):\\/\\/', 'gm');
@@ -39,7 +40,7 @@ function detectSubscriptionBodyError(text) {
     const statusMatch = summary.match(/\b(?:status|http)\s*[:=]?\s*(\d{3})\b/i)
         || summary.match(/\b(400|401|403|404|429|5\d\d)\b/);
     const status = statusMatch ? Number(statusMatch[1]) : undefined;
-    const message = status ? `HTTP ${status}: ${summary}` : summary;
+    const message = status ? `HTTP ${status}: Upstream subscription rejected the request` : 'Upstream subscription rejected the request';
     const error = new Error(message);
     if (status) error.status = status;
     return error;
@@ -53,7 +54,7 @@ async function resolveNodeCountFetchCfOptions(env) {
             return { cf: { insecureSkipVerify: true } };
         }
     } catch (error) {
-        console.warn('[NodeHandler] Failed to load certificate verification setting, using secure default:', error);
+        console.warn('[NodeHandler] Failed to load certificate verification setting, using secure default:', redactErrorMessage(error));
     }
     return {};
 }
@@ -205,7 +206,7 @@ export async function handleNodeCountRequest(request, env) {
                 // 仅记录警告，不视为严重错误，因为我们还有 fallback
                 const reason = responses[0].status === 'fulfilled'
                     ? `HTTP ${responses[0].value.status}`
-                    : (responses[0].reason?.message || 'Unknown Error');
+                    : redactErrorMessage(responses[0].reason);
                 console.warn(`[NodeHandler] Traffic specific request failed (${reason}). Will attempt fallback extraction.`);
             }
 
@@ -230,7 +231,7 @@ export async function handleNodeCountRequest(request, env) {
                     const bodyError = detectSubscriptionBodyError(text);
                     if (bodyError) {
                         fetchError = bodyError;
-                        console.warn(`[NodeHandler] Node count response contains upstream error: ${bodyError.message}`);
+                        console.warn(`[NodeHandler] Node count response contains upstream error: ${redactErrorMessage(bodyError)}`);
                         throw bodyError;
                     }
 
@@ -271,14 +272,14 @@ export async function handleNodeCountRequest(request, env) {
                         nodeCountRequestSucceeded = true;
                     } else {
                         fetchError = fetchError || new Error('No valid nodes returned from subscription');
-                        console.warn(`[NodeHandler] Node count response parsed successfully but contained no valid nodes for ${subUrl}.`);
+                        console.warn(`[NodeHandler] Node count response parsed successfully but contained no valid nodes for ${redactUrl(subUrl)}.`);
                     }
                 } catch (e) {
                     if (e === fetchError) {
-                        console.warn(`[NodeHandler] Skipping node count fallback because upstream returned an error body: ${e.message}`);
+                        console.warn(`[NodeHandler] Skipping node count fallback because upstream returned an error body: ${redactErrorMessage(e)}`);
                     } else {
                     // 解析失败，尝试简单统计
-                    console.error('Node count parse error:', e);
+                    console.error('Node count parse error:', redactErrorMessage(e));
 
                     try {
                         const cleanedText = text.replace(/\s/g, '');
@@ -309,7 +310,7 @@ export async function handleNodeCountRequest(request, env) {
                         }
                     } catch (error) {
                         // 最后降级到原始文本统计
-                        console.debug('[NodeHandler] Failed to decode node count response, falling back to raw text:', error);
+                        console.debug('[NodeHandler] Failed to decode node count response, falling back to raw text:', redactErrorMessage(error));
                         const lineMatches = text.match(NODE_PROTOCOL_GLOBAL_REGEX);
                         if (lineMatches) {
                             result.count = lineMatches.length;
@@ -320,9 +321,9 @@ export async function handleNodeCountRequest(request, env) {
                 }
             } else if (responses[1].status === 'rejected') {
                 if (!fetchError) fetchError = responses[1].reason;
-                console.error('Node count request failed:', responses[1].reason);
+                console.error('Node count request failed:', redactErrorMessage(responses[1].reason));
             } else if (responses[1].status === 'fulfilled' && !responses[1].value.ok) {
-                if (!fetchError) fetchError = new Error(`HTTP ${responses[1].value.status}: ${responses[1].value.statusText}`);
+                if (!fetchError) fetchError = Object.assign(new Error(`HTTP ${responses[1].value.status}`), { status: responses[1].value.status });
                 console.error('Node count request returned error:', responses[1].value.status);
             }
 
@@ -338,19 +339,20 @@ export async function handleNodeCountRequest(request, env) {
                         errorMessage = '订阅请求超时';
                     } else if (fetchError.message?.includes('HTTP')) {
                         errorType = 'server';
-                        errorMessage = fetchError.message;
+                        errorMessage = '上游订阅请求失败';
                     } else if (fetchError.message?.includes('network') || fetchError.message?.includes('fetch')) {
                         errorType = 'network';
                         errorMessage = '网络连接失败';
                     } else if (fetchError.message) {
-                        errorMessage = fetchError.message;
+                        errorMessage = '上游订阅请求失败';
                     }
                 }
 
-                console.error(`[Node Count] Node count update failed for ${subUrl}: ${errorMessage}`);
+                const safeErrorMessage = fetchError?.status ? `HTTP ${fetchError.status}: 上游订阅请求失败` : errorMessage;
+                console.error(`[Node Count] Node count update failed for ${redactUrl(subUrl)}: ${safeErrorMessage}`);
                 return createJsonResponse({
                     success: false,
-                    error: errorMessage,
+                    error: safeErrorMessage,
                     errorType: errorType,
                     status: fetchError?.status || null,
                     count: 0,
@@ -371,7 +373,7 @@ export async function handleNodeCountRequest(request, env) {
                         try {
                             await writeSubscriptionNodeCache(storageAdapter, subToUpdate, cacheNodeUrls);
                         } catch (cacheError) {
-                            console.warn('[NodeHandler] Failed to write subscription node cache:', cacheError?.message || cacheError);
+                            console.warn('[NodeHandler] Failed to write subscription node cache:', redactErrorMessage(cacheError));
                         }
                     }
                     if (typeof storageAdapter.updateSubscriptionById === 'function') {
@@ -400,10 +402,10 @@ export async function handleNodeCountRequest(request, env) {
 
         } catch (e) {
             // 节点计数处理错误
-            console.error('Node count processing error:', e);
+            console.error('Node count processing error:', redactErrorMessage(e));
             return createJsonResponse({
                 success: false,
-                error: `处理失败: ${e.message}`,
+                error: '处理失败，请稍后重试',
                 errorType: 'processing_error'
             });
         }
@@ -492,7 +494,7 @@ export async function handleBatchUpdateNodesRequest(request, env) {
                     nodeCount = parsedNodes.length;
                 } catch (e) {
                     // 解码失败，尝试简单统计
-                    console.error('Batch update decode error:', e);
+                    console.error('Batch update decode error:', redactErrorMessage(e));
                     try {
                         const cleanedText = text.replace(/\s/g, '');
                         const base64Regex = /^[A-Za-z0-9+\/=]+$/;
@@ -527,7 +529,7 @@ export async function handleBatchUpdateNodesRequest(request, env) {
                     subscriptionName: subscription.name,
                     success: false,
                     nodeCount: 0,
-                    error: e.message,
+                    error: '订阅更新失败，请稍后重试',
                     lastUpdated: new Date().toISOString()
                 };
             }
@@ -666,7 +668,7 @@ export async function handleHealthCheckRequest(request, env) {
         });
     } catch (e) {
         return createJsonResponse({
-            error: `健康检查失败: ${e.message}`
+            error: '健康检查失败，请稍后重试'
         }, 500);
     }
 }

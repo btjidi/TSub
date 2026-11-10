@@ -1,6 +1,6 @@
 const REDACTED = '[REDACTED]';
 
-const SENSITIVE_KEY_PATTERN = /(token|secret|password|passwd|pwd|key|cookie|authorization|auth|credential|webhook|uuid|url)$/i;
+const SENSITIVE_KEY_PATTERN = /(token|secret|password|passwd|pwd|key|cookies?|authorization|auth|credentials?|webhook|uuid|url)$/i;
 const URL_KEY_PATTERN = /(url|uri|link|endpoint)$/i;
 const ALLOWED_FETCH_PROTOCOLS = new Set(['http:', 'https:']);
 const MAX_SAFE_REDIRECTS = 3;
@@ -9,32 +9,48 @@ export function redactSensitiveText(value) {
     if (typeof value !== 'string' || !value) return value;
 
     return value
+        .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g, REDACTED)
+        .replace(/((?:^|\n)\s*(?:cookie|set-cookie|authorization)\s*:)\s*[^\r\n]*/gi, `$1 ${REDACTED}`)
+        .replace(/(["'](?:[\w-]*(?:token|secret|password|passwd|pwd|private[_-]?key|cookie|authorization|uuid|credential)|auth|key)["']\s*:\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,}\r\n]+)/gi, `$1"${REDACTED}"`)
+        .replace(NODE_LINK_PATTERN, match => redactNodeLink(match))
+        .replace(/\bBasic\s+[A-Za-z0-9+/=]+/gi, `Basic ${REDACTED}`)
         .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, `Bearer ${REDACTED}`)
         .replace(/([?&](?:access_?token|api_?key|auth|key|password|secret|token)=)[^&#\s]+/gi, `$1${REDACTED}`)
-        .replace(/\b((?:access_?token|api_?key|authorization|password|secret|token)\s*[:=]\s*)[^\s,;]+/gi, `$1${REDACTED}`)
+        .replace(/\b((?:access_?token|api_?key|authorization|password|passwd|pwd|secret|token|uuid|private[_-]?key|client[_-]?secret|cookie|set-cookie|psk|auth[_-]?str)\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi, `$1${REDACTED}`)
+        .replace(/\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi, REDACTED)
         .replace(/https?:\/\/[^\s"'<>]+/gi, match => redactUrl(match));
+}
+
+export function redactErrorMessage(error, fallback = 'Unknown error') {
+    const raw = typeof error === 'string' ? error : error?.message;
+    const message = raw ? redactSensitiveText(String(raw)) : fallback;
+    return message.slice(0, 240);
 }
 
 export function redactSensitiveValue(value) {
     if (value === null || value === undefined) return value;
-    if (typeof value === 'string') return REDACTED;
-    if (typeof value === 'number' || typeof value === 'boolean') return value;
-    if (Array.isArray(value)) return value.map(redactSensitiveValue);
-    if (typeof value === 'object') return redactSensitiveObject(value);
     return REDACTED;
 }
 
 export function redactSensitiveObject(value, seen = new WeakSet()) {
     if (value === null || value === undefined) return value;
-    if (Array.isArray(value)) return value.map(item => redactSensitiveObject(item, seen));
     if (typeof value === 'string') return redactSensitiveText(value);
     if (typeof value !== 'object') return value;
     if (seen.has(value)) return REDACTED;
     seen.add(value);
+    if (Array.isArray(value)) return value.map(item => redactSensitiveObject(item, seen));
+    if (value instanceof Error) {
+        return {
+            name: redactSensitiveText(value.name),
+            message: redactErrorMessage(value),
+            stack: redactSensitiveText(value.stack),
+            ...(value.cause ? { cause: redactSensitiveObject(value.cause, seen) } : {})
+        };
+    }
 
     const output = {};
     for (const [key, item] of Object.entries(value)) {
-        if (SENSITIVE_KEY_PATTERN.test(key)) {
+        if (SENSITIVE_KEY_PATTERN.test(key) || /^(?:psk|auth[_-]?str|private[_-]?key|private[_-]?key[_-]?path)$/i.test(key)) {
             output[key] = redactSensitiveValue(item);
             continue;
         }
@@ -49,21 +65,37 @@ export function redactSensitiveObject(value, seen = new WeakSet()) {
 
 export function redactUrl(value) {
     if (typeof value !== 'string' || !value.trim()) return value;
+    if (!/^https?:/i.test(value)) return redactNodeLink(value);
     try {
         const url = new URL(value);
         if (url.username) url.username = REDACTED;
         if (url.password) url.password = REDACTED;
         if (url.search) url.search = '';
-        const pathParts = url.pathname.split('/').map(part => {
-            if (!part) return part;
-            if (part.length >= 12 || /^[A-Za-z0-9_-]{8,}$/.test(part)) return REDACTED;
-            return part;
-        });
-        url.pathname = pathParts.join('/');
+        // Even short path segments can be access credentials.
+        url.pathname = url.pathname === '/' ? '/' : '/[REDACTED]';
         url.hash = '';
         return url.toString();
     } catch (_) {
         return REDACTED;
+    }
+}
+
+const NODE_LINK_PATTERN = /\b(?:vless|vmess|trojan|ssr?|ssd|hysteria2?|hy2?|tuic|anytls|socks5|socks|snell|wireguard|naive\+(?:https?|quic)):\/\/[^\s"'<>]+/gi;
+
+function redactNodeLink(value) {
+    const protocolEnd = value.indexOf('://');
+    if (protocolEnd < 0) return REDACTED;
+    const protocol = value.slice(0, protocolEnd).toLowerCase();
+    if (protocol === 'vmess' || protocol === 'ss' || protocol === 'ssr') {
+        return `${protocol}://${REDACTED}`;
+    }
+    try {
+        const parsed = new URL(value);
+        const host = parsed.hostname || '';
+        const port = parsed.port ? `:${parsed.port}` : '';
+        return host && value.includes('@') ? `${protocol}://${host}${port}` : `${protocol}://${REDACTED}`;
+    } catch (_) {
+        return `${protocol}://${REDACTED}`;
     }
 }
 

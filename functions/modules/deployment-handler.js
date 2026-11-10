@@ -1,5 +1,6 @@
 import { StorageFactory, STORAGE_TYPES, ensureD1Schema } from '../storage-adapter.js';
 import { RUNTIME_MANIFEST } from '../generated/runtime-manifest.js';
+import { redactSensitiveText } from './security-utils.js';
 import { NODE_PROTOCOL_REGEX } from './utils/node-parser.js';
 import { createErrorResponse, createJsonResponse, JSON_BODY_LIMITS, readJsonWithLimit } from './utils.js';
 import { compileCoreConfig, compileNodeUrls, mergeDeploymentDefaults, normalizeDeploymentDefaults, publicDeploymentDefaults, publicV2Config, resolveBootstrapConfig, resolveV2Config } from './deployment-v2-config.js';
@@ -1872,7 +1873,7 @@ export async function handleDeployEvents(request, env) {
   const cacheNodes = normalizeCallbackNodes(payload.cacheNodes);
   const timestamp = nowIso();
   const event = {
-    at: timestamp, status, stage: String(payload.stage || '').slice(0, 64), message: String(payload.message || '').slice(-500), errorCode: String(payload.errorCode || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64),
+    at: timestamp, status, stage: redactSensitiveText(String(payload.stage || '')).slice(0, 64), message: redactSensitiveText(String(payload.message || '')).slice(-500), errorCode: String(payload.errorCode || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64),
     resources: {
       tier: String(payload.resourceTier || ''), container: String(payload.container || ''), init: String(payload.init || ''),
       tun: payload.tun === 'true', firewall: payload.firewall === 'true', memoryMb: Number(payload.memoryMb || payload.cgroupLimitMb || 0),

@@ -308,6 +308,31 @@ describe('security hardening', () => {
     expect(requestArg.cf?.insecureSkipVerify).not.toBe(true);
   });
 
+  it('redacts node credentials from full debug previews', async () => {
+    const secretUuid = '12345678-1234-1234-1234-123456789abc';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      `vless://${secretUuid}@node.example:443?security=reality&pbk=secret-public-key#node`,
+      { status: 200 }
+    ));
+    const response = await handlePreviewContentRequest(new Request('https://example.com/api/preview/content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://raw.githubusercontent.com/example/subscription?token=subscription-secret',
+        fullExport: true
+      })
+    }), {});
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    expect(response.status).toBe(200);
+    expect(serialized).not.toContain(secretUuid);
+    expect(serialized).not.toContain('secret-public-key');
+    expect(serialized).not.toContain('subscription-secret');
+    expect(body.fullContent).toContain('node.example:443');
+    fetchSpy.mockRestore();
+  });
+
   it('masks subscription token in parse logs', async () => {
     const infoSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const env = {
@@ -408,6 +433,51 @@ describe('security hardening', () => {
     expect(externalResponse.status).toBe(400);
     expect(previewResponse.status).toBe(400);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('redacts the requested URL in successful external-fetch responses', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ss://user:password@node.example:8388', { status: 200 }));
+    const response = await handleExternalFetchRequest(new Request('https://example.com/api/fetch_external_url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://raw.githubusercontent.com/example/repo/sub.txt?token=fetch-secret' })
+    }), {});
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.url).not.toContain('fetch-secret');
+    expect(body.url).toContain('raw.githubusercontent.com');
+    expect(body.content).toContain('ss://user:password@node.example:8388');
+  });
+
+  it('never logs or returns upstream error bodies and status text', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('fixture-unknown-secret', {
+      status: 403, statusText: 'fixture-status-secret'
+    }));
+    const response = await handleExternalFetchRequest(new Request('https://example.com/api/fetch_external_url', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://raw.githubusercontent.com/secret?token=fixture-token' })
+    }), {});
+    const output = JSON.stringify({ body: await response.json(), logs: spy.mock.calls });
+    expect(response.status).toBe(403);
+    for (const secret of ['fixture-unknown-secret', 'fixture-status-secret', 'fixture-token']) expect(output).not.toContain(secret);
+    expect(output).toContain('UPSTREAM_HTTP_ERROR');
+  });
+
+  it.each([false, true])('redacts structured configuration previews, base64=%s', async encoded => {
+    const content = 'proxies:\n  - name: fixture\n    server: node.example\n    password: "fixture password with spaces"\n    private-key: |\n      fixture-multiline-key\nrules: []\n';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(encoded ? btoa(content) : content));
+    const request = new Request('https://example.com/api/preview/content', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://raw.githubusercontent.com/example/config', fullExport: true })
+    });
+    const body = await (await handlePreviewContentRequest(request, {})).json();
+    const output = JSON.stringify(body);
+    expect(output).not.toContain('fixture password');
+    expect(output).not.toContain('fixture-multiline-key');
+    expect(output).not.toContain(btoa(content));
+    expect(body.fullContent).toContain('node.example');
   });
 
   it('allows only explicit trusted external hostnames for public fetch APIs', async () => {

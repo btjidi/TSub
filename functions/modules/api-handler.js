@@ -17,6 +17,7 @@ import { isDemoView, readDemoData } from './demo-data-handler.js';
 import { mergeSettingsUpdate, redactSettingsForClient } from './settings-secrets.js';
 import { hasEnabledTrafficNode, normalizeTrafficNodeDisplay, validateTrafficNodeCustomLabels } from './traffic-node-settings.js';
 import { validateTrafficQuotaOverride } from './traffic-quota.js';
+import { redactErrorMessage, redactUrl } from './security-utils.js';
 
 const PROFILE_DOWNLOAD_COUNT_PREFIX = 'tsub_profile_download_count_';
 const TRAFFIC_NODE_METRIC_NAMES = Object.freeze({
@@ -223,7 +224,7 @@ export async function handleDataRequest(env, context = null, request = null) {
                 : storageAdapter.get(KV_KEY_PROFILES).then(res => res || []),
             Promise.resolve(cachedSettings || {}).then(res => res || {}),
             listRuleTemplates(storageAdapter).catch(error => {
-                console.warn('[API /data] Failed to load custom rule templates:', error?.message || error);
+                console.warn('[API /data] Failed to load custom rule templates:', redactErrorMessage(error));
                 return [];
             })
         ]);
@@ -236,7 +237,7 @@ export async function handleDataRequest(env, context = null, request = null) {
         // 自动迁移旧版 profile ID（去除 'profile_' 前缀）
         if (migrateProfileIds(profiles)) {
             storageAdapter.put(KV_KEY_PROFILES, profiles).catch(err =>
-                console.error('[Migration] Failed to persist migrated profile IDs:', err)
+                console.error('[Migration] Failed to persist migrated profile IDs:', redactErrorMessage(err))
             );
         }
         const config = demoOnly
@@ -255,16 +256,16 @@ export async function handleDataRequest(env, context = null, request = null) {
                 const taskContext = context || { env };
                 const runPromise = maybeRunScheduledTasks(taskContext, { source: 'admin-api' });
                 if (typeof taskContext.waitUntil !== 'function') {
-                    runPromise.catch(error => console.warn('[ScheduledTasks] lazy check failed:', error?.message || error));
+                    runPromise.catch(error => console.warn('[ScheduledTasks] lazy check failed:', redactErrorMessage(error)));
                 }
             }
         } catch (taskError) {
-            console.warn('[ScheduledTasks] lazy check init failed:', taskError?.message || taskError);
+            console.warn('[ScheduledTasks] lazy check init failed:', redactErrorMessage(taskError));
         }
         return createJsonResponse({ tsubs: managedTsubs, profiles: managedProfiles, ruleTemplates: demoOnly ? [] : ruleTemplates, config });
     } catch (e) {
         console.error('[API Error /data] Failed to read from storage', {
-            error: e?.message,
+            error: redactErrorMessage(e),
             storageType,
             hasKv: !!StorageFactory.resolveKV(env),
             hasD1: !!env?.TSUB_DB
@@ -296,7 +297,7 @@ export async function handleTsubsSave(request, env) {
         try {
             requestData = await readJsonWithLimit(request, JSON_BODY_LIMITS.large);
         } catch (parseError) {
-            console.error('[API Error /tsubs] JSON解析失败:', parseError);
+            console.error('[API Error /tsubs] JSON解析失败:', redactErrorMessage(parseError));
             return createJsonResponse({
                 success: false,
                 message: parseError.status === 413 ? parseError.message : '请求数据格式错误，请检查数据格式'
@@ -452,15 +453,15 @@ export async function handleTsubsSave(request, env) {
                 const notificationPromises = finalTsubs
                     .filter(sub => sub && sub.url && sub.url.startsWith('http'))
                     .map(sub => checkAndNotify(sub, settings, env).catch(notifyError => {
-                        console.warn('[API] Notification failed for subscription:', sub?.name || sub?.url, notifyError);
+                        console.warn('[API] Notification failed for subscription:', sub?.name || redactUrl(sub?.url || ''), redactErrorMessage(notifyError));
                     }));
 
                 // 并行处理通知，但不等待完成
                 Promise.all(notificationPromises).catch(e => {
-                    console.warn('[API] Notification batch error:', e);
+                    console.warn('[API] Notification batch error:', redactErrorMessage(e));
                 });
             } catch (notificationError) {
-                console.warn('[API] Notification system error:', notificationError);
+                console.warn('[API] Notification system error:', redactErrorMessage(notificationError));
             }
         }
 
@@ -492,10 +493,10 @@ export async function handleTsubsSave(request, env) {
                 }
             }
         } catch (storageError) {
-            console.error('[API Error /tsubs] Storage put failed:', storageError);
+            console.error('[API Error /tsubs] Storage put failed:', redactErrorMessage(storageError));
             return createJsonResponse({
                 success: false,
-                message: `数据保存失败: ${storageError.message || '存储服务暂时不可用，请稍后重试'}`
+                message: '数据保存失败：存储服务暂时不可用，请稍后重试'
             }, 500);
         }
 
@@ -508,7 +509,7 @@ export async function handleTsubsSave(request, env) {
             console.info(`[API] Cleared ${cacheResult.cleared} node caches after subscription update, preserved ${cacheResult.skipped || 0}`);
         } catch (cacheError) {
             // 缓存清除失败不影响保存结果
-            console.warn('[API] Failed to clear node caches:', cacheError.message);
+            console.warn('[API] Failed to clear node caches:', redactErrorMessage(cacheError));
         }
 
         // 步骤7: 返回保存后的数据，确保前端能更新状态
@@ -522,10 +523,10 @@ export async function handleTsubsSave(request, env) {
         });
 
     } catch (e) {
-        console.error('[API Error /tsubs] Uncaught error:', e);
+        console.error('[API Error /tsubs] Uncaught error:', redactErrorMessage(e));
         return createJsonResponse({
             success: false,
-            message: `保存失败: ${e.message || '服务器内部错误，请稍后重试'}`
+            message: '保存失败：服务器内部错误，请稍后重试'
         }, 500);
     }
 }
@@ -681,7 +682,7 @@ export async function handleSettingsSave(request, env) {
         try {
             await clearAllNodeCaches(storageAdapter);
         } catch (cacheError) {
-            console.warn('[API] Failed to clear node caches:', cacheError.message);
+            console.warn('[API] Failed to clear node caches:', redactErrorMessage(cacheError));
         }
 
         const message = `⚙️ *TSub 设置更新* ⚙️\n\n您的 TSub 应用设置已成功更新。`;
@@ -714,7 +715,7 @@ export async function handleSettingsReset(env) {
             data: withResolvedDataCommitMode(defaultSettings, env)
         });
     } catch (e) {
-        console.error('[API Error /settings/reset]', e);
+        console.error('[API Error /settings/reset]', redactErrorMessage(e));
         return createErrorResponse('重置设置失败', 500);
     }
 }
@@ -803,7 +804,7 @@ export async function handlePublicProfilesRequest(env) {
             }
         });
     } catch (e) {
-        console.error('[API Error /public/profiles]', e);
+        console.error('[API Error /public/profiles]', redactErrorMessage(e));
         return createErrorResponse('获取公开订阅组失败', 500);
     }
 }
@@ -835,7 +836,7 @@ export async function handlePublicConfig(env) {
             }
         });
     } catch (e) {
-        console.error('[API Error /public/config]', e);
+        console.error('[API Error /public/config]', redactErrorMessage(e));
         return createErrorResponse('获取公开配置失败', 500);
     }
 }

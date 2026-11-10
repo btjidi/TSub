@@ -1,6 +1,7 @@
 /**
  * 通知服务 (核心实现)
  */
+import { redactErrorMessage } from '../modules/security-utils.js';
 
 /**
  * 转义 Telegram HTML 模式下的特殊字符
@@ -43,13 +44,12 @@ export async function sendTgNotification(settings, message) {
         });
         
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            console.error('[NotificationService] TG API Error:', response.status, errorData);
+            console.error('[NotificationService] TG API Error:', response.status);
         }
         
         return response.ok;
     } catch (error) {
-        console.error('[NotificationService] Network Error:', error);
+        console.error('[NotificationService] Network Error:', redactErrorMessage(error));
         return false;
     }
 }
@@ -86,7 +86,7 @@ export async function sendEnhancedTgNotification(settings, type, clientIp, addit
             }
         }
     } catch (error) {
-        console.debug('[NotificationService] Failed to fetch IP geolocation:', error);
+        console.debug('[NotificationService] Failed to fetch IP geolocation:', redactErrorMessage(error));
     }
 
     // 构建完整消息
@@ -115,13 +115,12 @@ ${additionalData}
         });
         
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            console.error('[NotificationService] TG API Error (Enhanced):', response.status, errorData);
+            console.error('[NotificationService] TG API Error (Enhanced):', response.status);
         }
         
         return response.ok;
     } catch (error) {
-        console.error('[NotificationService] Network Error (Enhanced):', error);
+        console.error('[NotificationService] Network Error (Enhanced):', redactErrorMessage(error));
         return false;
     }
 }
@@ -166,7 +165,7 @@ export async function debugTgNotification(settings, message) {
     } catch (error) {
         return {
             success: false,
-            error: `Network/Fetch Error: ${error.message}`
+            error: 'Network/Fetch Error'
         };
     }
 }
