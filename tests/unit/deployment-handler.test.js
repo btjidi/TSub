@@ -831,8 +831,12 @@ describe('TSub V2 deployment handler', () => {
     const env = createEnv(); delete env.DEPLOYMENT_SECRET_KEY;
     const noKey = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Bad', config: config() }), env, '/deployments');
     expect(noKey.status).toBe(503);
+    expect(await noKey.json()).toMatchObject({ code: 'DEPLOYMENT_KEY_MISSING', message: expect.stringContaining('重新部署'), requestId: expect.any(String) });
+    expect(env.TSUB_KV.dump('tsub_deployments_v2')).toBeNull();
     const noAssets = createEnv(); delete noAssets.TSUB_SINGBOX_AMD64_SHA256;
-    expect((await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'No assets', config: config({ runtime: { tier: 'auto', core: 'sing-box', channel: 'stable' } }) }), noAssets, '/deployments')).status).toBe(400);
+    const missingAsset = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'No assets', config: config({ runtime: { tier: 'auto', core: 'sing-box', channel: 'stable' } }) }), noAssets, '/deployments');
+    expect(missingAsset.status).toBe(503);
+    expect(await missingAsset.json()).toMatchObject({ code: 'DEPLOYMENT_ASSET_OVERRIDE_INCOMPLETE' });
     const env2 = createEnv();
     const invalid = config({ inbounds: [{ protocol: 'hysteria2', port: 443, transport: 'tcp', outbound: 'direct', credentials: { password: 'x' }, tls: { mode: 'none' } }] });
     expect((await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Bad', config: invalid }), env2, '/deployments')).status).toBe(400);
@@ -847,6 +851,51 @@ describe('TSub V2 deployment handler', () => {
     expect(result.created.status).toBe(201);
     expect(result.script).toContain('xray_amd64_url=https://github.com/btjidi/TSub/releases/download/runtime-assets-v2/xray-26.7.28-amd64');
     expect(result.script).toContain('busybox_arm64_url=https://busybox.net/downloads/binaries/1.31.0-defconfig-multiarch-musl/busybox-armv8l');
+  });
+
+  it('rejects direct commands after key changes without writing new operation tokens', async () => {
+    const env = createEnv();
+    const { body } = await createAndBootstrap(env);
+    const id = body.data.deployment.id;
+    const operationsBefore = env.TSUB_KV.dump('tsub_deployment_operations_v2');
+    const deploymentsBefore = env.TSUB_KV.dump('tsub_deployments_v2');
+    env.DEPLOYMENT_SECRET_KEY = 'changed-fixture-encryption-key';
+    for (const action of ['plan', 'update-runtime', 'reinstall']) {
+      const response = await handleDeploymentsRequest(jsonRequest(`/deployments/${id}/operations`, 'POST', { action }), env, `/deployments/${id}/operations`);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: 'DEPLOYMENT_DECRYPT_FAILED' });
+    }
+    expect(env.TSUB_KV.dump('tsub_deployment_operations_v2')).toEqual(operationsBefore);
+    expect(env.TSUB_KV.dump('tsub_deployments_v2')).toEqual(deploymentsBefore);
+  });
+
+  it.each([
+    [{ TSUB_XRAY_AMD64_SHA256: 'invalid-checksum' }, 'stable', 'DEPLOYMENT_ASSET_INVALID'],
+    [{ TSUB_PINNED_CORE_MANIFEST: '{invalid' }, 'pinned', 'DEPLOYMENT_PINNED_MANIFEST_INVALID'],
+    [{ TSUB_PINNED_CORE_MANIFEST: '{}' }, 'pinned', 'DEPLOYMENT_PINNED_ASSET_MISSING']
+  ])('reports actionable asset configuration failures', async (overrides, channel, code) => {
+    const env = { ...createEnv(), ...overrides };
+    const response = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Invalid assets', config: config({ runtime: { core: 'xray', channel, version: 'fixture-version' } }) }), env, '/deployments');
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code, requestId: expect.any(String) });
+    expect(env.TSUB_KV.dump('tsub_deployments_v2')).toBeNull();
+  });
+
+  it('returns a safe request ID when storage writes fail', async () => {
+    const env = createEnv();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const put = env.TSUB_KV.put.bind(env.TSUB_KV);
+    env.TSUB_KV.put = async (key, value) => {
+      if (key === 'tsub_deployments_v2') throw new Error('database internal password=fixture-do-not-expose');
+      return put(key, value);
+    };
+    try {
+      const response = await handleDeploymentsRequest(jsonRequest('/deployments', 'POST', { name: 'Storage failure', config: config() }), env, '/deployments');
+      expect(response.status).toBe(500);
+      const body = await response.json();
+      expect(body).toMatchObject({ code: 'DEPLOYMENT_COMMAND_FAILED', requestId: expect.any(String) });
+      expect(JSON.stringify(body)).not.toContain('fixture-do-not-expose');
+    } finally { log.mockRestore(); }
   });
 
   it('emits separately pinned archive and extracted-binary hashes', async () => {

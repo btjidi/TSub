@@ -4,7 +4,8 @@ import { redactSensitiveText } from './security-utils.js';
 import { NODE_PROTOCOL_REGEX } from './utils/node-parser.js';
 import { createErrorResponse, createJsonResponse, JSON_BODY_LIMITS, readJsonWithLimit } from './utils.js';
 import { compileCoreConfig, compileNodeUrls, mergeDeploymentDefaults, normalizeDeploymentDefaults, publicDeploymentDefaults, publicV2Config, resolveBootstrapConfig, resolveV2Config } from './deployment-v2-config.js';
-import { decryptDeploymentConfig, encryptDeploymentConfig } from './deployment-crypto.js';
+import { decryptDeploymentConfig, encryptDeploymentConfig, validateDeploymentSecret } from './deployment-crypto.js';
+import { DeploymentConfigurationError, deploymentErrorResponse } from './deployment-errors.js';
 import { buildSubscriptionNodeCacheKey, normalizeSubscriptionNodeCacheNodes } from '../services/subscription-service.js';
 import { isDemoView, readDemoData } from './demo-data-handler.js';
 import { hasTrafficUsage, resolveEffectiveTrafficTotal } from './traffic-quota.js';
@@ -193,7 +194,7 @@ export async function handleDeploymentDefaultsRequest(request, env) {
     }
     return createErrorResponse('Method Not Allowed', 405);
   } catch (error) {
-    return createErrorResponse(error.message, /DEPLOYMENT_SECRET_KEY/.test(error.message) ? 503 : 400);
+    return deploymentErrorResponse(error, 400);
   }
 }
 
@@ -1204,7 +1205,7 @@ function stableAssetDescriptor(core, env, latest = false) {
     };
   }
   if (!version || Object.values(assets).some(asset => !asset.url || !asset.sha256)) {
-    throw new Error(`${core} 环境变量覆盖不完整，请补齐版本、AMD64/ARM64 URL 和 SHA-256，或删除整组覆盖变量`);
+    throw new DeploymentConfigurationError('DEPLOYMENT_ASSET_OVERRIDE_INCOMPLETE');
   }
   return { version, assets };
 }
@@ -1212,9 +1213,9 @@ function stableAssetDescriptor(core, env, latest = false) {
 function resolveAssetDescriptor(core, runtime, env) {
   if (runtime?.channel === 'pinned' && core === runtime.core) {
     let manifest;
-    try { manifest = JSON.parse(env?.TSUB_PINNED_CORE_MANIFEST || '{}'); } catch { throw new Error('TSUB_PINNED_CORE_MANIFEST 不是有效 JSON'); }
+    try { manifest = JSON.parse(env?.TSUB_PINNED_CORE_MANIFEST || '{}'); } catch { throw new DeploymentConfigurationError('DEPLOYMENT_PINNED_MANIFEST_INVALID'); }
     const descriptor = manifest?.[core]?.[runtime.version];
-    if (!descriptor) throw new Error(`Pinned 清单不包含 ${core} ${runtime.version}`);
+    if (!descriptor) throw new DeploymentConfigurationError('DEPLOYMENT_PINNED_ASSET_MISSING');
     return { version: runtime.version, assets: descriptor };
   }
   return stableAssetDescriptor(core, env, runtime?.channel === 'latest' && core === runtime.core);
@@ -1222,15 +1223,15 @@ function resolveAssetDescriptor(core, runtime, env) {
 
 function coreAssetLines(core, runtime, env) {
   const descriptor = resolveAssetDescriptor(core, runtime, env);
-  if (!descriptor.version) throw new Error(`${core} 缺少版本环境变量`);
+  if (!descriptor.version) throw new DeploymentConfigurationError('DEPLOYMENT_ASSET_INVALID');
   const lines = [];
   for (const arch of ['AMD64', 'ARM64']) {
     const asset = descriptor.assets?.[arch.toLowerCase()] || {};
     const url = String(asset.url || ''); const hash = String(asset.sha256 || '');
     const format = String(asset.format || 'binary');
     const binaryHash = String(asset.binarySha256 || (format === 'binary' ? hash : ''));
-    if (!/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/i.test(hash)) throw new Error(`${core}/${arch.toLowerCase()} 资产 URL 或 SHA-256 无效`);
-    if (!['binary', 'tar.gz'].includes(format) || !/^[0-9a-f]{64}$/i.test(binaryHash)) throw new Error(`${core}/${arch.toLowerCase()} 资产格式或二进制 SHA-256 无效`);
+    if (!/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/i.test(hash)) throw new DeploymentConfigurationError('DEPLOYMENT_ASSET_INVALID');
+    if (!['binary', 'tar.gz'].includes(format) || !/^[0-9a-f]{64}$/i.test(binaryHash)) throw new DeploymentConfigurationError('DEPLOYMENT_ASSET_INVALID');
     lines.push(
       `${core}_${arch.toLowerCase()}_url=${url}`, `${core}_${arch.toLowerCase()}_sha256=${hash}`,
       `${core}_${arch.toLowerCase()}_format=${format}`, `${core}_${arch.toLowerCase()}_binary_sha256=${binaryHash}`
@@ -2359,6 +2360,8 @@ export async function handleDeployAgentCommandEvents(request, env, commandId) {
 
 async function createOperation(request, storage, deployment, action, env, options = {}) {
   if (!ACTIONS.has(action)) return createErrorResponse('Unsupported deployment action', 400);
+  // Fail before issuing a token that bootstrap cannot use.
+  validateRuntimeAssets(await decryptDeploymentConfig(deployment.encryptedConfig, env), env);
   const bootstrapToken = randomToken(); const callbackToken = randomToken();
   const bootstrapTokenHash = await sha256(bootstrapToken); const callbackTokenHash = await sha256(callbackToken);
   const createdAt = nowIso();
@@ -2419,6 +2422,14 @@ async function listWithLegacyDrafts(storage) {
 }
 
 export async function handleDeploymentsRequest(request, env, path) {
+  try {
+    return await handleDeploymentsRequestInternal(request, env, path);
+  } catch (error) {
+    return deploymentErrorResponse(error);
+  }
+}
+
+async function handleDeploymentsRequestInternal(request, env, path) {
   const storage = await getStorage(env);
   const demoData = await readDemoData(storage).catch(() => null);
   const parts = path.split('/').filter(Boolean); const id = parts[1] || ''; const child = parts[2] || '';
@@ -2437,6 +2448,7 @@ export async function handleDeploymentsRequest(request, env, path) {
     if (!name) return createErrorResponse('Deployment name is required', 400);
     let config; let encryptedConfig; let defaults; let requestConfig = stripServerChainMarkers(cloneJson(body.config || {}));
     try {
+      validateDeploymentSecret(env);
       const systemDefaults = await readDeploymentDefaults(storage, env);
       if (body.cloneFromDeploymentId) {
         const source = await findDeployment(storage, String(body.cloneFromDeploymentId));
@@ -2455,7 +2467,7 @@ export async function handleDeploymentsRequest(request, env, path) {
       await resolveCloudflareEdgeMetadata(config);
       validateRuntimeAssets(config, env); encryptedConfig = await encryptDeploymentConfig(config, env);
     }
-    catch (error) { return createErrorResponse(error.code || error.message, error.status || (/DEPLOYMENT_SECRET_KEY|资产|版本环境变量|PINNED_CORE_MANIFEST|Pinned 清单/.test(error.message) ? 503 : 400)); }
+    catch (error) { return deploymentErrorResponse(error, 400); }
     const timestamp = nowIso();
     const clonedDeployment = Boolean(body.cloneFromDeploymentId);
     const nodeGroup = clonedDeployment && body.nodeGroup !== undefined
@@ -2516,7 +2528,7 @@ export async function handleDeploymentsRequest(request, env, path) {
           retainedSecrets: true
         }
       });
-    } catch { return createErrorResponse('Service unavailable', 503); }
+    } catch (error) { return deploymentErrorResponse(error); }
   }
   if (!child && request.method === 'PATCH') {
     let body; try { body = await readJsonWithLimit(request, JSON_BODY_LIMITS.deployment); } catch (error) { return createErrorResponse(error.message || 'Invalid JSON', error.status || 400); }
@@ -2538,7 +2550,7 @@ export async function handleDeploymentsRequest(request, env, path) {
         deployment.status = 'pending';
         deployment.pendingReason = 'config';
       }
-      catch (error) { return createErrorResponse(error.code || error.message, error.status || (/资产|版本环境变量|PINNED_CORE_MANIFEST|Pinned 清单/.test(error.message) ? 503 : 400)); }
+      catch (error) { return deploymentErrorResponse(error, 400); }
     }
     deployment.updatedAt = nowIso(); await writeDeployment(storage, deployment);
     return createJsonResponse({ success: true, data: publicDeployment(deployment) });
@@ -2655,10 +2667,11 @@ export async function handleDeploymentsRequest(request, env, path) {
         Object.assign(deployment, nextDeployment);
         await writeDeployment(storage, deployment);
       } catch (error) {
-        return createErrorResponse(error.message, error.status || (/DEPLOYMENT_SECRET_KEY|资产|版本环境变量|PINNED_CORE_MANIFEST|Pinned 清单/.test(error.message) ? 503 : 400));
+        return deploymentErrorResponse(error, 400);
       }
     } else if (action === 'reinstall') {
       if (!isDeploymentReinstallable(deployment)) return createErrorResponse('Deployment cannot be reinstalled in its current state', 409);
+      validateRuntimeAssets(await decryptDeploymentConfig(deployment.encryptedConfig, env), env);
       await supersedeDeploymentOperations(storage, deployment.id);
       deployment.status = 'pending';
       deployment.pendingReason = 'reinstall';
@@ -2776,7 +2789,7 @@ export async function handleDeploymentsRequest(request, env, path) {
         await writeOperation(storage, operation);
         const command = await queueAgentCommand(storage, deployment, operation, commandData);
         return createJsonResponse({ success: true, data: { operation: publicOperation(operation), command } }, 202);
-      } catch (error) { return createJsonResponse({ success: false, error: error.code || 'remote_command_failed', message: error.message }, error.status || 400); }
+      } catch (error) { return deploymentErrorResponse(error, 400); }
     }
     return createOperation(request, storage, deployment, String(body.action || ''), env, { outputLanguage: body.outputLanguage });
   }

@@ -165,6 +165,22 @@ SETTINGS_SECRET_KEY=这里填写随机设置密钥（至少16位）
 
 本 README 即为完整部署教程，其中部署方式一为 Cloudflare Pages；英文入口见 [README_EN.md](README_EN.md)。
 
+#### 安装命令生成失败排查
+
+生成失败时，页面会保留错误说明、HTTP 状态、错误码和请求编号；再次生成会清空旧命令，避免误用。已生成命令的服务器执行失败，请另行查看对应操作记录。
+
+| 错误码 / 现象 | 处理方式 |
+| --- | --- |
+| `DEPLOYMENT_KEY_MISSING` / `DEPLOYMENT_KEY_INVALID` | 在 Pages 当前环境配置至少 16 位的独立随机 `DEPLOYMENT_SECRET_KEY` Secret，然后重新部署。能登录不代表已配置部署加密密钥。 |
+| `DEPLOYMENT_DECRYPT_FAILED` | 恢复保存部署配置时使用的原密钥；不要通过随机更换密钥或删除原部署来重试。 |
+| `DEPLOYMENT_ASSET_OVERRIDE_INCOMPLETE` / `DEPLOYMENT_ASSET_INVALID` | 删除对应核心整组自定义资产覆盖变量，使用内置下载信息；或补齐版本、双架构 HTTPS URL、SHA-256、格式及需要的二进制校验值，然后重新部署。 |
+| `DEPLOYMENT_PINNED_MANIFEST_INVALID` / `DEPLOYMENT_PINNED_ASSET_MISSING` | 修正固定清单或改用 `stable` 通道。 |
+| `DEPLOYMENT_STORAGE_UNAVAILABLE` | 检查当前环境的 `TSUB_DB` / `TSUB_KV` 绑定、存储模式和初始化状态。 |
+| 网络中断、超时或 `DEPLOYMENT_COMMAND_FAILED` | 先刷新部署记录和操作记录，确认请求是否已保存，再重试，避免重复创建；保留请求编号用于关联脱敏日志。 |
+| 旧版仅显示 HTTP 503 / `Internal Server Error` | 旧接口隐藏了原因，不能仅凭 503 判断缺少哪个变量；检查部署密钥和资产覆盖项，更新主控后查看具体错误码。 |
+
+错误提示和日志不会输出密钥值、安装 Token 或底层异常正文。不要将这些敏感值放进报错截图。
+
 ### 部署方式二：Docker Compose
 
 服务器部署运行的是完整的 TSub 主控，适合需要 SQLite/PostgreSQL、远程 Agent 或本机执行器的场景。支持 Docker Compose 和 Debian/Ubuntu/Alpine 裸机安装；Web 主控默认使用非 root 用户运行，root 执行器仅在启用本机代理控制时安装。

@@ -15,6 +15,7 @@ import {
 } from '../lib/deployments.js';
 import { useI18n } from '../i18n/index.js';
 import { DEFAULT_REUSE_OPTIONS, buildReusableDeploymentConfig, deploymentReuseSummary } from '../lib/deployment-reuse.js';
+import { assertDeploymentCommandResult, formatDeploymentError } from '../lib/deployment-errors.js';
 import SecretInput from '../components/forms/SecretInput.vue';
 import PushHistoryModal from '../components/modals/PushHistoryModal.vue';
 import DeploymentHelpLabel from '../components/deployments/DeploymentHelpLabel.vue';
@@ -118,6 +119,23 @@ const remoteMenuId = ref('');
 const remoteMenuAlignment = ref('right');
 const deploymentInfoPopoverKey = ref('');
 const output = reactive({ curl: '', wget: '', diagnosticCurl: '', diagnosticWget: '', expiresAt: '', client: 'wget', diagnostic: false });
+const commandError = ref(null);
+const commandErrorRef = ref(null);
+function clearCommandResult() {
+  commandError.value = null;
+  for (const target of [output, operationOutput]) {
+    Object.assign(target, { curl: '', wget: '', diagnosticCurl: '', diagnosticWget: '', expiresAt: '' });
+  }
+  showOperationCommandModal.value = false;
+}
+function reportCommandError(error) {
+  const detail = formatDeploymentError(error, t);
+  const serviceCode = error?.data?.error || error?.data?.code || '';
+  if (serviceCode === 'invalid_cloudflare_edge_credentials' || String(serviceCode).startsWith('cloudflare_edge_')) detail.message = edgePermissionErrorText(serviceCode);
+  commandError.value = detail;
+  toast.showToast(detail.message, 'error');
+  nextTick(() => commandErrorRef.value?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }));
+}
 const operationOutput = reactive({ curl: '', wget: '', diagnosticCurl: '', diagnosticWget: '', expiresAt: '', client: 'wget', diagnostic: false, deploymentName: '', action: '' });
 const confirmedOperationActions = new Set(['update', 'update-runtime', 'rollback-runtime', 'restart', 'repair', 'rollback', 'uninstall']);
 const deploymentPollIntervalMs = 5000;
@@ -1480,6 +1498,7 @@ function validateForm() {
 }
 
 function requestInstallCommand() {
+  clearCommandResult();
   if (deploymentMode.value === 'uninstall') {
     if (!targetDeployment.value) return toast.showToast(t('deployments.errors.selectTarget'), 'warning');
     return generateActionCommand(targetDeployment.value, 'uninstall');
@@ -1491,11 +1510,13 @@ function requestInstallCommand() {
     if ([t('deployments.errors.controlCommandInvalid'), t('deployments.errors.randomPortRange'), t('deployments.errors.pinnedVersion')].includes(error)) runtimeOpen.value = true;
     const invalidInbound = form.inbounds.find(item => (item.uuid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.uuid)) || (item.tlsMode && !tlsOptions(item).includes(item.tlsMode)));
     if (invalidInbound) invalidInbound.expanded = true;
+    commandError.value = { message: error };
     return toast.showToast(error, 'warning');
   }
   showRiskDialog.value = true;
 }
 async function generateInstallCommand() {
+  clearCommandResult();
   showRiskDialog.value = false; loading.value = true;
   try {
     const defaults = serializeGlobal();
@@ -1516,6 +1537,7 @@ async function generateInstallCommand() {
         await openOperationsModal(deployments.value.find(item => item.id === preparedUpdateTargetId.value) || { id: preparedUpdateTargetId.value, name: form.name });
         return;
       }
+      assertDeploymentCommandResult(result);
       toast.showToast(t(reinstallMode.value ? 'deployments.notices.reinstallCommandGenerated' : 'deployments.notices.updateCommandGenerated'), 'success');
     } else {
       const reuseEncryptedValues = reuseSourceId.value && (reuseOptions.credentials || reuseOptions.warpIdentity || reuseOptions.subscription || reuseOptions.chainUpstream);
@@ -1539,21 +1561,15 @@ async function generateInstallCommand() {
           resetInheritedNodeNames: true
         } : {})
       });
-      selectedDeploymentId.value = result.data.deployment.id;
+      assertDeploymentCommandResult(result);
+      selectedDeploymentId.value = result.data.deployment?.id || '';
       toast.showToast(t('deployments.notices.commandGenerated'), 'success');
     }
     setCommand(result);
     await scrollToGeneratedCommand();
     await refreshDeployments();
   } catch (error) {
-    const fallback = remoteUpdate.value ? t('deployments.remote.failed') : t('deployments.errors.generateCommand');
-    const serviceCode = error?.data?.error || error?.data?.message || '';
-    const serviceMessage = serviceCode === 'invalid_cloudflare_edge_credentials' || String(serviceCode).startsWith('cloudflare_edge_')
-      ? edgePermissionErrorText(serviceCode)
-      : '';
-    toast.showToast(error?.status === 409 && (!remoteUpdate.value || error?.data?.error === 'REVISION_CONFLICT')
-      ? t('deployments.errors.configRevisionConflict')
-      : (serviceMessage || error?.data?.message || fallback), 'error');
+    reportCommandError(error);
   }
   finally { loading.value = false; }
 }
@@ -1620,6 +1636,7 @@ function closeOperationsModal() {
   clearTimeout(operationsRefreshTimer);
 }
 function assignCommand(target, result) {
+  assertDeploymentCommandResult(result);
   target.curl = result.data.command;
   target.wget = result.data.wgetCommand;
   target.diagnosticCurl = result.data.diagnosticCommand || '';
@@ -1643,6 +1660,7 @@ async function scrollToGeneratedCommand() {
   }
 }
 async function executeActionCommand(deployment, action) {
+  clearCommandResult();
   loading.value = true;
   try {
     const result = await createDeploymentCommand(deployment.id, action, { outputLanguage: locale.value });
@@ -1654,10 +1672,11 @@ async function executeActionCommand(deployment, action) {
     toast.showToast(t('deployments.notices.operationCommandGenerated'), 'success');
     if (action === 'uninstall') await refreshDeployments();
   }
-  catch { toast.showToast(t('deployments.errors.generateCommand'), 'error'); }
+  catch (error) { reportCommandError(error); }
   finally { loading.value = false; }
 }
 async function generateDirectConfigCommand(deployment, action) {
+  clearCommandResult();
   loading.value = true;
   try {
     const result = await createDeploymentCommand(deployment.id, action, { outputLanguage: locale.value });
@@ -1669,10 +1688,11 @@ async function generateDirectConfigCommand(deployment, action) {
     await refreshDeployments({ silent: true });
     toast.showToast(t('deployments.notices.operationCommandGenerated'), 'success');
   } catch (error) {
-    toast.showToast(error?.data?.message || t('deployments.errors.generateCommand'), 'error');
+    reportCommandError(error);
   } finally { loading.value = false; }
 }
 async function generateDirectPendingCommand() {
+  clearCommandResult();
   const deployment = pendingTemplateRecord.value;
   const action = pendingTemplateAction.value;
   const useRemote = pendingTemplateRemote.value;
@@ -1692,7 +1712,7 @@ async function generateDirectPendingCommand() {
     await refreshDeployments({ silent: true });
     await openOperationsModal(deployment);
   } catch (error) {
-    toast.showToast(error?.data?.message || t('deployments.remote.failed'), 'error');
+    reportCommandError(error);
   } finally { loading.value = false; }
 }
 function cancelOperationCommand() { pendingOperation.value = null; }
@@ -1711,6 +1731,7 @@ function closeOperationCommandModal() {
   Object.assign(operationOutput, { curl: '', wget: '', diagnosticCurl: '', diagnosticWget: '', expiresAt: '', client: 'wget', diagnostic: false, deploymentName: '', action: '' });
 }
 async function generateRemoteCommand(deployment, action) {
+  clearCommandResult();
   remoteMenuId.value = '';
   if (!capabilities.value.features.remoteCommands) return toast.showToast(t('deployments.remote.requiresD1'), 'warning');
   if (!deployment.agent?.online) return toast.showToast(t('deployments.remote.offline'), 'warning');
@@ -1723,7 +1744,7 @@ async function generateRemoteCommand(deployment, action) {
     await createRemoteDeploymentCommand(deployment.id, action, { outputLanguage: locale.value });
     toast.showToast(t('deployments.remote.queued'), 'success');
     await refreshDeployments();
-  } catch (error) { toast.showToast(error?.data?.message || t('deployments.remote.failed'), 'error'); await refreshDeployments(); }
+  } catch (error) { reportCommandError(error); await refreshDeployments(); }
   finally { loading.value = false; }
 }
 
@@ -1876,6 +1897,13 @@ onBeforeUnmount(() => {
     <div data-testid="deployment-tabs" class="deployment-surface flex gap-1 overflow-x-auto p-1.5" role="tablist">
       <button v-for="tab in tabs" :key="tab.id" type="button" class="min-h-10 shrink-0 border px-4 text-sm font-semibold transition-colors" :class="activeTab === tab.id ? 'border-primary-200 bg-primary-50 text-primary-700 hover:border-primary-300 hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300 dark:hover:bg-primary-500/20' : 'border-transparent text-gray-500 hover:border-gray-200 hover:bg-gray-50 hover:text-gray-800 dark:hover:border-white/10 dark:hover:bg-white/5 dark:hover:text-gray-200'" @click="switchTab(tab.id)">{{ tab.label }}</button>
     </div>
+
+    <section v-if="commandError" ref="commandErrorRef" role="alert" data-testid="deployment-command-error" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+      <h2 class="font-semibold">{{ t('deployments.errors.generateCommand') }}</h2>
+      <p class="mt-2 break-words">{{ commandError.message }}</p>
+      <p v-if="commandError.status || commandError.code" class="mt-2 break-all font-mono text-xs">{{ commandError.status ? `HTTP ${commandError.status}` : '' }} {{ commandError.code }}</p>
+      <p v-if="commandError.requestId" class="mt-1 break-all font-mono text-xs">{{ t('deployments.commandErrors.requestId') }}: {{ commandError.requestId }}</p>
+    </section>
 
     <template v-if="activeTab === 'generator'">
       <section class="grid gap-3 sm:gap-4 xl:gap-5" :class="remoteUpdate ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(0,1fr)_360px]'">

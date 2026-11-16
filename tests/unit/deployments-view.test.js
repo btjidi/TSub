@@ -559,6 +559,38 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
     expect(source).toContain('dark:border-red-400/35 dark:text-red-300');
   });
 
+  it('keeps actionable command errors visible and clears old commands across retries', async () => {
+    wrapper = mountView();
+    await flushPromises();
+    await wrapper.find('input[placeholder="HK Edge"]').setValue('Diagnostic deployment');
+    const submit = async () => {
+      await wrapper.find('form').trigger('submit');
+      await flushPromises();
+      document.querySelector('[data-testid="deployment-risk-panel"] button:last-child').click();
+      await flushPromises();
+    };
+    createDeployment.mockResolvedValueOnce({ data: { deployment: { id: 'fixture-deployment' }, command: 'curl old-command', wgetCommand: 'wget old-command' } });
+    await submit();
+    expect(wrapper.get('[data-testid="deployment-command-panel"] textarea').element.value).toContain('old-command');
+    createDeployment.mockRejectedValueOnce({ status: 503, data: { code: 'DEPLOYMENT_KEY_MISSING', requestId: 'fixture-request-1' } });
+    await submit();
+    const alert = wrapper.get('[data-testid="deployment-command-error"]');
+    expect(alert.attributes('role')).toBe('alert');
+    expect(alert.text()).toContain('DEPLOYMENT_SECRET_KEY');
+    expect(alert.text()).toContain('重新部署');
+    expect(alert.text()).toContain('HTTP 503');
+    expect(alert.text()).toContain('fixture-request-1');
+    expect(wrapper.get('[data-testid="deployment-command-panel"] textarea').element.value).toBe('');
+    createDeployment.mockResolvedValueOnce('<html>gateway-body</html>');
+    await submit();
+    expect(wrapper.get('[data-testid="deployment-command-error"]').text()).toContain('未返回有效命令');
+    expect(wrapper.get('[data-testid="deployment-command-error"]').text()).not.toContain('gateway-body');
+    createDeployment.mockResolvedValueOnce({ data: { deployment: { id: 'fixture-new' }, command: 'curl new', wgetCommand: 'wget new' } });
+    await submit();
+    expect(wrapper.find('[data-testid="deployment-command-error"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="deployment-command-panel"] textarea').element.value).toBe('wget new');
+  });
+
   it('sends the server control command only with the current deployment', async () => {
     createDeployment.mockResolvedValue({ data: { deployment: { id: 'deploy-control' }, command: 'curl short', wgetCommand: 'wget short', diagnosticCommand: 'curl diagnostic', diagnosticWgetCommand: 'wget diagnostic', expiresAt: '' } });
     saveDeploymentDefaults.mockResolvedValue({ data: {} });
@@ -1444,6 +1476,19 @@ describe('TSub Proxy simplified deployment generator', { timeout: 15_000 }, () =
       await flushPromises();
       expect(document.querySelector('[data-testid="deployment-operation-command-dialog"]')).toBeNull();
     }
+  });
+
+  it('shows errors for existing deployment commands without opening a stale command modal', async () => {
+    listDeployments.mockResolvedValue({ success: true, data: [{ id: 'fixture-operation', name: 'Test deployment', schemaVersion: 2, status: 'succeeded', configSummary: { protocols: [], runtime: { core: 'xray' } } }] });
+    createDeploymentCommand.mockRejectedValueOnce({ status: 503, data: { code: 'DEPLOYMENT_DECRYPT_FAILED', requestId: 'fixture-operation-request' } });
+    wrapper = mountView();
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === '部署记录').trigger('click');
+    await wrapper.findAll('button').find(button => button.text() === '获取状态').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="deployment-command-error"]').text()).toContain('无法解密');
+    expect(wrapper.get('[data-testid="deployment-command-error"]').text()).toContain('fixture-operation-request');
+    expect(document.querySelector('[data-testid="deployment-operation-command-dialog"]')).toBeNull();
   });
 
   it('confirms mutating operations before opening their independent command modal', async () => {

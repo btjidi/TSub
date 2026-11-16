@@ -70,6 +70,22 @@ After the first sign-in, before generating a proxy deployment command, open the 
 
 The server controller supports Docker Compose and bare-metal Debian, Ubuntu, or Alpine. Its web process is unprivileged and delegates host changes to a separate root executor. Node installers first probe the controller, then use the AWS Global API (`https://checkip.global.api.aws`) and Akamai (`https://whatismyip.akamai.com`) as IPv4/IPv6 fallbacks. These report egress IPs, so confirm the reachable address manually behind NAT or proxies. See [Server Controller Deployment](docs/SERVER_DEPLOYMENT_EN.md) and [Architecture](docs/ARCHITECTURE_EN.md).
 
+#### Troubleshooting command generation
+
+Command failures remain visible with a message, HTTP status, error code and request ID. A new attempt clears the old command. Failures while running an already generated command on a server belong to its operation records.
+
+| Code / symptom | Resolution |
+| --- | --- |
+| `DEPLOYMENT_KEY_MISSING` / `DEPLOYMENT_KEY_INVALID` | Set an independent random `DEPLOYMENT_SECRET_KEY` Secret of at least 16 characters in the current Pages environment and redeploy. Successful sign-in does not confirm this key is configured. |
+| `DEPLOYMENT_DECRYPT_FAILED` | Restore the original key used to save the deployment. Do not replace it randomly or delete the deployment to retry. |
+| `DEPLOYMENT_ASSET_OVERRIDE_INCOMPLETE` / `DEPLOYMENT_ASSET_INVALID` | Remove the entire custom override group to use built-in assets, or complete its version, both architecture HTTPS URLs, SHA-256 checksums, formats and required extracted binary hashes, then redeploy. |
+| `DEPLOYMENT_PINNED_MANIFEST_INVALID` / `DEPLOYMENT_PINNED_ASSET_MISSING` | Correct the pinned manifest or use the `stable` channel. |
+| `DEPLOYMENT_STORAGE_UNAVAILABLE` | Check current-environment `TSUB_DB` / `TSUB_KV` bindings, storage mode and initialization. |
+| Network interruption, timeout or `DEPLOYMENT_COMMAND_FAILED` | Refresh deployment and operation records to check whether the request was saved before retrying. Keep the request ID to correlate sanitized logs. |
+| Legacy HTTP 503 / `Internal Server Error` | Older APIs hide the cause; 503 alone cannot identify the missing setting. Check the deployment key and asset overrides, and update the controller to obtain a specific error code. |
+
+Diagnostics do not expose key values, installation tokens or raw internal exceptions. Keep credentials out of screenshots.
+
 ### Deployment Method 2: Docker Compose
 
 Use Docker Engine and Compose v2 on Linux `amd64` or `arm64`. Initialize `.env` with `TSUB_DOMAIN`, administrator credentials, and independent encryption Secrets, then run `docker compose config` and `docker compose up -d --build`. Compose runs the controller as an unprivileged container, uses Caddy for HTTPS, persists SQLite and Caddy data in named volumes, and exposes only ports 80/443. Port 8787 remains internal.
