@@ -1,6 +1,7 @@
 /**
  * CORS中间件
  */
+import { getSafeDeploymentDiagnosticBody } from '../modules/deployment-errors.js';
 
 /**
  * CORS中间件 - 处理跨域请求
@@ -137,12 +138,14 @@ export async function securityHeadersMiddleware(request, next) {
     let response = await next();
 
     if (response.status >= 500) {
-        const requestId = crypto.randomUUID();
+        const diagnostic = getSafeDeploymentDiagnosticBody(response);
+        const requestId = diagnostic?.requestId || crypto.randomUUID();
         const headers = new Headers(response.headers);
         headers.delete('Content-Length');
+        headers.delete('Content-Encoding');
         headers.set('Content-Type', 'application/json; charset=utf-8');
         headers.set('Cache-Control', 'no-store');
-        response = new Response(JSON.stringify({
+        response = new Response(JSON.stringify(diagnostic || {
             success: false,
             error: 'Internal Server Error',
             code: 'INTERNAL_ERROR',

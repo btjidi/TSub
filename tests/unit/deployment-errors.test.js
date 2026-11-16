@@ -4,10 +4,38 @@ import { decryptDeploymentConfig, encryptDeploymentConfig } from '../../function
 import { assertDeploymentCommandResult, formatDeploymentError } from '../../src/lib/deployment-errors.js';
 import { createI18n } from '../../src/i18n/index.js';
 import { createErrorResponse } from '../../functions/modules/utils.js';
+import { corsMiddleware, csrfOriginMiddleware, securityHeadersMiddleware } from '../../functions/middleware/cors.js';
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('safe deployment diagnostics', () => {
+  it.each(['DEPLOYMENT_KEY_INVALID', 'DEPLOYMENT_PINNED_ASSET_MISSING', 'DEPLOYMENT_COMMAND_FAILED'])('preserves trusted %s through the complete response middleware chain', async code => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const request = new Request('https://example.test/api/deployments', {
+      method: 'POST', headers: { Origin: 'https://example.test' }
+    });
+    const original = await deploymentErrorResponse(new DeploymentConfigurationError(code));
+    const expected = await original.clone().json();
+    const response = await corsMiddleware(request, () => csrfOriginMiddleware(request,
+      () => securityHeadersMiddleware(request, async () => original)),
+    { origins: ['https://example.test'], allowCredentials: true });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual(expected);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://example.test');
+  });
+
+  it('does not trust a diagnostic code or headers in an arbitrary upstream response', async () => {
+    const response = await securityHeadersMiddleware(new Request('https://example.test/api/deployments'), async () =>
+      new Response(JSON.stringify({ code: 'DEPLOYMENT_KEY_INVALID', message: 'fixture-private-value', requestId: 'fixture-private-value' }), {
+        status: 503, headers: { 'Content-Type': 'application/json', 'Content-Encoding': 'gzip', 'Content-Length': '100' }
+      }));
+    expect(await response.json()).toMatchObject({ code: 'INTERNAL_ERROR', error: 'Internal Server Error' });
+    expect(response.headers.has('Content-Encoding')).toBe(false);
+    expect(response.headers.has('Content-Length')).toBe(false);
+  });
+
   it.each([
     [undefined, 'DEPLOYMENT_KEY_MISSING'], ['', 'DEPLOYMENT_KEY_MISSING'],
     ['short', 'DEPLOYMENT_KEY_INVALID'], [' '.repeat(32), 'DEPLOYMENT_KEY_INVALID']

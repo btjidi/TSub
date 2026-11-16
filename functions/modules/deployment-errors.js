@@ -1,6 +1,13 @@
 import { createErrorResponse, createJsonResponse } from './utils.js';
 import { StorageInitializationError } from '../storage-adapter.js';
 
+// Trust only response objects created here, never a code/header from an upstream.
+const safeDiagnosticBodies = new WeakMap();
+
+export function getSafeDeploymentDiagnosticBody(response) {
+  return safeDiagnosticBodies.get(response);
+}
+
 // Only these application-owned messages may be exposed for server failures.
 // Never use exception text, upstream response bodies or environment values here.
 const diagnostics = Object.freeze({
@@ -41,5 +48,7 @@ export async function deploymentErrorResponse(error, fallbackStatus = 500) {
     if (typeof error?.code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(error.code)) body.code = error.code;
     body.requestId = requestId;
   }
-  return createJsonResponse(body, status, { 'Cache-Control': 'no-store' });
+  const response = createJsonResponse(body, status, { 'Cache-Control': 'no-store' });
+  if (status >= 500) safeDiagnosticBodies.set(response, Object.freeze({ ...body }));
+  return response;
 }
