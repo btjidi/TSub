@@ -76,7 +76,9 @@ unset FAIL_RUNTIME_DOWNLOAD
 mkdir -p "$TSUB_TMP"
 printf '%s\n' "runtime_target_version=1.0.9" "runtime_target_path=/proxy/v2/history/1.0.9/tsub-proxy.sh" "runtime_target_sha256=$rollback_sha" >>"$TSUB_CONFIG"
 agent_maybe_update_runtime force no-reload
-[ "$(cat "$TSUB_BIN/tsub-proxy.sh")" = rollback ]
 [ "$(sha256_file "$TSUB_BIN/tsub-proxy.sh")" = "$rollback_sha" ]
+# no-reload installs the script without executing its rollback marker.
+[ ! -e "$TEST_TMP/rollback-installed" ]
+[ "$(stat -c '%a' "$TSUB_BIN/tsub-proxy.sh")" = 700 ]
 
 echo 'agent self-update tests passed'
