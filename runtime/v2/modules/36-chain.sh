@@ -49,7 +49,8 @@ chain_diagnostics() {
   b64_decode_file chain_targets_b64 "$chain_diag_file" \
     || i18n_die '链式上游诊断信息无效' 'Chain upstream diagnostic metadata is invalid'
   chain_diag_seen=0
-  while IFS='|' read -r chain_diag_inbound chain_diag_protocol chain_diag_server chain_diag_port chain_diag_transport chain_diag_tag; do
+  # The first field is the source inbound ID; diagnostics use the outbound tag.
+  while IFS='|' read -r _chain_diag_inbound chain_diag_protocol chain_diag_server chain_diag_port chain_diag_transport chain_diag_tag; do
     [ -n "$chain_diag_server" ] || continue
     chain_diag_seen=$((chain_diag_seen + 1))
     chain_diagnostic_target "$chain_diag_protocol" "$chain_diag_server" "$chain_diag_port" "$chain_diag_transport" "$chain_diag_tag"
